@@ -1,50 +1,95 @@
-# Welcome to your Expo app 👋
+# GreenLens — Ứng dụng cộng đồng báo cáo ô nhiễm môi trường
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Mã dự án:** SU26SE049  
+**Nền tảng:** React Native (Expo) · Android & iOS  
+**Màu chủ đạo:** `#139B40`
 
-## Get started
+---
 
-1. Install dependencies
+## Giới thiệu
 
-   ```bash
-   npm install
-   ```
+GreenLens là ứng dụng cộng đồng cho phép người dùng báo cáo các điểm rác thải và ô nhiễm môi trường theo thời gian thực. Dữ liệu được hiển thị trên bản đồ, giúp cơ quan quản lý nắm bắt và xử lý kịp thời.
 
-2. Start the app
+**Lĩnh vực:** Quản lý môi trường · Crowdsourcing · Smart City  
+**Quy mô mục tiêu:** ≥ 5.000 người dùng đồng thời · ≥ 100.000 báo cáo
 
-   ```bash
-   npx expo start
-   ```
+---
 
-In the output, you'll find options to open the app in a
+## Tech Stack
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+| Layer | Công nghệ |
+|---|---|
+| Framework | React Native 0.81 + Expo SDK 54 |
+| Navigation | Expo Router v6 |
+| Styling | NativeWind v4 (Tailwind CSS) |
+| Language | TypeScript (strict) |
+| State | Zustand + React Query |
+| Animation | react-native-reanimated v4 |
+| HTTP | Axios |
+| Forms | React Hook Form + Zod |
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+---
 
-## Get a fresh project
-
-When you're ready, run:
+## Cài đặt & Chạy
 
 ```bash
-npm run reset-project
+# Cài dependencies
+npm install
+
+# Chạy dev (chọn platform trong terminal)
+npx expo start
+
+# Android
+npx expo start --android
+
+# iOS
+npx expo start --ios
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+## Cấu trúc thư mục
 
-To learn more about developing your project with Expo, look at the following resources:
+```
+green-lens-app/
+├── app/          # Expo Router — screens & layouts
+│   ├── (auth)/   # Login, Register, Forgot password
+│   ├── (tabs)/   # Home, Map, Report, Notifications, Profile
+│   └── report/   # Chi tiết báo cáo
+├── src/
+│   ├── components/   # common / report / map / layout
+│   ├── hooks/        # Custom hooks
+│   ├── services/     # API layer (Axios)
+│   ├── stores/       # Zustand stores
+│   ├── types/        # TypeScript types
+│   ├── utils/        # Formatters, validators, geo
+│   └── theme/        # Colors, typography, spacing
+├── assets/           # Fonts, icons, images
+├── global.css        # NativeWind entry point
+├── babel.config.js
+├── metro.config.js
+└── CLAUDE.md         # Quy ước dự án (đọc trước khi code)
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+---
 
-## Join the community
+## Tính năng chính
 
-Join our community of developers creating universal apps.
+**Người dùng:**
+- Đăng ký / Đăng nhập
+- Tạo báo cáo điểm ô nhiễm (ảnh, GPS, mức độ)
+- Xem bản đồ điểm ô nhiễm xung quanh
+- Theo dõi trạng thái báo cáo
+- Nhận thông báo khi báo cáo được xử lý
+- Bảng xếp hạng đóng góp cộng đồng
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+**Quản lý (Web Dashboard):**
+- Xem & phân công xử lý báo cáo
+- Cập nhật trạng thái
+- Thống kê theo khu vực / thời gian
+
+---
+
+## Quy ước dự án
+
+Xem [CLAUDE.md](./CLAUDE.md) để biết đầy đủ về design system, cấu trúc thư mục, naming convention và quy tắc animation.

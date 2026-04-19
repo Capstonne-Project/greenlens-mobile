@@ -1,33 +1,76 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
+import { Ionicons } from '@expo/vector-icons';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
+
+interface TabIconProps {
+  name: IoniconsName;
+  activeName: IoniconsName;
+  color: string;
+  focused: boolean;
+  size: number;
+}
+
+function TabIcon({ name, activeName, color, focused, size }: TabIconProps) {
+  return <Ionicons name={focused ? activeName : name} size={size} color={color} />;
+}
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        headerShown:           false,
+        tabBarActiveTintColor: '#139B40',
+        tabBarInactiveTintColor: '#6B7280',
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopColor:  '#E5E7EB',
+          height:          60,
+          paddingBottom:   8,
+          paddingTop:      4,
+        },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'Trang chủ',
+          tabBarIcon: (p) => <TabIcon {...p} name="home-outline" activeName="home" />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="map"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Bản đồ',
+          tabBarIcon: (p) => <TabIcon {...p} name="map-outline" activeName="map" />,
+        }}
+      />
+      <Tabs.Screen
+        name="report"
+        options={{
+          title: 'Báo cáo',
+          tabBarIcon: ({ focused, size }) => (
+            <Ionicons
+              name={focused ? 'add-circle' : 'add-circle-outline'}
+              size={size + 6}
+              color="#139B40"
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Thông báo',
+          tabBarIcon: (p) => <TabIcon {...p} name="notifications-outline" activeName="notifications" />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Cá nhân',
+          tabBarIcon: (p) => <TabIcon {...p} name="person-outline" activeName="person" />,
         }}
       />
     </Tabs>
