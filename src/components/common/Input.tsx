@@ -10,10 +10,12 @@ export function Input({ label, error, ...props }: InputProps) {
     <View className="gap-1">
       {label && <Text className="text-sm font-medium text-textPrimary">{label}</Text>}
       <TextInput
-        className={`bg-surface border rounded-xl px-4 py-3 text-base text-textPrimary
+        className={`bg-surface border rounded-full px-4 h-12 py-0 text-base leading-5 text-textPrimary
           ${error ? 'border-error' : 'border-border'}
           ${props.editable === false ? 'opacity-50' : ''}`}
         placeholderTextColor="#D1D5DB"
+        textAlignVertical="center"
+        style={{ paddingTop: 0, paddingBottom: 0 }}
         {...props}
       />
       {error && <Text className="text-xs text-error">{error}</Text>}
