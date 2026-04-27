@@ -1,5 +1,5 @@
-import { Button } from "@/components/common/Button";
 import { SafeScreen } from "@/components/layout/SafeScreen";
+import { Button } from "@/components/ui/button";
 import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dimensions, ScrollView, Text, View } from "react-native";
@@ -22,7 +22,7 @@ const ONBOARDING_ITEMS: OnboardingItem[] = [
     subtitle: "Cùng bảo vệ môi trường Việt Nam",
     description: "",
     icon: "💧",
-    cardClassName: "bg-emerald-500",
+    cardClassName: "bg-primary",
     isSplash: true,
   },
   {
@@ -98,19 +98,21 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <SafeScreen className={isSplashScreen ? "bg-emerald-500" : "bg-white"}>
+    <SafeScreen className={isSplashScreen ? "bg-primary" : "bg-background"}>
       {!isSplashScreen && (
-        <View className="flex-row items-center justify-between px-6 pt-2">
+        <View className="flex-row items-center justify-between px-6 pt-3">
           <View className="flex-row items-center gap-2">
             {ONBOARDING_ITEMS.filter((item) => !item.isSplash).map((item, index) => (
               <View
                 key={item.id}
-                className={`h-1.5 rounded-full ${activeIndex - 1 === index ? "w-6 bg-primary" : "w-1.5 bg-border"}`}
+                className={`h-2 rounded-full ${activeIndex - 1 === index ? "w-7 bg-primary" : "w-2 bg-border"}`}
               />
             ))}
           </View>
           <View className="w-20">
-            <Button  label="Bỏ qua" variant="ghost" size="md" onPress={goToLogin} fullWidth />
+            <Button className="bg-transparent h-10 " variant="ghost" onPress={goToLogin}>
+              <Text className="text-black">Bỏ qua</Text>
+            </Button>
           </View>
         </View>
       )}
@@ -130,7 +132,7 @@ export default function OnboardingScreen() {
           <View
             key={item.id}
             style={{ width: SCREEN_WIDTH }}
-            className={`px-6 ${item.isSplash ? "justify-center pb-8 pt-10" : "pb-6 pt-4"}`}
+            className={`px-6 ${item.isSplash ? "justify-center pb-8 pt-10" : "pb-6 pt-6"}`}
           >
             {item.isSplash ? (
               <View className="flex-1 items-center justify-center">
@@ -155,24 +157,27 @@ export default function OnboardingScreen() {
                 />
               </View>
             ) : (
-              <>
-                <View className={`h-96 w-full items-center justify-center rounded-3xl ${item.cardClassName}`}>
-                  <Text className="text-7xl">{item.icon}</Text>
+              <View className="flex-1">
+                <View className={`h-[48%] w-full items-center justify-center rounded-[28px] ${item.cardClassName}`}>
+                  <View className="size-24 items-center justify-center rounded-full bg-white/70">
+                    <Text className="text-6xl">{item.icon}</Text>
+                  </View>
                 </View>
-
-                <View className="mt-8 gap-3 px-1">
+                <View className="mt-7  bg-white p-2">
                   <Text className="text-3xl font-bold leading-tight text-textPrimary">{item.title}</Text>
-                  <Text className="text-lg leading-7 text-textSecondary">{item.description}</Text>
+                  <Text className="mt-3 text-base leading-7 text-textSecondary">{item.description}</Text>
                 </View>
-              </>
+              </View>
             )}
           </View>
         ))}
       </ScrollView>
 
       {!isSplashScreen && (
-        <View className="px-6 pb-8">
-          <Button label={isLastItem ? "Bắt đầu" : "Tiếp theo"} onPress={goToNext} fullWidth />
+        <View className="px-6 ">
+          <Button variant="default" size="lg" onPress={goToNext} className="w-full px-6 py-7 rounded-3xl">
+            <Text className="text-white font-semibold text-2xl">{isLastItem ? "Bắt đầu" : "Tiếp theo"}</Text>
+          </Button>
         </View>
       )}
     </SafeScreen>
