@@ -1,0 +1,12 @@
+---
+description: GreenLens project overview and baseline targets
+alwaysApply: true
+---
+
+# Project Overview
+
+- Stack: Expo + React Native + TypeScript strict + Expo Router + NativeWind + Reanimated.
+- State: React Query for server state, Zustand for global client state.
+- API: Axios service layer, secure auth flow with token handling.
+- Security baseline: no sensitive logs, no hardcoded credentials, production API must use HTTPS.
+- Performance baseline: smooth animations, fast transitions, optimized list virtualization.

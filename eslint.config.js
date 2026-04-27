@@ -6,5 +6,9 @@ module.exports = defineConfig([
   expoConfig,
   {
     ignores: ['dist/*'],
+    rules: {
+      // Avoid false positives for module resolution in React Native/Expo packages.
+      'import/no-unresolved': 'off',
+    },
   },
 ]);

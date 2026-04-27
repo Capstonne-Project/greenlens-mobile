@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python .claude/hooks/session-start.py",
+        "timeout": 15
+      }
+    ],
+    "preToolUse": [
+      {
+        "matcher": "Write",
+        "command": "python .claude/hooks/pre_write_guard.py",
+        "timeout": 10
+      },
+      {
+        "matcher": "Write|Edit|Bash|Agent",
+        "command": "python .claude/hooks/observe.py pre",
+        "timeout": 10
+      },
+      {
+        "matcher": "Write|Edit|Bash|Agent",
+        "command": "python .claude/hooks/suggest_compact.py",
+        "timeout": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "matcher": "Write|Edit|Bash|Agent",
+        "command": "python .claude/hooks/observe.py post",
+        "timeout": 10
+      },
+      {
+        "matcher": "Write|Edit",
+        "command": "python .claude/hooks/post_edit_linter.py",
+        "timeout": 30
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "matcher": "UserPromptSubmit",
+        "command": "python .claude/hooks/plan-context.py",
+        "timeout": 5
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "python .claude/hooks/pre-compact.py",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": "python .claude/hooks/session-end.py",
+        "timeout": 10
+      }
+    ]
+  }
+}

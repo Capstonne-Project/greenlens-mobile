@@ -1,0 +1,25 @@
+---
+description: Natural language routing for GreenLens agents and commands
+alwaysApply: true
+---
+
+# Natural Intent Routing
+
+When the user writes natural Vietnamese/English requests, infer intent and route automatically without requiring exact command syntax.
+
+- If request is about crashes, runtime/build errors, Metro, NativeWind, Router, Reanimated, use `rn-debugger`.
+- If request asks to create or refine a screen/page in `app/`, use `screen-builder`.
+- If request asks to create or refine a reusable UI component, use `ui-component-builder`.
+- If request is about integrating backend endpoints, types, or React Query hooks, use `api-integrator`.
+- If request asks for code review, risk check, convention compliance, or regression checks, use `code-reviewer`.
+- If request asks for research/docs comparison/best-practice decision, use `researcher`.
+- If request asks for implementation planning phases/roadmap, follow `.cursor/commands/plan.md` and use `planner` + `plan-reviewer` when needed.
+- If request asks to implement from an existing plan, follow `.cursor/commands/execute.md`.
+
+Routing behavior:
+
+- Prefer automatic routing from meaning, not exact keywords.
+- Accept synonyms and casual phrases (e.g., "làm màn login", "app bị văng", "review giúp", "nối API", "lên plan").
+- If intent is ambiguous between two routes, ask one short clarification question, then proceed.
+- If task is simple and does not need a specialist, proceed directly without forcing a subagent.
+- Keep responses concise and action-first.

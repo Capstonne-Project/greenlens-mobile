@@ -1,0 +1,12 @@
+---
+description: NativeWind styling conventions and setup checks
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# NativeWind Styling
+
+- Ensure NativeWind setup files are in place (`global.css`, Babel/Metro config, env types).
+- Prefer token classes over hard-coded colors.
+- Use simple conditional className patterns; extract variable when logic grows.
+- Use `StyleSheet` or animated style objects for complex dynamic/animated styles.
