@@ -1,11 +1,17 @@
 ---
 name: gluestack-ui-v4
-description: Enforces constrained, opinionated styling patterns for gluestack-ui v4. Main overview skill that coordinates specialized sub-skills for setup, components, styling, variants, performance, and validation.
+description: Enforces constrained, opinionated styling patterns for gluestack-ui v4. Use for framework-backed primitives and structured variants; pair with react-native-reusables for app-specific custom components.
 ---
 
 # Gluestack UI v4 Design Patterns
 
 This skill enforces constrained, opinionated styling patterns for gluestack-ui v4 that reduce decision fatigue, improve performance, enable consistent theming, and limit the solution space to canonical patterns.
+
+## Scope Boundary with Reusables
+
+- Use `gluestack-ui v4` for primitives and compound APIs (Button, Input, Form, Modal, Select, Avatar, Badge).
+- Use `react-native-reusables` for app-specific wrappers/cards/list items needing quick custom layout.
+- Avoid mixing both systems inside one low-level component unless there is a clear compatibility reason.
 
 ## Core Principles
 

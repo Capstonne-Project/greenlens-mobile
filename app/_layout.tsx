@@ -1,3 +1,4 @@
+import { PortalHost } from "@rn-primitives/portal";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -12,6 +13,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(auth)" />
         </Stack>
+        <PortalHost />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
