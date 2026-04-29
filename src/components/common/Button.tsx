@@ -57,7 +57,7 @@ export function Button({
           ${fullWidth ? "w-full" : ""}
           ${isDisabled ? "opacity-40" : ""}`}
       >
-        {loading && <ActivityIndicator size="small" color={variant === "primary" ? "#fff" : "#139B40"} />}
+        {loading && <ActivityIndicator size="small" color={variant === "primary" ? "#fff" : "#10B981"} />}
         <Text className={`${variants[variant].text} ${sizes[size].text}`}>{label}</Text>
       </Pressable>
     </Animated.View>

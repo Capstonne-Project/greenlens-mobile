@@ -1,7 +1,7 @@
 export const colors = {
-  primary:          '#139B40',
-  primaryLight:     '#E8F7ED',
-  primaryDark:      '#0D7A31',
+  primary:          '#10B981',
+  primaryLight:     '#D1FAE5',
+  primaryDark:      '#059669',
 
   white:            '#FFFFFF',
   background:       '#FFFFFF',
@@ -13,7 +13,7 @@ export const colors = {
   textDisabled:     '#D1D5DB',
   textOnPrimary:    '#FFFFFF',
 
-  success:          '#139B40',
+  success:          '#10B981',
   warning:          '#F59E0B',
   error:            '#EF4444',
   info:             '#3B82F6',
