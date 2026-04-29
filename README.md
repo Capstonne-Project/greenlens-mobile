@@ -2,7 +2,7 @@
 
 **Mã dự án:** SU26SE049  
 **Nền tảng:** React Native (Expo) · Android & iOS  
-**Màu chủ đạo:** `#139B40`
+**Màu chủ đạo:** `#10B981`
 
 ---
 

@@ -67,8 +67,8 @@ export default function LoginScreen() {
   return (
     <SafeScreen className="flex-1 bg-background px-5">
       <View className="flex-1 justify-center">
-        <Text className="text-4xl  font-bold text-textPrimary">Xin chào</Text>
-        <Text className="mt-2 text-base text-textSecondary">Đăng nhập để tiếp tục đóng góp cho cộng đồng</Text>
+        <Text className="text-5xl font-bold text-textPrimary">Xin chào</Text>
+        <Text className="mt-2 text-xl text-textSecondary">Đăng nhập để tiếp tục đóng góp cho cộng đồng</Text>
 
         <View className="mt-8 gap-5 rounded-3xl bg-surface p-5">
           <View className="gap-2">
@@ -110,12 +110,12 @@ export default function LoginScreen() {
 
           <View className="mt-0.5 flex-row items-center justify-between">
             <TapItem onPress={() => setRememberMe((prev) => !prev)} className="flex-row items-center gap-2">
-              <View className="size-4 items-center justify-center rounded bg-white border border-border">
-                {rememberMe && <View className="size-2.5 rounded-sm bg-primary" />}
+              <View className="h-6 w-6 items-center justify-center rounded-md border-2 border-border bg-white">
+                {rememberMe && <View className="h-4 w-4 rounded-sm bg-primary" />}
               </View>
               <Text className="text-sm text-textSecondary">Ghi nhớ</Text>
             </TapItem>
-            <TapItem onPress={() => Alert.alert("Sắp có", "Tính năng quên mật khẩu sẽ được cập nhật sau.")}>
+            <TapItem onPress={() => router.push("/(auth)/forgot-password")}>
               <Text className="text-sm font-semibold text-primary">Quên mật khẩu?</Text>
             </TapItem>
           </View>
@@ -153,7 +153,7 @@ export default function LoginScreen() {
         <View className="pt-5">
           <View className="flex-row items-center justify-center gap-1">
             <Text className="text-sm text-textSecondary">Chưa có tài khoản?</Text>
-            <TapItem onPress={() => router.push("/(auth)/onboarding")}>
+            <TapItem onPress={() => router.push("/(auth)/register")}>
               <Text className="text-sm font-semibold text-primary">Đăng ký ngay</Text>
             </TapItem>
           </View>
