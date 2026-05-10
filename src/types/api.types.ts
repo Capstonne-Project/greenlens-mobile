@@ -1,3 +1,12 @@
+/** Body JSON từ backend GreenLens (Swagger) */
+export interface ApiEnvelope<T> {
+  code: string;
+  message: string;
+  status: number;
+  data: T;
+}
+
+/** Legacy / services chưa chuyển envelope — giữ khi gọi endpoint cũ */
 export interface ApiResponse<T> {
   data: T;
   message: string;

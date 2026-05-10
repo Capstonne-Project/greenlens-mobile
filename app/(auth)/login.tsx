@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/hooks/useAuth";
+import { getApiErrorMessage } from "@/utils/api-error-message";
+import { getPostLoginHref } from "@/utils/post-login-route";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
@@ -55,10 +57,14 @@ export default function LoginScreen() {
 
     try {
       setIsSubmitting(true);
-      await login({ email, password });
-      Alert.alert("Đăng nhập thành công", "Bạn đã đăng nhập thành công.");
-    } catch {
-      Alert.alert("Đăng nhập thất bại", "Thông tin đăng nhập chưa đúng hoặc hệ thống đang bận.");
+      const user = await login({ email, password });
+      router.replace(getPostLoginHref(user.role));
+    } catch (err) {
+      const message = getApiErrorMessage(
+        err,
+        "Đăng nhập thất bại. Kiểm tra kết nối hoặc thử lại sau.",
+      );
+      Alert.alert("Đăng nhập thất bại", message);
     } finally {
       setIsSubmitting(false);
     }

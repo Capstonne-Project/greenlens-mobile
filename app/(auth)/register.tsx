@@ -2,6 +2,8 @@ import { SafeScreen } from "@/components/layout/SafeScreen";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
+import { useAuth } from "@/hooks/useAuth";
+import { getApiErrorMessage } from "@/utils/api-error-message";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
@@ -39,13 +41,15 @@ function TapItem({ onPress, className, children }: TapItemProps) {
 }
 
 export default function RegisterScreen() {
+  const { signUp } = useAuth();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const passwordStrength = useMemo(() => {
     let score = 0;
@@ -60,8 +64,13 @@ export default function RegisterScreen() {
     passwordStrength <= 1 ? "Yếu" : passwordStrength === 2 ? "Trung bình" : passwordStrength === 3 ? "Khá" : "Mạnh";
 
   const handleRegister = async () => {
-    if (!fullName.trim() || !email.trim() || !phone.trim() || !password.trim()) {
-      Alert.alert("Thiếu thông tin", "Vui lòng nhập đầy đủ thông tin.");
+    if (!fullName.trim() || !email.trim() || !password.trim()) {
+      Alert.alert("Thiếu thông tin", "Vui lòng nhập họ tên, email và mật khẩu.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert("Mật khẩu không khớp", "Ô xác nhận mật khẩu phải giống với mật khẩu bạn vừa nhập.");
       return;
     }
 
@@ -72,9 +81,17 @@ export default function RegisterScreen() {
 
     try {
       setIsSubmitting(true);
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      Alert.alert("Sắp có", "Luồng đăng ký sẽ được kết nối API ở bước tiếp theo.");
-      router.replace("/(auth)/login");
+      await signUp({
+        fullName: fullName.trim(),
+        email: email.trim(),
+        password,
+      });
+      router.push({
+        pathname: "/(auth)/verify-otp",
+        params: { email: email.trim(), purpose: "EmailVerification" },
+      });
+    } catch (err) {
+      Alert.alert("Đăng ký thất bại", getApiErrorMessage(err, "Không thể đăng ký. Thử lại sau."));
     } finally {
       setIsSubmitting(false);
     }
@@ -126,21 +143,6 @@ export default function RegisterScreen() {
           </View>
 
           <View className="gap-2">
-            <Text className="text-sm font-medium text-textPrimary">Số điện thoại</Text>
-            <View className="h-14 flex-row items-center rounded-2xl border border-border bg-white px-3">
-              <Ionicons name="call-outline" size={18} color="#94A3B8" />
-              <Input
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
-                placeholder="0901234567"
-                placeholderTextColor="#94A3B8"
-                className="h-full flex-1 border-0 bg-transparent px-3 py-0 shadow-none"
-              />
-            </View>
-          </View>
-
-          <View className="gap-2">
             <Text className="text-sm font-medium text-textPrimary">Mật khẩu</Text>
             <View className="h-14 flex-row items-center rounded-2xl border border-border bg-white px-3">
               <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
@@ -167,6 +169,25 @@ export default function RegisterScreen() {
               ))}
             </View>
             <Text className="text-sm text-textSecondary">Độ mạnh: {strengthText} - cần thêm ký tự đặc biệt</Text>
+          </View>
+
+          <View className="gap-2">
+            <Text className="text-sm font-medium text-textPrimary">Xác nhận mật khẩu</Text>
+            <View className="h-14 flex-row items-center rounded-2xl border border-border bg-white px-3">
+              <Ionicons name="lock-closed-outline" size={18} color="#94A3B8" />
+              <Input
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+                placeholder="Nhập lại mật khẩu"
+                placeholderTextColor="#94A3B8"
+                className="h-full flex-1 border-0 bg-transparent px-3 py-0 shadow-none"
+              />
+              <TapItem onPress={() => setShowConfirmPassword((prev) => !prev)} className="p-1.5">
+                <Ionicons name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} size={18} color="#94A3B8" />
+              </TapItem>
+            </View>
           </View>
 
           <TapItem onPress={() => setAcceptTerms((prev) => !prev)} className="mt-1 flex-row items-start gap-3">

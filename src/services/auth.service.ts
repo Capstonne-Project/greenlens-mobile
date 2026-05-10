@@ -1,20 +1,48 @@
-import { api } from './api';
-import type { ApiResponse } from '@/types/api.types';
-import type { User, LoginDto, RegisterDto, AuthTokens } from '@/types/user.types';
+import { api, apiPublic } from './api';
+import type {
+  ChangePasswordDto,
+  ForgotPasswordDto,
+  ForgotPasswordResponse,
+  GoogleLoginDto,
+  RefreshTokenRequestDto,
+  RegisterResponse,
+  RequestOtpDto,
+  RequestOtpResponse,
+  ResetPasswordDto,
+  ResetPasswordResponse,
+  VerifyOtpDto,
+  VerifyOtpResponse,
+} from '@/types/auth.types';
+import type { ApiEnvelope } from '@/types/api.types';
+import type { AuthSessionPayload, LoginDto, RegisterDto } from '@/types/user.types';
 
 export const authService = {
-  login: (dto: LoginDto) =>
-    api.post<ApiResponse<{ user: User; tokens: AuthTokens }>>('/auth/login', dto),
-
+  /** §7 — không trả JWT; sau đó redirect OTP EmailVerification */
   register: (dto: RegisterDto) =>
-    api.post<ApiResponse<{ user: User; tokens: AuthTokens }>>('/auth/register', dto),
+    apiPublic.post<ApiEnvelope<RegisterResponse>>('/auth/register', dto),
 
-  logout: () =>
-    api.post<ApiResponse<null>>('/auth/logout'),
+  login: (dto: LoginDto) => apiPublic.post<ApiEnvelope<AuthSessionPayload>>('/auth/login', dto),
 
-  getMe: () =>
-    api.get<ApiResponse<User>>('/auth/me'),
+  requestOtp: (dto: RequestOtpDto) =>
+    apiPublic.post<ApiEnvelope<RequestOtpResponse>>('/auth/request-otp', dto),
 
-  refreshToken: (refreshToken: string) =>
-    api.post<ApiResponse<AuthTokens>>('/auth/refresh', { refreshToken }),
+  verifyOtp: (dto: VerifyOtpDto) =>
+    apiPublic.post<ApiEnvelope<VerifyOtpResponse>>('/auth/verify-otp', dto),
+
+  forgotPassword: (dto: ForgotPasswordDto) =>
+    apiPublic.post<ApiEnvelope<ForgotPasswordResponse>>('/auth/forgot-password', dto),
+
+  resetPassword: (dto: ResetPasswordDto) =>
+    apiPublic.post<ApiEnvelope<ResetPasswordResponse>>('/auth/reset-password', dto),
+
+  /** §13 — Bearer */
+  changePassword: (dto: ChangePasswordDto) =>
+    api.post<ApiEnvelope<{ message?: string }>>('/auth/change-password', dto),
+
+  /** §9 — rotation; chỉ dùng apiPublic để không gắn Bearer cũ */
+  refreshToken: (body: RefreshTokenRequestDto) =>
+    apiPublic.post<ApiEnvelope<AuthSessionPayload>>('/auth/refresh-token', body),
+
+  googleLogin: (dto: GoogleLoginDto) =>
+    apiPublic.post<ApiEnvelope<AuthSessionPayload>>('/auth/google-login', dto),
 };

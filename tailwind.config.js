@@ -3,7 +3,7 @@ const { hairlineWidth } = require("nativewind/theme");
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: "class",
-  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
+  content: ["./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: {
     extend: {
@@ -41,6 +41,10 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        /** Semantic text/surface — đồng bộ theme app */
+        textPrimary: "#111827",
+        textSecondary: "#6B7280",
+        surface: "#F7F8FA",
       },
       borderRadius: {
         lg: "var(--radius)",
