@@ -1,6 +1,6 @@
 import { View, Text, Image, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SeverityBadge, StatusBadge } from '@/components/common/Badge';
+import { SeverityBadge, StatusBadge } from '@/components/report/Badge';
 import { formatRelativeTime } from '@/utils/formatters';
 import type { ReportItem } from '@/types/report.types';
 

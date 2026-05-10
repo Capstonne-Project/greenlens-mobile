@@ -2,6 +2,8 @@ import { SafeScreen } from "@/components/layout/SafeScreen";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
+import { useAuth } from "@/hooks/useAuth";
+import { getApiErrorMessage } from "@/utils/api-error-message";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState } from "react";
@@ -39,19 +41,36 @@ function TapItem({ onPress, className, children }: TapItemProps) {
 }
 
 export default function ForgotPasswordScreen() {
+  const { forgotPassword } = useAuth();
   const [credential, setCredential] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSendRecoveryLink = async () => {
-    if (!credential.trim()) {
-      Alert.alert("Thiếu thông tin", "Vui lòng nhập email hoặc số điện thoại đã đăng ký.");
+    const email = credential.trim();
+    if (!email) {
+      Alert.alert("Thiếu thông tin", "Vui lòng nhập email đã đăng ký.");
       return;
     }
 
     try {
       setIsSubmitting(true);
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      Alert.alert("Đã gửi", "Link khôi phục đã được gửi. Vui lòng kiểm tra email hoặc tin nhắn.");
+      await forgotPassword({ email });
+      Alert.alert(
+        "Đã xử lý",
+        "Nếu email tồn tại trong hệ thống, bạn sẽ nhận mã OTP để đặt lại mật khẩu.",
+        [
+          {
+            text: "Tiếp tục",
+            onPress: () =>
+              router.push({
+                pathname: "/(auth)/reset-password",
+                params: { email },
+              }),
+          },
+        ],
+      );
+    } catch (err) {
+      Alert.alert("Lỗi", getApiErrorMessage(err, "Không gửi được yêu cầu. Thử lại sau."));
     } finally {
       setIsSubmitting(false);
     }
@@ -69,12 +88,12 @@ export default function ForgotPasswordScreen() {
 
         <Text className="text-4xl font-bold text-textPrimary">Khôi phục mật khẩu</Text>
         <Text className="mt-2 text-base leading-6 text-textSecondary">
-          Nhập email hoặc số điện thoại đã đăng ký. Chúng tôi sẽ gửi link đặt lại mật khẩu.
+          Nhập email đã đăng ký. Hệ thống sẽ gửi mã OTP (theo chính sách bảo mật, không tiết lộ email có tồn tại hay không).
         </Text>
 
         <View className="mt-10 gap-4">
           <View className="gap-2">
-            <Text className="text-sm font-medium text-textPrimary">Email hoặc số điện thoại</Text>
+            <Text className="text-sm font-medium text-textPrimary">Email</Text>
             <View className="h-14 flex-row items-center rounded-2xl border border-border bg-white px-3">
               <Ionicons name="person-outline" size={18} color="#94A3B8" />
               <Input
@@ -98,7 +117,7 @@ export default function ForgotPasswordScreen() {
 
           <Button onPress={handleSendRecoveryLink} disabled={isSubmitting} className="mt-2 h-16 rounded-3xl">
             <Text className="text-base font-semibold text-primary-foreground">
-              {isSubmitting ? "Đang gửi..." : "Gửi link khôi phục"}
+              {isSubmitting ? "Đang gửi..." : "Gửi mã OTP"}
             </Text>
           </Button>
 
