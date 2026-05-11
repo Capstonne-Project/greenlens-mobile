@@ -18,3 +18,15 @@ export interface CatalogProvincesResponse {
 export interface CatalogWardsResponse {
   items: CatalogWard[];
 }
+
+export interface CatalogPollutionCategory {
+  id: string;
+  code: string;
+  nameVi: string;
+  nameEn: string;
+  icon?: string | null;
+}
+
+export interface CatalogPollutionCategoriesResponse {
+  items: CatalogPollutionCategory[];
+}

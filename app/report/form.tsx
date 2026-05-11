@@ -7,6 +7,7 @@ import { SafeScreen } from '@/components/layout/SafeScreen';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
+import { usePollutionCategories } from '@/hooks/usePollutionCategories';
 import { useSubmitPollutionReport } from '@/hooks/useSubmitPollutionReport';
 import { useAuthStore } from '@/stores/auth.store';
 import { useCreateReportDraftStore } from '@/stores/createReportDraft.store';
@@ -30,6 +31,12 @@ export default function ReportFormScreen() {
   const setIsAnonymous = useCreateReportDraftStore((state) => state.setIsAnonymous);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const { isUploading, isSubmitting, uploadAllImages, submitReport } = useSubmitPollutionReport();
+  const {
+    categories: pollutionCategories,
+    isLoading: isLoadingCategories,
+    errorMessage: categoryErrorMessage,
+    refetch: refetchCategories,
+  } = usePollutionCategories();
   const [hasUploadAttempt, setHasUploadAttempt] = useState(false);
 
   useEffect(() => {
@@ -114,7 +121,14 @@ export default function ReportFormScreen() {
         </ReportSectionCard>
 
         <ReportSectionCard title="Loại ô nhiễm" description="Chọn một loại phù hợp nhất với hiện trường.">
-          <CategoryOptionGrid selectedId={categoryId} onSelect={setCategoryId} />
+          <CategoryOptionGrid
+            categories={pollutionCategories}
+            selectedId={categoryId}
+            isLoading={isLoadingCategories}
+            errorMessage={categoryErrorMessage}
+            onSelect={setCategoryId}
+            onRetry={() => void refetchCategories()}
+          />
         </ReportSectionCard>
 
         <ReportSectionCard title="Mức độ" description="Đánh giá mức độ nghiêm trọng của sự cố.">

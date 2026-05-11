@@ -21,13 +21,6 @@ export interface ReportLocationDraft {
   capturedAt: string;
 }
 
-export interface PollutionCategoryOption {
-  id: string;
-  code: string;
-  nameVi: string;
-  icon: keyof typeof import('@expo/vector-icons').Ionicons.glyphMap;
-}
-
 export interface UploadReportImageResult {
   url: string;
   key: string;

@@ -1,10 +1,10 @@
-import { Ionicons } from '@expo/vector-icons';
-import { TapScale } from '@/components/layout/TapScale';
-import { Text } from '@/components/ui/text';
-import { colors } from '@/theme/colors';
-import { View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { WizardProgressBar } from '@/components/report-create/wizard/WizardProgressBar';
+import { TapScale } from "@/components/layout/TapScale";
+import { WizardProgressBar } from "@/components/report-create/wizard/WizardProgressBar";
+import { Text } from "@/components/ui/text";
+import { colors } from "@/theme/colors";
+import { Ionicons } from "@expo/vector-icons";
+import { View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface WizardHeaderProps {
   title: string;
@@ -28,9 +28,7 @@ export function WizardHeader({ title, subtitle, step, totalSteps, onClose }: Wiz
 
         <View className="flex-1 px-3">
           <Text className="text-center text-base font-bold text-textPrimary">{title}</Text>
-          {subtitle ? (
-            <Text className="mt-0.5 text-center text-xs text-textSecondary">{subtitle}</Text>
-          ) : null}
+          {subtitle ? <Text className="mt-0.5 text-center text-xs text-textSecondary">{subtitle}</Text> : null}
         </View>
 
         <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/10">
@@ -43,4 +41,3 @@ export function WizardHeader({ title, subtitle, step, totalSteps, onClose }: Wiz
     </View>
   );
 }
-
