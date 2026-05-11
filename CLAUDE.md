@@ -1,7 +1,7 @@
 # GreenLens — CLAUDE.md
 
 Dự án **SU26SE049** · React Native (Expo) · Android & iOS  
-Primary color: `#139B40` · Background: `#FFFFFF`
+Primary color: `#10B981` · Background: `#FFFFFF`
 
 ## Rules
 
@@ -20,7 +20,7 @@ Chi tiết được tách vào `.claude/rules/`:
 ## Quy tắc cốt lõi (luôn áp dụng)
 
 1. Đặt file **đúng vị trí** theo `02-folder-structure` — không đặt sai layer.
-2. Dùng màu **`bg-primary` / `text-primary`** — không hard-code `#139B40` trong className.
+2. Dùng màu **`bg-primary` / `text-primary`** — không hard-code `#10B981` trong className.
 3. Mọi **Pressable phải có animation press** — dùng `react-native-reanimated`.
 4. Mọi **list phải có skeleton loader** khi fetch — không dùng spinner đơn thuần.
 5. **Không dùng `Animated` API cũ** — chỉ dùng `react-native-reanimated`.

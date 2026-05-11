@@ -1,14 +1,16 @@
-export type UserRole = 'user' | 'moderator' | 'admin';
+/** Mobile chỉ phân luồng Citizen vs CleanupTeam */
+export type UserRole = 'Citizen' | 'CleanupTeam';
 
 export interface User {
   id: string;
-  fullName: string;
   email: string;
-  avatarUrl: string | null;
+  fullName: string;
   role: UserRole;
-  points: number;
-  reportCount: number;
-  createdAt: string;
+  isEmailVerified: boolean;
+  avatarUrl?: string | null;
+  points?: number;
+  reportCount?: number;
+  createdAt?: string;
 }
 
 export interface LoginDto {
@@ -25,4 +27,11 @@ export interface RegisterDto {
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
+}
+
+/** LoginResponse — login, refresh-token, google-login */
+export interface AuthSessionPayload {
+  accessToken: string;
+  refreshToken: string;
+  user: User;
 }
