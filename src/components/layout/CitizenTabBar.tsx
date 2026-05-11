@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useRouter, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
@@ -92,9 +92,13 @@ function TabSlot({ routeName, state, descriptors, navigation }: TabSlotProps) {
   );
 }
 
-export function CitizenTabBar(props: BottomTabBarProps) {
+export function CitizenTabBar({ navigation, ...props }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
+  const activeRouteName = props.state.routes[props.state.index]?.name;
+
+  if (activeRouteName === 'create') {
+    return null;
+  }
 
   return (
     <View className="border-t border-border bg-white" style={{ paddingBottom: Math.max(insets.bottom, 10) }}>
@@ -102,19 +106,22 @@ export function CitizenTabBar(props: BottomTabBarProps) {
         <View className="flex-row items-end justify-between">
           <View className="flex-1 flex-row justify-evenly">
             {LEFT_TABS.map((name) => (
-              <TabSlot key={name} {...props} routeName={name} />
+              <TabSlot key={name} navigation={navigation} {...props} routeName={name} />
             ))}
           </View>
           <View className="w-14" />
           <View className="flex-1 flex-row justify-evenly">
             {RIGHT_TABS.map((name) => (
-              <TabSlot key={name} {...props} routeName={name} />
+              <TabSlot key={name} navigation={navigation} {...props} routeName={name} />
             ))}
           </View>
         </View>
 
-        <View className="pointer-events-none absolute -top-8 left-0 right-0 items-center">
-          <FabPressable onPress={() => router.push('/(tabs)/create' as Href)} />
+        <View
+          className="absolute -top-8 left-0 right-0 z-20 items-center"
+          pointerEvents="box-none"
+        >
+          <FabPressable onPress={() => router.push('/report/create')} />
         </View>
       </View>
     </View>
