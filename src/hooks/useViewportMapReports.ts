@@ -77,6 +77,9 @@ export function useViewportMapReports(filter: CategoryFilterId): UseViewportMapR
     setErrorMessage(null);
 
     try {
+      if (__DEV__) {
+        console.log('[MapReports] fetch bbox:', bbox);
+      }
       const res = await mapReportsService.getPublicInViewport(
         {
           ...bbox,
@@ -88,6 +91,9 @@ export function useViewportMapReports(filter: CategoryFilterId): UseViewportMapR
 
       const payload = res.data.data;
       const items = payload?.items ?? [];
+      if (__DEV__) {
+        console.log('[MapReports] returned:', items.length, 'items');
+      }
       setRawPins(items.map(publicMapDtoToCitizenPin));
       lastKeyRef.current = key;
     } catch (e: unknown) {

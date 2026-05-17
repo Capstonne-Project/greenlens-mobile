@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import type {
+  AiAnalyzeResult,
+  AiSuggestedCategory,
   PollutionSeverity,
   ReportCaptureSource,
   ReportImageDraft,
@@ -17,6 +19,11 @@ interface CreateReportDraftState {
   isAnonymous: boolean;
   submittedReportCode: string | null;
   slaVerifyDueAt: string | null;
+  // AI analysis
+  useAi: boolean;
+  tempImageId: string | null;
+  aiResult: AiAnalyzeResult | null;
+  aiSuggestedCategory: AiSuggestedCategory | null;
   setSource: (source: ReportCaptureSource) => void;
   setImages: (images: ReportImageDraft[]) => void;
   addImage: (image: ReportImageDraft) => void;
@@ -32,6 +39,9 @@ interface CreateReportDraftState {
   removeTag: (tag: string) => void;
   setIsAnonymous: (isAnonymous: boolean) => void;
   setSubmissionResult: (code: string, slaVerifyDueAt: string) => void;
+  setUseAi: (useAi: boolean) => void;
+  setAiResult: (tempImageId: string, aiResult: AiAnalyzeResult, suggestedCategory?: AiSuggestedCategory | null) => void;
+  clearAiResult: () => void;
   reset: () => void;
 }
 
@@ -46,6 +56,10 @@ const initialState = {
   isAnonymous: true,
   submittedReportCode: null as string | null,
   slaVerifyDueAt: null as string | null,
+  useAi: true,
+  tempImageId: null as string | null,
+  aiResult: null as AiAnalyzeResult | null,
+  aiSuggestedCategory: null as AiSuggestedCategory | null,
 };
 
 export const useCreateReportDraftStore = create<CreateReportDraftState>((set) => ({
@@ -105,6 +119,12 @@ export const useCreateReportDraftStore = create<CreateReportDraftState>((set) =>
 
   setSubmissionResult: (code, slaVerifyDueAt) =>
     set({ submittedReportCode: code, slaVerifyDueAt }),
+
+  setUseAi: (useAi) => set({ useAi }),
+
+  setAiResult: (tempImageId, aiResult, suggestedCategory = null) => set({ tempImageId, aiResult, aiSuggestedCategory: suggestedCategory }),
+
+  clearAiResult: () => set({ tempImageId: null, aiResult: null, aiSuggestedCategory: null }),
 
   reset: () => set({ ...initialState }),
 }));

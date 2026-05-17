@@ -8,18 +8,20 @@ export const mapReportsService = {
    * Map công khai — AllowAnonymous. GET /v1/map/reports
    * @see docs/PUBLIC_MAP_VIEWPORT_PLAN.md
    */
-  getPublicInViewport: (query: PublicMapReportsQuery, config?: AxiosRequestConfig) =>
-    apiPublic.get<ApiEnvelope<PublicMapDetailPayload>>('/map/reports', {
+  getPublicInViewport: (query: PublicMapReportsQuery, config?: AxiosRequestConfig) => {
+    if (__DEV__) console.log('[mapReports] query params:', query);
+    return apiPublic.get<ApiEnvelope<PublicMapDetailPayload>>('/map/reports', {
       ...config,
       params: {
-        minLat: query.minLat,
-        maxLat: query.maxLat,
-        minLng: query.minLng,
-        maxLng: query.maxLng,
-        mode: query.mode,
-        ...(query.limit != null ? { limit: query.limit } : {}),
-        ...(query.gridLevel != null ? { gridLevel: query.gridLevel } : {}),
-        ...(query.categoryId ? { categoryId: query.categoryId } : {}),
+        MinLat: query.minLat,
+        MaxLat: query.maxLat,
+        MinLng: query.minLng,
+        MaxLng: query.maxLng,
+        Mode: query.mode,
+        ...(query.limit != null ? { Limit: query.limit } : {}),
+        ...(query.gridLevel != null ? { GridLevel: query.gridLevel } : {}),
+        ...(query.categoryId ? { CategoryId: query.categoryId } : {}),
       },
-    }),
+    });
+  },
 };
