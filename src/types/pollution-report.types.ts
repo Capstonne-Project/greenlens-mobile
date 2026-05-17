@@ -1,5 +1,60 @@
 export type PollutionSeverity = 'Low' | 'Medium' | 'High' | 'Critical';
 
+export type AiDecision =
+  | 'ACCEPTABLE_REPORT_IMAGE'
+  | 'NEED_MANUAL_REVIEW'
+  | 'IRRELEVANT_OR_SUSPECTED_ABUSIVE';
+
+export type AiPrimaryClass = 'TRASH' | 'WATER' | 'SMOKE' | 'CHEMICAL' | null;
+
+export type AiSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type AiImageRelevance =
+  | 'POLLUTION_LIKELY'
+  | 'NOT_POLLUTION_OR_UNRELATED'
+  | 'UNCLEAR_NEED_MANUAL_REVIEW';
+
+export interface AiPrediction {
+  class: string;
+  confidence: number;
+  bboxCount: number;
+}
+
+export interface AiClassifyResult {
+  primaryClass: AiPrimaryClass;
+  confidence: number;
+  severity: AiSeverity;
+  imageRelevance: AiImageRelevance;
+  pollutionCoverageRatio: number;
+  predictions: AiPrediction[];
+  inferenceTimeMs: number;
+  yoloActive: boolean;
+  sceneClassifierActive: boolean;
+  modelVersion?: string;
+  noiseSupported?: boolean;
+}
+
+export interface AiAnalyzeResult {
+  decision: AiDecision;
+  reason: string;
+  classify: AiClassifyResult;
+}
+
+export interface AiSuggestedCategory {
+  id: string;
+  code: string;
+  nameVi: string;
+  nameEn: string;
+  iconUrl: string | null;
+}
+
+export interface AiAnalyzeResponse {
+  tempImageId: string;
+  expiresInSeconds: number;
+  aiResult: AiAnalyzeResult;
+  suggestedCategory: AiSuggestedCategory | null;
+}
+
 export type ReportImageUploadStatus = 'pending' | 'uploading' | 'done' | 'error';
 
 export type ReportCaptureSource = 'camera' | 'library';
