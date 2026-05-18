@@ -21,7 +21,7 @@ export default function ReportSuccessScreen() {
 
   const handleGoHome = () => {
     reset();
-    router.replace('/(tabs)/' as Href);
+    router.replace('/(tabs)/index' as Href);
   };
 
   return (

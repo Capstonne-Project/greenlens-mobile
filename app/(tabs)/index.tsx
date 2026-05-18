@@ -24,6 +24,8 @@ import { HCM_INITIAL_REGION } from '@/constants/map-region';
 
 import type { CitizenMapPin } from '@/data/citizen-map-mock';
 
+import { usePollutionCategories } from '@/hooks/usePollutionCategories';
+
 import { useUserMapLocation } from '@/hooks/useUserMapLocation';
 
 import { useViewportMapReports } from '@/hooks/useViewportMapReports';
@@ -83,6 +85,8 @@ export default function CitizenHomeScreen() {
   const { pins: visiblePins, rawCount, isLoading, errorMessage, onRegionChangeComplete } =
 
     useViewportMapReports(filter);
+
+  const { categories } = usePollutionCategories();
 
 
 
@@ -364,7 +368,7 @@ export default function CitizenHomeScreen() {
 
         />
 
-        <CategoryFilterChips selected={filter} onChange={setFilter} />
+        <CategoryFilterChips selected={filter} categories={categories} onChange={setFilter} />
 
       </View>
 

@@ -69,11 +69,12 @@ export default function ReportAddressScreen() {
     async (code: string) => {
       setProvinceCode(code);
       setWardCode(null);
+      void loadWardBoundary(null);
       const province = provinces.find((item) => item.code === code);
       await loadProvinceBoundary(province?.boundaryUrl ?? null);
       await refetchWards(code);
     },
-    [loadProvinceBoundary, provinces, refetchWards],
+    [loadProvinceBoundary, loadWardBoundary, provinces, refetchWards],
   );
 
   const handleWardChange = useCallback(

@@ -6,7 +6,7 @@ import type { MapViewportRegion, ViewportBBox } from '@/types/map-viewport.types
 import { regionToBBox } from '@/utils/map-viewport';
 import { publicMapDtoToCitizenPin } from '@/utils/public-map-mapper';
 import { isAxiosError, isCancel } from 'axios';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Region } from 'react-native-maps';
 
 const DEBOUNCE_MS = 520;
@@ -24,9 +24,9 @@ function roundBBox(b: ViewportBBox): ViewportBBox {
   };
 }
 
-function bboxCacheKey(b: ViewportBBox): string {
+function bboxCacheKey(b: ViewportBBox, categoryId?: string): string {
   const x = roundBBox(b);
-  return `${x.minLat},${x.maxLat},${x.minLng},${x.maxLng}`;
+  return `${x.minLat},${x.maxLat},${x.minLng},${x.maxLng}|${categoryId ?? 'all'}`;
 }
 
 function initialRegionLike(): MapViewportRegion {
@@ -43,94 +43,113 @@ export interface UseViewportMapReportsResult {
   rawCount: number;
   isLoading: boolean;
   errorMessage: string | null;
-  /** Gọi từ `MapView` `onRegionChangeComplete` sau khi user kéo/zoom xong */
   onRegionChangeComplete: (region: Region) => void;
 }
 
-/**
- * Luồng viewport — docs/PUBLIC_MAP_VIEWPORT_PLAN.md §4:
- * bbox từ `react-native-maps` → debounce → GET mode=detail.
- */
 export function useViewportMapReports(filter: CategoryFilterId): UseViewportMapReportsResult {
-  const [rawPins, setRawPins] = useState<CitizenMapPin[]>([]);
+  const [pins, setPins] = useState<CitizenMapPin[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const lastKeyRef = useRef<string | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const lastBBoxRef = useRef<ViewportBBox | null>(null);
 
-  const pins = useMemo(() => {
-    if (filter === 'all') return rawPins;
-    return rawPins.filter((p) => p.category === filter);
-  }, [filter, rawPins]);
+  // categoryId là UUID khi chọn category cụ thể, undefined khi 'all'
+  const categoryId = filter === 'all' ? undefined : filter;
 
-  const fetchForBBox = useCallback(async (bbox: ViewportBBox) => {
-    const key = bboxCacheKey(bbox);
+  const fetchForBBox = useCallback(async (bbox: ViewportBBox, catId?: string) => {
+    const key = bboxCacheKey(bbox, catId);
     if (key === lastKeyRef.current) return;
 
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
 
+    lastKeyRef.current = key;
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
+      if (__DEV__) {
+        console.log('[MapReports] fetch bbox:', bbox, 'categoryId:', catId);
+      }
       const res = await mapReportsService.getPublicInViewport(
         {
           ...bbox,
           mode: 'detail',
           limit: DEFAULT_DETAIL_LIMIT,
+          categoryId: catId,
         },
-        { signal: ac.signal }
+        { signal: ac.signal },
       );
 
       const payload = res.data.data;
       const items = payload?.items ?? [];
-      setRawPins(items.map(publicMapDtoToCitizenPin));
-      lastKeyRef.current = key;
+      if (__DEV__) {
+        console.log('[MapReports] returned:', items.length, 'items');
+      }
+      setPins(items.map(publicMapDtoToCitizenPin));
     } catch (e: unknown) {
-      if (isCancel(e)) return;
+      if (isCancel(e)) {
+        lastKeyRef.current = null;
+        return;
+      }
       const msg = isAxiosError(e)
         ? (e.response?.data as { message?: string } | undefined)?.message ?? e.message
         : 'Không tải được báo cáo trên bản đồ.';
       setErrorMessage(typeof msg === 'string' ? msg : 'Lỗi mạng');
-      setRawPins([]);
+      lastKeyRef.current = null;
+      setPins([]);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   const scheduleFetch = useCallback(
-    (bbox: ViewportBBox) => {
+    (bbox: ViewportBBox, catId?: string) => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = setTimeout(() => {
         debounceTimerRef.current = null;
-        void fetchForBBox(bbox);
+        void fetchForBBox(bbox, catId);
       }, DEBOUNCE_MS);
     },
-    [fetchForBBox]
+    [fetchForBBox],
   );
 
   const onRegionChangeComplete = useCallback(
     (region: Region) => {
-      scheduleFetch(regionToBBox(region));
+      const bbox = regionToBBox(region);
+      lastBBoxRef.current = bbox;
+      scheduleFetch(bbox, categoryId);
     },
-    [scheduleFetch]
+    [categoryId, scheduleFetch],
   );
 
+  // Khi filter thay đổi → refetch ngay với bbox hiện tại (không cần user kéo map)
   useEffect(() => {
-    void fetchForBBox(regionToBBox(initialRegionLike()));
+    const bbox = lastBBoxRef.current ?? regionToBBox(initialRegionLike());
+    lastKeyRef.current = null; // force refetch dù bbox không đổi
+    void fetchForBBox(bbox, categoryId);
+  }, [categoryId, fetchForBBox]);
+
+  // Fetch lần đầu khi mount
+  useEffect(() => {
+    const bbox = regionToBBox(initialRegionLike());
+    lastBBoxRef.current = bbox;
+    void fetchForBBox(bbox, categoryId);
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       abortRef.current?.abort();
     };
-  }, [fetchForBBox]);
+    // chỉ chạy 1 lần khi mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return {
     pins,
-    rawCount: rawPins.length,
+    rawCount: pins.length,
     isLoading,
     errorMessage,
     onRegionChangeComplete,

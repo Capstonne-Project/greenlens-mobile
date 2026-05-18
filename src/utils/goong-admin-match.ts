@@ -32,6 +32,7 @@ function matchByName<T extends { name: string }>(items: T[], targetName?: string
 export async function enrichLocationWithGoong(
   location: ReportLocationDraft,
   provinces: CatalogProvince[],
+  { overwriteAddress = true }: { overwriteAddress?: boolean } = {},
 ): Promise<ReportLocationDraft> {
   const goong = await goongService.reverseGeocode(location.latitude, location.longitude);
   if (!goong) {
@@ -40,7 +41,9 @@ export async function enrichLocationWithGoong(
 
   let provinceCode = location.provinceCode;
   let wardCode = location.wardCode;
-  let address = location.address ?? goong.addressLine;
+  // Khi overwriteAddress=true (map tap): luôn dùng địa chỉ Goong trả về
+  // Khi overwriteAddress=false (seed lần đầu): chỉ điền nếu chưa có
+  let address = overwriteAddress ? (goong.addressLine ?? location.address) : (location.address ?? goong.addressLine);
 
   const matchedProvince = matchByName(provinces, goong.provinceName);
   if (matchedProvince) {

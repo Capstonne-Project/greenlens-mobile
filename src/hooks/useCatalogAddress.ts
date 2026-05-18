@@ -62,6 +62,7 @@ export function useCatalogAddress(): UseCatalogAddressResult {
   const refetchWards = useCallback(async (provinceCode: string) => {
     setIsLoadingWards(true);
     setErrorMessage(null);
+    setWards([]);
     try {
       const response = await catalogService.getWardsByProvince(provinceCode);
       setWards(response.data.data.items);
