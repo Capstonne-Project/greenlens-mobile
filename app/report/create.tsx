@@ -137,13 +137,16 @@ export default function ReportCreateWizardScreen() {
   const [tagDraft, setTagDraft] = useState("");
   const [showAiResult, setShowAiResult] = useState(false);
   const [pendingAiOutcome, setPendingAiOutcome] = useState<"accepted" | "review" | null>(null);
+  // Local selections inside AI dialog — chỉ apply khi user bấm "Áp dụng"
+  const [dialogCategoryId, setDialogCategoryId] = useState<string | null>(null);
+  const [dialogSeverity, setDialogSeverity] = useState<PollutionSeverity | null>(null);
   const mapRef = useRef<MapView>(null);
-  const [mapRegion, setMapRegion] = useState<Region>({
+  const mapRegion: Region = {
     latitude: 10.7769,
     longitude: 106.7009,
     latitudeDelta: 0.06,
     longitudeDelta: 0.06,
-  });
+  };
 
   const images = useCreateReportDraftStore((s) => s.images);
   const location = useCreateReportDraftStore((s) => s.location);
@@ -205,20 +208,23 @@ export default function ReportCreateWizardScreen() {
       ? { latitude: userLocation.latitude, longitude: userLocation.longitude }
       : null;
 
-  const markerLat = marker?.latitude ?? null;
-  const markerLng = marker?.longitude ?? null;
-
+  // Animate map 1 lần khi vào step 3 để căn về vị trí marker ban đầu
+  const didCenterStep3Ref = useRef(false);
   useEffect(() => {
-    if (markerLat === null || markerLng === null) return;
-    const region: Region = {
-      latitude: markerLat,
-      longitude: markerLng,
-      latitudeDelta: 0.06,
-      longitudeDelta: 0.06,
-    };
-    setMapRegion(region);
-    mapRef.current?.animateToRegion(region, 400);
-  }, [markerLat, markerLng]);
+    if (step !== 3) {
+      didCenterStep3Ref.current = false;
+      return;
+    }
+    if (didCenterStep3Ref.current) return;
+    if (!marker) return;
+    didCenterStep3Ref.current = true;
+    mapRef.current?.animateToRegion(
+      { latitude: marker.latitude, longitude: marker.longitude, latitudeDelta: 0.06, longitudeDelta: 0.06 },
+      400,
+    );
+  // chỉ chạy khi bước đổi hoặc marker lần đầu xuất hiện
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, marker !== null]);
 
   const provinceCode = location?.provinceCode ?? null;
   const wardCode = location?.wardCode ?? null;
@@ -388,15 +394,16 @@ export default function ReportCreateWizardScreen() {
       const base = {
         latitude: coordinate.latitude,
         longitude: coordinate.longitude,
-        address: location?.address,
-        provinceCode: location?.provinceCode,
-        wardCode: location?.wardCode,
         capturedAt: location?.capturedAt ?? new Date().toISOString(),
       };
-      const resolved = provinces.length > 0 ? await enrichLocationWithGoong(base, provinces) : base;
-      setLocation(resolved);
+      // Set marker tức thì để user thấy pin ngay, rồi enrich address/province/ward sau
+      setLocation(base);
+      if (provinces.length > 0) {
+        const resolved = await enrichLocationWithGoong(base, provinces);
+        setLocation(resolved);
+      }
     },
-    [location?.address, location?.capturedAt, location?.provinceCode, location?.wardCode, provinces, setLocation],
+    [location?.capturedAt, provinces, setLocation],
   );
 
   const handlePickLibrary = useCallback(async () => {
@@ -578,8 +585,7 @@ export default function ReportCreateWizardScreen() {
               <MapView
                 ref={mapRef}
                 style={{ height: 260, width: "100%" }}
-                region={mapRegion}
-                onRegionChangeComplete={setMapRegion}
+                initialRegion={mapRegion}
                 onPress={(event) => {
                   void handleMapPress(event.nativeEvent.coordinate);
                 }}
@@ -897,9 +903,22 @@ export default function ReportCreateWizardScreen() {
       </Modal>
 
       {/* AI Result dialog */}
-      <Modal visible={showAiResult && !isAnalyzing && aiResult !== null} transparent animationType="slide">
+      <Modal
+        visible={showAiResult && !isAnalyzing && aiResult !== null}
+        transparent
+        animationType="slide"
+        onShow={() => {
+          // Seed local dialog state from AI suggestion khi dialog mở
+          setDialogCategoryId(aiSuggestedCategory?.id ?? null);
+          setDialogSeverity(
+            aiResult
+              ? ({ LOW: "Low", MEDIUM: "Medium", HIGH: "High", CRITICAL: "Critical" } as const)[aiResult.classify.severity] ?? null
+              : null,
+          );
+        }}
+      >
         <View className="flex-1 justify-end bg-black/50">
-          <View className="rounded-t-3xl bg-white px-5 pb-8 pt-5" style={{ paddingBottom: Math.max(insets.bottom, 20) + 16 }}>
+          <View className="rounded-t-3xl bg-white px-5 pt-5" style={{ paddingBottom: Math.max(insets.bottom, 20) + 16 }}>
             {/* Handle */}
             <View className="mb-4 items-center">
               <View className="h-1 w-10 rounded-full bg-border" />
@@ -913,57 +932,126 @@ export default function ReportCreateWizardScreen() {
               <View className="flex-1">
                 <Text className="text-base font-bold text-textPrimary">Kết quả phân tích AI</Text>
                 {pendingAiOutcome === "review" ? (
-                  <Text className="text-xs text-warning">Cần xem xét thêm — bạn có thể chỉnh sửa bên dưới</Text>
+                  <Text className="text-xs text-warning">Cần xem xét — hãy xác nhận thông tin bên dưới</Text>
                 ) : (
-                  <Text className="text-xs text-success">Ảnh hợp lệ — thông tin đã được điền sẵn</Text>
+                  <Text className="text-xs text-success">Ảnh hợp lệ — chọn thông tin để áp dụng</Text>
                 )}
               </View>
             </View>
 
-            {/* AI result card */}
+            {/* AI stats card */}
             {aiResult ? <AiAnalysisBanner aiResult={aiResult} /> : null}
 
-            {/* Severity edit */}
-            {aiResult ? (
-              <View className="mt-5 gap-3">
+            {/* Loại ô nhiễm — BẮT BUỘC chọn */}
+            <View className="mt-5 gap-3">
+              <View className="flex-row items-center gap-1.5">
                 <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">
-                  Mức độ nghiêm trọng
+                  Loại ô nhiễm
                 </Text>
-                <View className="flex-row gap-2">
-                  {(Object.keys(SEVERITY_META) as PollutionSeverity[]).map((value) => {
-                    const meta = SEVERITY_META[value];
-                    const isSelected = severity === value;
-                    return (
-                      <TouchableOpacity
-                        key={value}
-                        activeOpacity={0.75}
-                        onPress={() => setSeverity(value)}
-                        className={`flex-1 items-center rounded-xl py-2.5 ${isSelected ? "bg-primary" : "bg-surface"}`}
-                      >
-                        <View className="mb-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: meta.accent }} />
-                        <Text className={`text-xs font-semibold ${isSelected ? "text-white" : "text-textSecondary"}`}>
-                          {meta.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                {!dialogCategoryId ? (
+                  <View className="rounded-full bg-error/10 px-2 py-0.5">
+                    <Text className="text-[10px] font-semibold text-error">Bắt buộc chọn</Text>
+                  </View>
+                ) : null}
               </View>
-            ) : null}
+
+              {aiSuggestedCategory ? (
+                /* Chỉ có 1 gợi ý từ AI — hiện dạng toggle card */
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() =>
+                    setDialogCategoryId((prev) => (prev === aiSuggestedCategory.id ? null : aiSuggestedCategory.id))
+                  }
+                  className={`flex-row items-center gap-3 rounded-2xl border px-4 py-3.5 ${
+                    dialogCategoryId === aiSuggestedCategory.id
+                      ? "border-primary bg-primary/5"
+                      : "border-border bg-surface"
+                  }`}
+                >
+                  <View
+                    className={`h-10 w-10 items-center justify-center rounded-xl ${
+                      dialogCategoryId === aiSuggestedCategory.id ? "bg-primary" : "bg-primary/10"
+                    }`}
+                  >
+                    <Ionicons
+                      name={resolvePollutionCategoryIcon(aiSuggestedCategory.code, null)}
+                      size={20}
+                      color={dialogCategoryId === aiSuggestedCategory.id ? colors.white : colors.primary}
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[15px] font-semibold text-textPrimary">{aiSuggestedCategory.nameVi}</Text>
+                    <View className="mt-0.5 flex-row items-center gap-1">
+                      <Ionicons name="sparkles" size={11} color={colors.primary} />
+                      <Text className="text-xs text-primary">AI đề xuất</Text>
+                    </View>
+                  </View>
+                  {dialogCategoryId === aiSuggestedCategory.id ? (
+                    <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+                  ) : (
+                    <View className="h-5 w-5 rounded-full border-2 border-border" />
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <View className="rounded-2xl bg-surface px-4 py-3">
+                  <Text className="text-sm text-textSecondary">AI không nhận diện được loại — bạn sẽ tự chọn ở bước tiếp theo.</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Mức độ nghiêm trọng */}
+            <View className="mt-5 gap-3">
+              <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">
+                Mức độ nghiêm trọng
+              </Text>
+              <View className="flex-row gap-2">
+                {(Object.keys(SEVERITY_META) as PollutionSeverity[]).map((value) => {
+                  const meta = SEVERITY_META[value];
+                  const isSelected = dialogSeverity === value;
+                  const isAiPick =
+                    aiResult &&
+                    ({ LOW: "Low", MEDIUM: "Medium", HIGH: "High", CRITICAL: "Critical" } as const)[
+                      aiResult.classify.severity
+                    ] === value;
+                  return (
+                    <TouchableOpacity
+                      key={value}
+                      activeOpacity={0.75}
+                      onPress={() => setDialogSeverity(value)}
+                      className={`flex-1 items-center rounded-xl py-2.5 ${isSelected ? "bg-primary" : "bg-surface"}`}
+                    >
+                      <View className="mb-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: meta.accent }} />
+                      <Text className={`text-xs font-semibold ${isSelected ? "text-white" : "text-textSecondary"}`}>
+                        {meta.label}
+                      </Text>
+                      {isAiPick && !isSelected ? (
+                        <Ionicons name="sparkles" size={10} color={colors.primary} style={{ marginTop: 2 }} />
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
 
             {/* Actions */}
             <View className="mt-5 gap-3">
               <TouchableOpacity
-                activeOpacity={0.8}
+                activeOpacity={dialogCategoryId ? 0.8 : 1}
                 onPress={() => {
+                  if (!dialogCategoryId) return;
                   void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  // Áp dụng lựa chọn từ dialog vào store
+                  setCategoryId(dialogCategoryId);
+                  if (dialogSeverity) setSeverity(dialogSeverity);
                   setShowAiResult(false);
                   setPendingAiOutcome(null);
                   setStep(2);
                 }}
-                className="items-center rounded-2xl bg-primary py-3.5"
+                className={`items-center rounded-2xl py-3.5 ${dialogCategoryId ? "bg-primary" : "bg-border"}`}
               >
-                <Text className="text-base font-bold text-white">Áp dụng và tiếp tục</Text>
+                <Text className={`text-base font-bold ${dialogCategoryId ? "text-white" : "text-textDisabled"}`}>
+                  {dialogCategoryId ? "Áp dụng và tiếp tục" : "Chọn loại ô nhiễm để áp dụng"}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -971,6 +1059,8 @@ export default function ReportCreateWizardScreen() {
                   clearAiResult();
                   setShowAiResult(false);
                   setPendingAiOutcome(null);
+                  setDialogCategoryId(null);
+                  setDialogSeverity(null);
                 }}
                 className="items-center rounded-2xl bg-surface py-3.5"
               >
