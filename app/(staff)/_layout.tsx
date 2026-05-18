@@ -8,8 +8,9 @@ export default function StaffLayout() {
       screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen name="home" options={{ title: 'Trang chủ' }} />
-      <Tabs.Screen name="notifications" options={{ title: 'Thông báo' }} />
+      <Tabs.Screen name="map" options={{ title: 'Bản đồ' }} />
       <Tabs.Screen name="assignments" options={{ href: null, title: 'Nhiệm vụ' }} />
+      <Tabs.Screen name="notifications" options={{ href: null, title: 'Thông báo' }} />
       <Tabs.Screen name="members" options={{ title: 'Thành viên' }} />
       <Tabs.Screen name="settings" options={{ title: 'Cài đặt' }} />
     </Tabs>

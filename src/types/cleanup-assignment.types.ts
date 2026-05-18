@@ -84,3 +84,55 @@ export interface AssignmentStats {
   escalated: number;
   pendingUpload: number;
 }
+
+// ─── Report Detail ────────────────────────────────────────────────────────────
+
+export interface ReportMedia {
+  id: string;
+  mediaType: 'Image' | 'Video';
+  url: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface ReportAssignment {
+  id: string;
+  teamId: string;
+  teamName: string;
+  teamType: string;
+  status: AssignmentStatus;
+  note: string | null;
+  assignedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface ReportDetail {
+  id: string;
+  code: string;
+  reporterId: string;
+  isAnonymous: boolean;
+  categoryId: string;
+  categoryCode: string;
+  categoryName: string;
+  severity: SeverityLevel;
+  severitySetBy: string;
+  status: ReportStatus;
+  latitude: number;
+  longitude: number;
+  address: string;
+  wardCode: string;
+  provinceCode: string;
+  priorityScore: number;
+  reporterCount: number;
+  reopenedCount: number;
+  assignedOfficerId: string | null;
+  media: ReportMedia[];
+  assignments: ReportAssignment[];
+  description?: string | null;
+  officerNote?: string | null;
+  createdAt: string;
+  startedAt?: string | null;
+  slaVerifyDueAt?: string | null;
+  slaResolveDueAt?: string | null;
+}

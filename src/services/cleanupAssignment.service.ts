@@ -5,6 +5,7 @@ import type {
   DeclineAssignmentDto,
   MyAssignmentsParams,
   MyAssignmentsResponse,
+  ReportDetail,
   ResolveAssignmentDto,
   UpdateProgressDto,
   UploadProgressImageDto,
@@ -14,6 +15,9 @@ import type {
 export const cleanupAssignmentService = {
   getMyAssignments: (params?: MyAssignmentsParams) =>
     api.get<ApiEnvelope<MyAssignmentsResponse>>('/reports/my-assignments', { params }),
+
+  getReportDetail: (reportId: string) =>
+    api.get<ApiEnvelope<ReportDetail>>(`/reports/${reportId}`),
 
   accept: (reportId: string, dto: AcceptAssignmentDto) =>
     api.put<void>(`/reports/${reportId}/accept`, dto),

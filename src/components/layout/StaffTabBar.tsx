@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { colors } from '@/theme/colors';
 
-const LEFT_TABS = ['home', 'notifications'] as const;
+const LEFT_TABS = ['home', 'map'] as const;
 const RIGHT_TABS = ['members', 'settings'] as const;
 
 type StaffTabName = (typeof LEFT_TABS)[number] | (typeof RIGHT_TABS)[number];
@@ -15,10 +15,10 @@ const TAB_META: Record<
   StaffTabName,
   { label: string; icon: keyof typeof Ionicons.glyphMap; activeIcon: keyof typeof Ionicons.glyphMap }
 > = {
-  home:          { label: 'Trang chủ',  icon: 'home-outline',          activeIcon: 'home' },
-  notifications: { label: 'Thông báo',  icon: 'notifications-outline', activeIcon: 'notifications' },
-  members:       { label: 'Thành viên', icon: 'people-outline',         activeIcon: 'people' },
-  settings:      { label: 'Cài đặt',    icon: 'settings-outline',       activeIcon: 'settings' },
+  home:    { label: 'Trang chủ',  icon: 'home-outline',     activeIcon: 'home' },
+  map:     { label: 'Bản đồ',     icon: 'map-outline',      activeIcon: 'map' },
+  members: { label: 'Thành viên', icon: 'people-outline',   activeIcon: 'people' },
+  settings:{ label: 'Cài đặt',   icon: 'settings-outline',  activeIcon: 'settings' },
 };
 
 function StaffFab({ onPress }: { onPress: () => void }) {
