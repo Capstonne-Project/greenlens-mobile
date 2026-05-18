@@ -11,6 +11,8 @@ export interface User {
   points?: number;
   reportCount?: number;
   createdAt?: string;
+  teamId?: string;
+  teamName?: string;
 }
 
 export interface LoginDto {

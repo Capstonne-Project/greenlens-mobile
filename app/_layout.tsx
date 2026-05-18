@@ -22,6 +22,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="report" />
         <Stack.Screen name="(staff)" />
+        <Stack.Screen name="assignment" options={{ animation: 'slide_from_right' }} />
       </Stack>
       <PortalHost />
     </GestureHandlerRootView>
