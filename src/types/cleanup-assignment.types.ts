@@ -1,25 +1,28 @@
 export type AssignmentStatus = 'Assigned' | 'InProgress' | 'Completed' | 'Declined';
 
 export type ReportStatus =
-  | 'Pending'
+  | 'Submitted'
   | 'Verified'
-  | 'Assigned'
   | 'InProgress'
   | 'Resolved'
+  | 'PenaltyIssued'
   | 'Closed'
-  | 'Rejected';
+  | 'Rejected'
+  | 'Duplicate';
 
 export type SeverityLevel = 'Low' | 'Medium' | 'High' | 'Critical';
+
+// ─── List ─────────────────────────────────────────────────────────────────────
 
 export interface AssignmentItem {
   reportId: string;
   reportCode: string;
   assignmentId: string;
   assignmentStatus: AssignmentStatus;
-  reportStatus: ReportStatus;
   categoryCode: string;
   categoryName: string;
   severity: SeverityLevel;
+  reportStatus: ReportStatus;
   latitude: number;
   longitude: number;
   address: string;
@@ -45,6 +48,89 @@ export interface MyAssignmentsParams {
   assignmentStatus?: AssignmentStatus;
 }
 
+// ─── Detail ───────────────────────────────────────────────────────────────────
+
+export interface TaskDetailImage {
+  url: string;
+  mimeType: string;
+}
+
+export interface TaskDetail {
+  assignmentId: string;
+  assignmentStatus: AssignmentStatus;
+  assignedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  canDecline: boolean;
+  canUpdateProgress: boolean;
+  canResolve: boolean;
+
+  reportId: string;
+  reportCode: string;
+  reportStatus: ReportStatus;
+  categoryCode: string;
+  categoryName: string;
+  severity: SeverityLevel;
+  description: string;
+  latitude: number;
+  longitude: number;
+  address: string;
+  wardCode: string;
+
+  slaResolveDueAt: string | null;
+  reportImages: TaskDetailImage[];
+
+  progressPercent: number;
+  progressNote: string | null;
+  progressUpdatedAt: string | null;
+  progressUpdatedByUserId: string | null;
+
+  assignmentNote: string | null;
+}
+
+// ─── Progress history ─────────────────────────────────────────────────────────
+
+export interface ProgressHistoryItem {
+  reportId: string;
+  reportCode: string;
+  assignmentId: string;
+  assignmentStatus: AssignmentStatus;
+  reportStatus: ReportStatus;
+  progressPercent: number;
+  progressNote: string | null;
+  progressUpdatedAt: string | null;
+  progressUpdatedByUserId: string | null;
+  assignedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface MyProgressResponse {
+  items: ProgressHistoryItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+// ─── Team profile ─────────────────────────────────────────────────────────────
+
+export interface TeamMember {
+  userId: string;
+  fullName: string;
+  email: string;
+  isLeader: boolean;
+}
+
+export interface TeamProfile {
+  id: string;
+  name: string;
+  teamType: string;
+  isActive: boolean;
+  members: TeamMember[];
+}
+
+// ─── DTOs ─────────────────────────────────────────────────────────────────────
+
 export interface AcceptAssignmentDto {
   teamId: string;
 }
@@ -54,27 +140,22 @@ export interface DeclineAssignmentDto {
   reason: string;
 }
 
-export interface UploadProgressImageDto {
-  teamId: string;
-  imageUri: string;
-  mimeType?: string;
-  fileName?: string;
-}
-
-export interface UploadProgressImageResult {
-  imageUrl: string;
-}
-
 export interface UpdateProgressDto {
-  teamId: string;
   progressPercent: number;
   progressNote?: string;
+  images?: { uri: string; mimeType?: string; fileName?: string }[];
+}
+
+export interface UpdateProgressResult {
+  uploadedImageUrls: string[];
 }
 
 export interface ResolveAssignmentDto {
   teamId: string;
   afterImageUrls: string[];
 }
+
+// ─── Stats (for home dashboard) ───────────────────────────────────────────────
 
 export interface AssignmentStats {
   newlyAssigned: number;
@@ -83,56 +164,4 @@ export interface AssignmentStats {
   nearSla: number;
   escalated: number;
   pendingUpload: number;
-}
-
-// ─── Report Detail ────────────────────────────────────────────────────────────
-
-export interface ReportMedia {
-  id: string;
-  mediaType: 'Image' | 'Video';
-  url: string;
-  mimeType: string;
-  sizeBytes: number;
-}
-
-export interface ReportAssignment {
-  id: string;
-  teamId: string;
-  teamName: string;
-  teamType: string;
-  status: AssignmentStatus;
-  note: string | null;
-  assignedAt: string;
-  startedAt?: string | null;
-  completedAt?: string | null;
-}
-
-export interface ReportDetail {
-  id: string;
-  code: string;
-  reporterId: string;
-  isAnonymous: boolean;
-  categoryId: string;
-  categoryCode: string;
-  categoryName: string;
-  severity: SeverityLevel;
-  severitySetBy: string;
-  status: ReportStatus;
-  latitude: number;
-  longitude: number;
-  address: string;
-  wardCode: string;
-  provinceCode: string;
-  priorityScore: number;
-  reporterCount: number;
-  reopenedCount: number;
-  assignedOfficerId: string | null;
-  media: ReportMedia[];
-  assignments: ReportAssignment[];
-  description?: string | null;
-  officerNote?: string | null;
-  createdAt: string;
-  startedAt?: string | null;
-  slaVerifyDueAt?: string | null;
-  slaResolveDueAt?: string | null;
 }

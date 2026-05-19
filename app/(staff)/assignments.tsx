@@ -251,7 +251,7 @@ function SortLabel({ count, label }: { count: number; label: string }) {
 
 export default function AssignmentsScreen() {
   const insets = useSafeAreaInsets();
-  const [activeFilter, setActiveFilter] = useState<AssignmentStatus | undefined>('Assigned');
+  const [activeFilter, setActiveFilter] = useState<AssignmentStatus | undefined>(undefined);
 
   // Fetch tất cả để đếm count cho từng tab
   const { items: allItems } = useMyAssignments({ pageSize: 200 });
@@ -266,10 +266,11 @@ export default function AssignmentsScreen() {
   );
 
   const FILTER_TABS: FilterTab[] = [
-    { label: 'Mới giao',   value: 'Assigned',   count: countOf('Assigned') },
-    { label: 'Chờ nhận',   value: undefined,    count: 0 },
-    { label: 'Đang xử lý', value: 'InProgress', count: countOf('InProgress') },
-    { label: 'Sắp hết SLA', value: undefined,   count: 0 },
+    { label: 'Tất cả',      value: undefined,    count: allItems.length },
+    { label: 'Chờ xác nhận', value: 'Assigned',  count: countOf('Assigned') },
+    { label: 'Đang làm',    value: 'InProgress', count: countOf('InProgress') },
+    { label: 'Hoàn thành',  value: 'Completed',  count: countOf('Completed') },
+    { label: 'Từ chối',     value: 'Declined',   count: countOf('Declined') },
   ];
 
   const handleCardPress = useCallback((item: AssignmentItem) => {

@@ -5,44 +5,51 @@ import type {
   DeclineAssignmentDto,
   MyAssignmentsParams,
   MyAssignmentsResponse,
-  ReportDetail,
+  MyProgressResponse,
   ResolveAssignmentDto,
+  TaskDetail,
+  TeamProfile,
   UpdateProgressDto,
-  UploadProgressImageDto,
-  UploadProgressImageResult,
+  UpdateProgressResult,
 } from '@/types/cleanup-assignment.types';
 
 export const cleanupAssignmentService = {
-  getMyAssignments: (params?: MyAssignmentsParams) =>
-    api.get<ApiEnvelope<MyAssignmentsResponse>>('/reports/my-assignments', { params }),
+  getMyTasks: (params?: MyAssignmentsParams) =>
+    api.get<ApiEnvelope<MyAssignmentsResponse>>('/teams/my-tasks', { params }),
 
-  getReportDetail: (reportId: string) =>
-    api.get<ApiEnvelope<ReportDetail>>(`/reports/${reportId}`),
+  getMyTaskDetail: (reportId: string) =>
+    api.get<ApiEnvelope<TaskDetail>>(`/teams/my-tasks/${reportId}`),
 
-  accept: (reportId: string, dto: AcceptAssignmentDto) =>
-    api.put<void>(`/reports/${reportId}/accept`, dto),
+  accept: (reportId: string) =>
+    api.put<void>(`/teams/my-tasks/${reportId}/accept`, {}),
 
   decline: (reportId: string, dto: DeclineAssignmentDto) =>
-    api.put<void>(`/reports/${reportId}/decline`, dto),
+    api.put<void>(`/teams/my-tasks/${reportId}/decline`, dto),
 
-  uploadProgressImage: (reportId: string, dto: UploadProgressImageDto) => {
+  updateProgress: (reportId: string, dto: UpdateProgressDto) => {
     const formData = new FormData();
-    formData.append('teamId', dto.teamId);
-    formData.append('image', {
-      uri: dto.imageUri,
-      type: dto.mimeType ?? 'image/jpeg',
-      name: dto.fileName ?? 'progress.jpg',
-    } as unknown as Blob);
-    return api.post<ApiEnvelope<UploadProgressImageResult>>(
-      `/reports/${reportId}/progress/images`,
+    formData.append('progressPercent', String(dto.progressPercent));
+    if (dto.progressNote) formData.append('progressNote', dto.progressNote);
+    dto.images?.forEach((img) => {
+      formData.append('images', {
+        uri: img.uri,
+        type: img.mimeType ?? 'image/jpeg',
+        name: img.fileName ?? 'progress.jpg',
+      } as unknown as Blob);
+    });
+    return api.put<ApiEnvelope<UpdateProgressResult>>(
+      `/reports/${reportId}/progress`,
       formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } }
+      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
   },
 
-  updateProgress: (reportId: string, dto: UpdateProgressDto) =>
-    api.put<void>(`/reports/${reportId}/progress`, dto),
-
   resolve: (reportId: string, dto: ResolveAssignmentDto) =>
     api.put<void>(`/reports/${reportId}/resolve`, dto),
+
+  getMyProgress: (params?: MyAssignmentsParams) =>
+    api.get<ApiEnvelope<MyProgressResponse>>('/teams/my-progress', { params }),
+
+  getTeamProfile: () =>
+    api.get<ApiEnvelope<TeamProfile>>('/teams/my-profile'),
 };
