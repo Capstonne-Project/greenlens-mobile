@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { ScrollView, View } from 'react-native';
 import { Text } from '@/components/ui/text';
 import type { ReportImageDraft } from '@/types/pollution-report.types';
+import type { WasteTag } from '@/types/waste-tag.types';
 
 interface ReportReviewSummaryProps {
   images: ReportImageDraft[];
@@ -17,6 +18,7 @@ interface ReportReviewSummaryProps {
   severityAccent?: string;
   description: string;
   tags: string[];
+  wasteTags?: WasteTag[];
   isAnonymous: boolean;
 }
 
@@ -96,6 +98,7 @@ export function ReportReviewSummary({
   severityAccent,
   description,
   tags,
+  wasteTags = [],
   isAnonymous,
 }: ReportReviewSummaryProps) {
   const recorded = formatReportDate(capturedAt);
@@ -177,6 +180,15 @@ export function ReportReviewSummary({
         <Text className="mt-3 text-[15px] leading-7 text-textPrimary">
           {description.trim() || 'Không có mô tả thêm.'}
         </Text>
+        {wasteTags.length ? (
+          <View className="mt-3 flex-row flex-wrap gap-2">
+            {wasteTags.map((tag) => (
+              <View key={tag.id} className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1">
+                <Text className="text-xs font-semibold text-primary">{tag.nameVi}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
         {tags.length ? (
           <View className="mt-3 flex-row flex-wrap gap-2">
             {tags.map((tag) => (

@@ -16,7 +16,18 @@ interface CatalogPickerProps {
   value: string | null;
   items: CatalogPickerItem[];
   disabled?: boolean;
+  variant?: 'default' | 'section';
   onSelect: (code: string) => void;
+}
+
+function FieldLabel({ label, variant }: { label: string; variant: 'default' | 'section' }) {
+  if (variant === 'section') {
+    return (
+      <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">{label}</Text>
+    );
+  }
+
+  return <Text className="text-sm font-semibold text-textPrimary">{label}</Text>;
 }
 
 function PickerRow({
@@ -24,12 +35,14 @@ function PickerRow({
   placeholder,
   value,
   disabled,
+  variant,
   onPress,
 }: {
   label: string;
   placeholder: string;
   value: string | null;
   disabled?: boolean;
+  variant: 'default' | 'section';
   onPress: () => void;
 }) {
   const scale = useSharedValue(1);
@@ -37,10 +50,15 @@ function PickerRow({
     transform: [{ scale: scale.value }],
   }));
 
+  const rowClassName =
+    variant === 'section'
+      ? 'flex-row items-center justify-between rounded-2xl bg-white px-4 py-3.5'
+      : 'flex-row items-center justify-between rounded-2xl border border-border bg-surface px-4 py-3.5';
+
   return (
-    <View className="gap-2">
-      <Text className="text-sm font-semibold text-textPrimary">{label}</Text>
-      <Animated.View style={animatedStyle}>
+    <View className={variant === 'section' ? 'gap-2' : 'gap-2'}>
+      <FieldLabel label={label} variant={variant} />
+      <Animated.View style={animatedStyle} className={variant === 'section' ? 'mt-0' : undefined}>
         <Pressable
           disabled={disabled}
           onPress={onPress}
@@ -50,7 +68,7 @@ function PickerRow({
           onPressOut={() => {
             scale.value = withSpring(1, { damping: 18, stiffness: 260 });
           }}
-          className="flex-row items-center justify-between rounded-2xl border border-border bg-surface px-4 py-3.5"
+          className={rowClassName}
           style={{ opacity: disabled ? 0.5 : 1 }}
         >
           <Text className={`flex-1 text-base ${value ? 'text-textPrimary' : 'text-textSecondary'}`}>
@@ -69,6 +87,7 @@ export function CatalogPicker({
   value,
   items,
   disabled = false,
+  variant = 'default',
   onSelect,
 }: CatalogPickerProps) {
   const [visible, setVisible] = useState(false);
@@ -81,6 +100,7 @@ export function CatalogPicker({
         placeholder={placeholder}
         value={selectedLabel}
         disabled={disabled}
+        variant={variant}
         onPress={() => setVisible(true)}
       />
 

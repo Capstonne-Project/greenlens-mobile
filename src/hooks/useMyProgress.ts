@@ -1,38 +1,38 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
-import type { AssignmentItem, AssignmentStatus, MyAssignmentsResponse } from '@/types/cleanup-assignment.types';
+import type { AssignmentStatus, MyProgressResponse, ProgressHistoryItem } from '@/types/cleanup-assignment.types';
 
-interface UseMyAssignmentsParams {
+interface UseMyProgressParams {
   assignmentStatus?: AssignmentStatus;
   pageSize?: number;
   enabled?: boolean;
 }
 
-interface UseMyAssignmentsResult {
-  data: MyAssignmentsResponse | null;
-  items: AssignmentItem[];
+interface UseMyProgressResult {
+  items: ProgressHistoryItem[];
+  totalCount: number;
   isLoading: boolean;
   errorMessage: string | null;
   refetch: () => Promise<void>;
 }
 
-export function useMyAssignments({
+export function useMyProgress({
   assignmentStatus,
   pageSize = 20,
   enabled = true,
-}: UseMyAssignmentsParams = {}): UseMyAssignmentsResult {
-  const [data, setData] = useState<MyAssignmentsResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+}: UseMyProgressParams = {}): UseMyProgressResult {
+  const [data, setData]             = useState<MyProgressResponse | null>(null);
+  const [isLoading, setIsLoading]   = useState(false);
+  const [errorMessage, setErrorMsg] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
     setIsLoading(true);
-    setErrorMessage(null);
+    setErrorMsg(null);
     try {
-      const res = await cleanupAssignmentService.getMyTasks({ assignmentStatus, pageSize });
+      const res = await cleanupAssignmentService.getMyProgress({ assignmentStatus, pageSize });
       setData(res.data.data);
     } catch {
-      setErrorMessage('Không tải được danh sách nhiệm vụ. Vui lòng thử lại.');
+      setErrorMsg('Không tải được lịch sử. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }
@@ -45,8 +45,8 @@ export function useMyAssignments({
 
   return useMemo(
     () => ({
-      data,
       items: data?.items ?? [],
+      totalCount: data?.totalCount ?? 0,
       isLoading,
       errorMessage,
       refetch,

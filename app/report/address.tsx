@@ -7,11 +7,16 @@ import { Text } from '@/components/ui/text';
 import { useCatalogAddress } from '@/hooks/useCatalogAddress';
 import { useUserMapLocation } from '@/hooks/useUserMapLocation';
 import { useCreateReportDraftStore } from '@/stores/createReportDraft.store';
+import {
+  fetchProvinceBoundaryGroups,
+  fetchWardBoundaryGroups,
+} from '@/utils/ward-boundary';
+import { validatePinAgainstBoundary } from '@/utils/validate-pin-boundary';
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, ScrollView, View } from 'react-native';
 import type { LatLng } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ReportAddressScreen() {
   const insets = useSafeAreaInsets();
@@ -25,6 +30,8 @@ export default function ReportAddressScreen() {
     errorMessage,
     provincePolygons,
     wardPolygons,
+    provincePolygonGroups,
+    wardPolygonGroups,
     loadProvinceBoundary,
     loadWardBoundary,
     refetchWards,
@@ -65,11 +72,39 @@ export default function ReportAddressScreen() {
     [provinceCode, provinces],
   );
 
+  const assertPinInsideBoundary = useCallback(
+    async (point: LatLng) => {
+      let provinceGroups = provincePolygonGroups;
+      let wardGroups = wardPolygonGroups;
+
+      if (wardCode && wardGroups.length === 0) {
+        const ward = wards.find((item) => item.code === wardCode);
+        if (ward?.boundaryUrl) {
+          wardGroups = await fetchWardBoundaryGroups(ward.boundaryUrl, wardCode);
+        }
+      } else if (provinceCode && provinceGroups.length === 0) {
+        const province = provinces.find((item) => item.code === provinceCode);
+        if (province?.boundaryUrl) {
+          provinceGroups = await fetchProvinceBoundaryGroups(province.boundaryUrl);
+        }
+      }
+
+      return validatePinAgainstBoundary({
+        point,
+        provinceCode,
+        wardCode,
+        provincePolygonGroups: provinceGroups,
+        wardPolygonGroups: wardGroups,
+      });
+    },
+    [provinceCode, provincePolygonGroups, provinces, wardCode, wardPolygonGroups, wards],
+  );
+
   const handleProvinceChange = useCallback(
     async (code: string) => {
       setProvinceCode(code);
       setWardCode(null);
-      void loadWardBoundary(null);
+      void loadWardBoundary(null, null);
       const province = provinces.find((item) => item.code === code);
       await loadProvinceBoundary(province?.boundaryUrl ?? null);
       await refetchWards(code);
@@ -81,15 +116,33 @@ export default function ReportAddressScreen() {
     async (code: string) => {
       setWardCode(code);
       const ward = wards.find((item) => item.code === code);
-      await loadWardBoundary(ward?.boundaryUrl ?? null);
+      await loadWardBoundary(ward?.boundaryUrl ?? null, code);
     },
     [loadWardBoundary, wards],
   );
 
+  const handleMarkerChange = useCallback(
+    async (coords: LatLng) => {
+      const validation = await assertPinInsideBoundary(coords);
+      if (!validation.valid) {
+        Alert.alert('Vị trí không hợp lệ', validation.message ?? 'Vị trí pin không hợp lệ.');
+        return;
+      }
+      setMarker(coords);
+    },
+    [assertPinInsideBoundary],
+  );
+
   const canContinue = Boolean(provinceCode && wardCode && addressLine.trim());
 
-  const handleContinue = useCallback(() => {
+  const handleContinue = useCallback(async () => {
     if (!canContinue || !provinceCode || !wardCode) {
+      return;
+    }
+
+    const validation = await assertPinInsideBoundary(marker);
+    if (!validation.valid) {
+      Alert.alert('Vị trí không hợp lệ', validation.message ?? 'Vị trí pin không hợp lệ.');
       return;
     }
 
@@ -102,7 +155,15 @@ export default function ReportAddressScreen() {
       capturedAt: new Date().toISOString(),
     });
     router.push('/report/form' as Href);
-  }, [addressLine, canContinue, marker.latitude, marker.longitude, provinceCode, setLocation, wardCode]);
+  }, [
+    addressLine,
+    assertPinInsideBoundary,
+    canContinue,
+    marker,
+    provinceCode,
+    setLocation,
+    wardCode,
+  ]);
 
   return (
     <SafeScreen className="bg-surface" edges={['top']}>
@@ -147,7 +208,7 @@ export default function ReportAddressScreen() {
             onProvinceChange={(code) => void handleProvinceChange(code)}
             onWardChange={(code) => void handleWardChange(code)}
             onAddressChange={setAddressLine}
-            onMarkerChange={setMarker}
+            onMarkerChange={(coords) => void handleMarkerChange(coords)}
           />
         )}
 
@@ -168,7 +229,7 @@ export default function ReportAddressScreen() {
         <Button
           className="h-12 rounded-2xl"
           disabled={!canContinue}
-          onPress={handleContinue}
+          onPress={() => void handleContinue()}
         >
           <Text className="font-semibold text-primary-foreground">Tiếp tục</Text>
         </Button>
