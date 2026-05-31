@@ -44,6 +44,19 @@ export const cleanupAssignmentService = {
     );
   },
 
+  /** Upload ảnh after qua PUT /progress — teamId lấy từ JWT, không cần my-profile */
+  uploadAfterImagesForResolve: async (
+    reportId: string,
+    images: NonNullable<UpdateProgressDto['images']>,
+    progressPercent: number,
+  ): Promise<string[]> => {
+    const response = await cleanupAssignmentService.updateProgress(reportId, {
+      progressPercent,
+      images,
+    });
+    return response.data.data.uploadedImageUrls ?? [];
+  },
+
   resolve: (reportId: string, dto: ResolveAssignmentDto) =>
     api.put<void>(`/reports/${reportId}/resolve`, dto),
 

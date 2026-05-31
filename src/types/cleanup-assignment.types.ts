@@ -151,7 +151,6 @@ export interface UpdateProgressResult {
 }
 
 export interface ResolveAssignmentDto {
-  teamId: string;
   afterImageUrls: string[];
 }
 

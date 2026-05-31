@@ -23,7 +23,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Toast, useToast } from '@/components/common/Toast';
 import { Text } from '@/components/ui/text';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
-import { useAssignmentProgressImagesStore } from '@/stores/assignmentProgressImages.store';
 import { colors } from '@/theme/colors';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -245,21 +244,13 @@ export default function ProgressUpdateScreen() {
     setSubmit(true);
     setApiError(null);
     try {
-      const response = await cleanupAssignmentService.updateProgress(reportId, {
+      await cleanupAssignmentService.updateProgress(reportId, {
         progressPercent: percent,
         progressNote: note.trim() || undefined,
         images,
       });
-      const uploadedImageUrls = response.data.data.uploadedImageUrls ?? [];
-      if (uploadedImageUrls.length > 0) {
-        useAssignmentProgressImagesStore.getState().appendUrls(reportId, uploadedImageUrls);
-      }
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      showToast(
-        uploadedImageUrls.length > 0
-          ? `Đã cập nhật tiến độ (${uploadedImageUrls.length} ảnh)!`
-          : 'Đã cập nhật tiến độ thành công!',
-      );
+      showToast('Đã cập nhật tiến độ thành công!');
       setTimeout(() => router.back(), 1400);
     } catch {
       setApiError('Không thể gửi cập nhật. Vui lòng thử lại.');
@@ -311,6 +302,13 @@ export default function ProgressUpdateScreen() {
             </Text>
           </View>
         )}
+
+        <View className="mx-4 mb-4 flex-row items-start gap-2 rounded-2xl px-4 py-3" style={{ backgroundColor: '#F0FDF4' }}>
+          <Ionicons name="information-circle-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
+          <Text className="flex-1 text-sm leading-5 text-textSecondary">
+            Cập nhật 100% không tự hoàn thành nhiệm vụ. Khi dọn xong, dùng nút &quot;Hoàn thành&quot; ở màn chi tiết để tải ảnh after.
+          </Text>
+        </View>
 
         <View className="px-4">
           {/* ── Percent section ── */}

@@ -20,8 +20,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/text';
 import { Toast, useToast } from '@/components/common/Toast';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
-import { useAuthStore } from '@/stores/auth.store';
-import { useAssignmentProgressImagesStore, EMPTY_PROGRESS_IMAGE_URLS } from '@/stores/assignmentProgressImages.store';
 import { colors } from '@/theme/colors';
 import type { TaskDetail } from '@/types/cleanup-assignment.types';
 
@@ -160,125 +158,16 @@ function AnimatedButton({ onPress, disabled, style, className, children }: Anima
   );
 }
 
-// ─── Resolve Confirm Modal ────────────────────────────────────────────────────
-
-interface ResolveModalProps {
-  reportId: string;
-  teamId: string;
-  afterImageUrls: string[];
-  onSuccess: () => void;
-  onClose: () => void;
-}
-
-function ResolveModal({ reportId, teamId, afterImageUrls, onSuccess, onClose }: ResolveModalProps) {
-  const [submitting, setSubmit] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-
-  const canResolve = afterImageUrls.length >= 2 && Boolean(teamId);
-
-  const handleResolve = useCallback(async () => {
-    if (!canResolve) return;
-    setSubmit(true);
-    setError(null);
-    try {
-      await cleanupAssignmentService.resolve(reportId, { teamId, afterImageUrls });
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onSuccess();
-    } catch {
-      setError(
-        !teamId
-          ? 'Thiếu thông tin đội. Vui lòng đăng nhập lại.'
-          : 'Không thể hoàn thành. Cần ít nhất 2 ảnh minh chứng từ cập nhật tiến độ.',
-      );
-      setSubmit(false);
-    }
-  }, [canResolve, reportId, teamId, afterImageUrls, onSuccess]);
-
-  return (
-    <View
-      className="absolute inset-0 items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-    >
-      <View className="mx-6 w-full rounded-2xl bg-white p-6">
-        <View
-          className="mb-3 h-14 w-14 items-center justify-center self-center rounded-full"
-          style={{ backgroundColor: '#D1FAE5' }}
-        >
-          <Ionicons name="checkmark-done" size={28} color={colors.primary} />
-        </View>
-        <Text className="mb-2 text-center text-lg font-bold text-textPrimary">Hoàn thành nhiệm vụ?</Text>
-        <Text className="mb-1 text-center text-sm text-textSecondary">
-          Xác nhận đã xử lý xong điểm ô nhiễm này.
-        </Text>
-
-        {!teamId && (
-          <View className="mb-3 mt-2 flex-row items-start gap-2 rounded-xl bg-red-50 px-3 py-2">
-            <Ionicons name="alert-circle-outline" size={16} color={colors.error} style={{ marginTop: 1 }} />
-            <Text className="flex-1 text-xs text-error">
-              Không tìm thấy teamId. Hãy đăng xuất và đăng nhập lại.
-            </Text>
-          </View>
-        )}
-
-        {!canResolve && teamId && (
-          <View className="mb-3 mt-2 flex-row items-start gap-2 rounded-xl bg-amber-50 px-3 py-2">
-            <Ionicons name="warning-outline" size={16} color="#92400E" style={{ marginTop: 1 }} />
-            <Text className="flex-1 text-xs" style={{ color: '#92400E' }}>
-              Cần ít nhất 2 ảnh minh chứng. Hãy cập nhật tiến độ với ảnh trước.
-            </Text>
-          </View>
-        )}
-
-        {canResolve && (
-          <Text className="mb-4 text-center text-xs text-textSecondary">
-            {afterImageUrls.length} ảnh after sẽ được gửi.
-          </Text>
-        )}
-
-        {error && (
-          <Text className="mb-3 text-center text-sm" style={{ color: colors.error }}>{error}</Text>
-        )}
-
-        <View className="flex-row gap-3">
-          <Pressable
-            onPress={onClose}
-            className="flex-1 h-11 items-center justify-center rounded-xl border border-border"
-          >
-            <Text className="font-semibold text-textSecondary">Hủy</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleResolve}
-            disabled={!canResolve || submitting}
-            className="flex-1 h-11 items-center justify-center rounded-xl"
-            style={{ backgroundColor: canResolve && !submitting ? colors.primary : colors.border }}
-          >
-            {submitting
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Text className="font-bold text-white">Xác nhận</Text>
-            }
-          </Pressable>
-        </View>
-      </View>
-    </View>
-  );
-}
-
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function AssignmentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets  = useSafeAreaInsets();
-  const teamId  = useAuthStore((s) => s.user?.teamId ?? '');
-  const afterImageUrls = useAssignmentProgressImagesStore((s) =>
-    id && s.byReportId[id] ? s.byReportId[id] : EMPTY_PROGRESS_IMAGE_URLS,
-  );
-  const clearProgressImages = useAssignmentProgressImagesStore((s) => s.clearReport);
 
   const [task, setTask]           = useState<TaskDetail | null>(null);
   const [isLoading, setLoading]   = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
-  const [showResolve, setShowResolve] = useState(false);
   const { toastState, show: showToast, hide: hideToast } = useToast();
 
   const loadDetail = useCallback(async () => {
@@ -338,12 +227,17 @@ export default function AssignmentDetailScreen() {
     } as never);
   }, [task]);
 
-  const handleResolveSuccess = useCallback(() => {
-    if (id) clearProgressImages(id);
-    setShowResolve(false);
-    showToast('Hoàn thành nhiệm vụ!');
-    setTimeout(() => router.back(), 1400);
-  }, [clearProgressImages, id, showToast]);
+  const handleOpenComplete = useCallback(() => {
+    if (!task) return;
+    router.push({
+      pathname: '/assignment/complete',
+      params: {
+        reportId: task.reportId,
+        reportCode: task.reportCode,
+        currentPercent: String(task.progressPercent),
+      },
+    } as never);
+  }, [task]);
 
   const severity     = SEVERITY_CONFIG[task?.severity ?? 'Medium'] ?? SEVERITY_CONFIG.Medium;
   const assignStatus = task
@@ -481,9 +375,11 @@ export default function AssignmentDetailScreen() {
                   {task.progressNote ? (
                     <Text className="mt-1 text-xs text-textSecondary">{task.progressNote}</Text>
                   ) : null}
-                  <Text className="mt-2 text-xs text-textSecondary">
-                    Ảnh minh chứng đã tải: {afterImageUrls.length}/2 (cần ≥ 2 để hoàn thành)
-                  </Text>
+                  {task.progressUpdatedAt ? (
+                    <Text className="mt-1 text-xs text-textSecondary">
+                      Cập nhật lúc {formatDateTime(task.progressUpdatedAt)}
+                    </Text>
+                  ) : null}
                 </View>
               )}
 
@@ -589,7 +485,7 @@ export default function AssignmentDetailScreen() {
               )}
               {task.canResolve && (
                 <AnimatedButton
-                  onPress={() => setShowResolve(true)}
+                  onPress={handleOpenComplete}
                   className="h-12 items-center justify-center rounded-xl"
                   style={{ backgroundColor: colors.primary }}
                 >
@@ -612,17 +508,6 @@ export default function AssignmentDetailScreen() {
             </View>
           ) : null}
         </View>
-      )}
-
-      {/* Resolve confirm overlay */}
-      {showResolve && task && (
-        <ResolveModal
-          reportId={task.reportId}
-          teamId={teamId}
-          afterImageUrls={afterImageUrls}
-          onSuccess={handleResolveSuccess}
-          onClose={() => setShowResolve(false)}
-        />
       )}
 
       <Toast
