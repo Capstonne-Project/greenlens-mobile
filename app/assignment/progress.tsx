@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Toast, useToast } from '@/components/common/Toast';
 import { Text } from '@/components/ui/text';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
+import { useAssignmentProgressImagesStore } from '@/stores/assignmentProgressImages.store';
 import { colors } from '@/theme/colors';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -244,14 +245,21 @@ export default function ProgressUpdateScreen() {
     setSubmit(true);
     setApiError(null);
     try {
-      await cleanupAssignmentService.updateProgress(reportId, {
+      const response = await cleanupAssignmentService.updateProgress(reportId, {
         progressPercent: percent,
         progressNote: note.trim() || undefined,
         images,
       });
+      const uploadedImageUrls = response.data.data.uploadedImageUrls ?? [];
+      if (uploadedImageUrls.length > 0) {
+        useAssignmentProgressImagesStore.getState().appendUrls(reportId, uploadedImageUrls);
+      }
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      showToast('Đã cập nhật tiến độ thành công!');
-      // Đợi toast hiện 1.2s rồi back
+      showToast(
+        uploadedImageUrls.length > 0
+          ? `Đã cập nhật tiến độ (${uploadedImageUrls.length} ảnh)!`
+          : 'Đã cập nhật tiến độ thành công!',
+      );
       setTimeout(() => router.back(), 1400);
     } catch {
       setApiError('Không thể gửi cập nhật. Vui lòng thử lại.');

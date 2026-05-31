@@ -20,6 +20,8 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
   const categoryId = useCreateReportDraftStore((state) => state.categoryId);
   const severity = useCreateReportDraftStore((state) => state.severity);
   const description = useCreateReportDraftStore((state) => state.description);
+  const wasteTagIds = useCreateReportDraftStore((state) => state.wasteTagIds);
+  const tempImageId = useCreateReportDraftStore((state) => state.tempImageId);
   const isAnonymous = useCreateReportDraftStore((state) => state.isAnonymous);
   const updateImage = useCreateReportDraftStore((state) => state.updateImage);
   const setSubmissionResult = useCreateReportDraftStore((state) => state.setSubmissionResult);
@@ -99,6 +101,8 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
         mimeType: image.mimeType as string,
         sizeBytes: image.sizeBytes as number,
       })),
+      wasteTagIds: wasteTagIds.length ? wasteTagIds : [],
+      ...(tempImageId ? { tempImageId } : {}),
     };
 
     setIsSubmitting(true);
@@ -119,6 +123,8 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
     description,
     isAnonymous,
     setSubmissionResult,
+    tempImageId,
+    wasteTagIds,
   ]);
 
   return {

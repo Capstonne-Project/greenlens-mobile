@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Pressable,
@@ -20,6 +21,7 @@ import { Text } from '@/components/ui/text';
 import { Toast, useToast } from '@/components/common/Toast';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { useAuthStore } from '@/stores/auth.store';
+import { useAssignmentProgressImagesStore, EMPTY_PROGRESS_IMAGE_URLS } from '@/stores/assignmentProgressImages.store';
 import { colors } from '@/theme/colors';
 import type { TaskDetail } from '@/types/cleanup-assignment.types';
 
@@ -172,7 +174,7 @@ function ResolveModal({ reportId, teamId, afterImageUrls, onSuccess, onClose }: 
   const [submitting, setSubmit] = useState(false);
   const [error, setError]       = useState<string | null>(null);
 
-  const canResolve = afterImageUrls.length >= 2;
+  const canResolve = afterImageUrls.length >= 2 && Boolean(teamId);
 
   const handleResolve = useCallback(async () => {
     if (!canResolve) return;
@@ -183,7 +185,11 @@ function ResolveModal({ reportId, teamId, afterImageUrls, onSuccess, onClose }: 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onSuccess();
     } catch {
-      setError('Không thể hoàn thành. Vui lòng thử lại.');
+      setError(
+        !teamId
+          ? 'Thiếu thông tin đội. Vui lòng đăng nhập lại.'
+          : 'Không thể hoàn thành. Cần ít nhất 2 ảnh minh chứng từ cập nhật tiến độ.',
+      );
       setSubmit(false);
     }
   }, [canResolve, reportId, teamId, afterImageUrls, onSuccess]);
@@ -205,7 +211,16 @@ function ResolveModal({ reportId, teamId, afterImageUrls, onSuccess, onClose }: 
           Xác nhận đã xử lý xong điểm ô nhiễm này.
         </Text>
 
-        {!canResolve && (
+        {!teamId && (
+          <View className="mb-3 mt-2 flex-row items-start gap-2 rounded-xl bg-red-50 px-3 py-2">
+            <Ionicons name="alert-circle-outline" size={16} color={colors.error} style={{ marginTop: 1 }} />
+            <Text className="flex-1 text-xs text-error">
+              Không tìm thấy teamId. Hãy đăng xuất và đăng nhập lại.
+            </Text>
+          </View>
+        )}
+
+        {!canResolve && teamId && (
           <View className="mb-3 mt-2 flex-row items-start gap-2 rounded-xl bg-amber-50 px-3 py-2">
             <Ionicons name="warning-outline" size={16} color="#92400E" style={{ marginTop: 1 }} />
             <Text className="flex-1 text-xs" style={{ color: '#92400E' }}>
@@ -254,6 +269,10 @@ export default function AssignmentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets  = useSafeAreaInsets();
   const teamId  = useAuthStore((s) => s.user?.teamId ?? '');
+  const afterImageUrls = useAssignmentProgressImagesStore((s) =>
+    id && s.byReportId[id] ? s.byReportId[id] : EMPTY_PROGRESS_IMAGE_URLS,
+  );
+  const clearProgressImages = useAssignmentProgressImagesStore((s) => s.clearReport);
 
   const [task, setTask]           = useState<TaskDetail | null>(null);
   const [isLoading, setLoading]   = useState(true);
@@ -261,9 +280,6 @@ export default function AssignmentDetailScreen() {
   const [accepting, setAccepting] = useState(false);
   const [showResolve, setShowResolve] = useState(false);
   const { toastState, show: showToast, hide: hideToast } = useToast();
-
-  // Accumulated after-image URLs from progress updates
-  const afterUrlsRef = useRef<string[]>([]);
 
   const loadDetail = useCallback(async () => {
     if (!id) return;
@@ -279,7 +295,11 @@ export default function AssignmentDetailScreen() {
     }
   }, [id]);
 
-  useEffect(() => { void loadDetail(); }, [loadDetail]);
+  useFocusEffect(
+    useCallback(() => {
+      void loadDetail();
+    }, [loadDetail]),
+  );
 
   const handleAccept = useCallback(async () => {
     if (!id || accepting) return;
@@ -319,10 +339,11 @@ export default function AssignmentDetailScreen() {
   }, [task]);
 
   const handleResolveSuccess = useCallback(() => {
+    if (id) clearProgressImages(id);
     setShowResolve(false);
     showToast('Hoàn thành nhiệm vụ!');
     setTimeout(() => router.back(), 1400);
-  }, [showToast]);
+  }, [clearProgressImages, id, showToast]);
 
   const severity     = SEVERITY_CONFIG[task?.severity ?? 'Medium'] ?? SEVERITY_CONFIG.Medium;
   const assignStatus = task
@@ -460,6 +481,9 @@ export default function AssignmentDetailScreen() {
                   {task.progressNote ? (
                     <Text className="mt-1 text-xs text-textSecondary">{task.progressNote}</Text>
                   ) : null}
+                  <Text className="mt-2 text-xs text-textSecondary">
+                    Ảnh minh chứng đã tải: {afterImageUrls.length}/2 (cần ≥ 2 để hoàn thành)
+                  </Text>
                 </View>
               )}
 
@@ -595,7 +619,7 @@ export default function AssignmentDetailScreen() {
         <ResolveModal
           reportId={task.reportId}
           teamId={teamId}
-          afterImageUrls={afterUrlsRef.current}
+          afterImageUrls={afterImageUrls}
           onSuccess={handleResolveSuccess}
           onClose={() => setShowResolve(false)}
         />

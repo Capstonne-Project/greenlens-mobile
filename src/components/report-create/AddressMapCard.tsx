@@ -1,10 +1,12 @@
-import { useEffect, useRef } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
-import MapView, { Marker, Polygon, type LatLng, type Region } from 'react-native-maps';
-import { Input } from '@/components/ui/input';
 import { CatalogPicker } from '@/components/report-create/CatalogPicker';
+import { Input } from '@/components/ui/input';
+import { Text } from '@/components/ui/text';
+import { useReportLocationMapCamera } from '@/hooks/useReportLocationMapCamera';
 import { colors } from '@/theme/colors';
 import type { CatalogProvince, CatalogWard } from '@/types/catalog.types';
+import { useRef } from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import MapView, { Marker, Polygon, type LatLng, type Region } from 'react-native-maps';
 
 interface AddressMapCardProps {
   provinces: CatalogProvince[];
@@ -48,38 +50,25 @@ export function AddressMapCard({
 }: AddressMapCardProps) {
   const mapRef = useRef<MapView | null>(null);
 
-  useEffect(() => {
-    mapRef.current?.animateToRegion(
-      {
-        latitude: marker.latitude,
-        longitude: marker.longitude,
-        latitudeDelta: 0.03,
-        longitudeDelta: 0.03,
-      },
-      350,
-    );
-  }, [marker.latitude, marker.longitude]);
-
-  useEffect(() => {
-    const points = [...provincePolygons, ...wardPolygons].flat();
-    if (!points.length) {
-      return;
-    }
-
-    mapRef.current?.fitToCoordinates(points, {
-      edgePadding: { top: 48, right: 48, bottom: 48, left: 48 },
-      animated: true,
-    });
-  }, [provincePolygons, wardPolygons]);
+  useReportLocationMapCamera({
+    enabled: true,
+    mapRef,
+    marker,
+    provinceCode,
+    wardCode,
+    provincePolygons,
+    wardPolygons,
+  });
 
   return (
-    <View className="gap-4">
+    <View className="gap-5">
       {isLoadingProvinces ? (
         <View className="items-center py-6">
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : (
         <CatalogPicker
+          variant="section"
           label="Tỉnh / Thành phố"
           placeholder="Chọn tỉnh thành"
           value={provinceCode}
@@ -92,8 +81,9 @@ export function AddressMapCard({
       )}
 
       <CatalogPicker
+        variant="section"
         label="Phường / Xã"
-        placeholder={provinceCode ? 'Chọn phường xã' : 'Chọn tỉnh trước'}
+        placeholder={provinceCode ? (isLoadingWards ? 'Đang tải...' : 'Chọn phường xã') : 'Chọn tỉnh trước'}
         value={wardCode}
         items={wards.map((item) => ({
           code: item.code,
@@ -104,17 +94,19 @@ export function AddressMapCard({
         onSelect={onWardChange}
       />
 
-      <View className="gap-2">
-        <Text className="text-sm font-semibold text-textPrimary">Số nhà, đường</Text>
+      <View>
+        <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">
+          Số nhà, đường
+        </Text>
         <Input
           value={addressLine}
           onChangeText={onAddressChange}
           placeholder="Ví dụ: 123 Nguyễn Huệ"
-          className="rounded-2xl border-border bg-surface px-4"
+          className="mt-2 rounded-2xl border-0 bg-white px-4"
         />
       </View>
 
-      <View className="overflow-hidden rounded-3xl border border-border">
+      <View className="overflow-hidden rounded-2xl border border-border">
         <MapView
           ref={mapRef}
           style={{ width: '100%', height: 280 }}

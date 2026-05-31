@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { catalogService } from '@/services/catalog.service';
 import type { CatalogProvince, CatalogWard } from '@/types/catalog.types';
-import { extractPolygonRings } from '@/utils/geojson-boundaries';
+import {
+  fetchProvinceBoundaryGroups,
+  fetchProvinceBoundaryPolygons,
+  fetchWardBoundaryGroups,
+  fetchWardBoundaryPolygons,
+} from '@/utils/ward-boundary';
 import type { LatLng } from 'react-native-maps';
 
 interface UseCatalogAddressResult {
@@ -12,29 +17,12 @@ interface UseCatalogAddressResult {
   errorMessage: string | null;
   provincePolygons: LatLng[][];
   wardPolygons: LatLng[][];
+  provincePolygonGroups: LatLng[][][];
+  wardPolygonGroups: LatLng[][][];
   loadProvinceBoundary: (boundaryUrl: string | null) => Promise<void>;
-  loadWardBoundary: (boundaryUrl: string | null) => Promise<void>;
+  loadWardBoundary: (boundaryUrl: string | null, wardCode: string | null) => Promise<void>;
   refetchProvinces: () => Promise<void>;
   refetchWards: (provinceCode: string) => Promise<void>;
-}
-
-const geoJsonCache = new Map<string, LatLng[][]>();
-
-async function fetchBoundaryPolygons(boundaryUrl: string): Promise<LatLng[][]> {
-  const cached = geoJsonCache.get(boundaryUrl);
-  if (cached) {
-    return cached;
-  }
-
-  const response = await fetch(boundaryUrl);
-  if (!response.ok) {
-    throw new Error('BOUNDARY_FETCH_FAILED');
-  }
-
-  const geoJson = (await response.json()) as Parameters<typeof extractPolygonRings>[0];
-  const polygons = extractPolygonRings(geoJson);
-  geoJsonCache.set(boundaryUrl, polygons);
-  return polygons;
 }
 
 export function useCatalogAddress(): UseCatalogAddressResult {
@@ -45,6 +33,8 @@ export function useCatalogAddress(): UseCatalogAddressResult {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [provincePolygons, setProvincePolygons] = useState<LatLng[][]>([]);
   const [wardPolygons, setWardPolygons] = useState<LatLng[][]>([]);
+  const [provincePolygonGroups, setProvincePolygonGroups] = useState<LatLng[][][]>([]);
+  const [wardPolygonGroups, setWardPolygonGroups] = useState<LatLng[][][]>([]);
 
   const refetchProvinces = useCallback(async () => {
     setIsLoadingProvinces(true);
@@ -62,12 +52,12 @@ export function useCatalogAddress(): UseCatalogAddressResult {
   const refetchWards = useCallback(async (provinceCode: string) => {
     setIsLoadingWards(true);
     setErrorMessage(null);
-    setWards([]);
     try {
       const response = await catalogService.getWardsByProvince(provinceCode);
       setWards(response.data.data.items);
     } catch {
       setErrorMessage('Không tải được danh sách phường. Vui lòng thử lại.');
+      setWards([]);
     } finally {
       setIsLoadingWards(false);
     }
@@ -76,28 +66,40 @@ export function useCatalogAddress(): UseCatalogAddressResult {
   const loadProvinceBoundary = useCallback(async (boundaryUrl: string | null) => {
     if (!boundaryUrl) {
       setProvincePolygons([]);
+      setProvincePolygonGroups([]);
       return;
     }
 
     try {
-      const polygons = await fetchBoundaryPolygons(boundaryUrl);
+      const [polygons, groups] = await Promise.all([
+        fetchProvinceBoundaryPolygons(boundaryUrl),
+        fetchProvinceBoundaryGroups(boundaryUrl),
+      ]);
       setProvincePolygons(polygons);
+      setProvincePolygonGroups(groups);
     } catch {
       setProvincePolygons([]);
+      setProvincePolygonGroups([]);
     }
   }, []);
 
-  const loadWardBoundary = useCallback(async (boundaryUrl: string | null) => {
-    if (!boundaryUrl) {
+  const loadWardBoundary = useCallback(async (boundaryUrl: string | null, wardCode: string | null) => {
+    if (!boundaryUrl || !wardCode) {
       setWardPolygons([]);
+      setWardPolygonGroups([]);
       return;
     }
 
     try {
-      const polygons = await fetchBoundaryPolygons(boundaryUrl);
+      const [polygons, groups] = await Promise.all([
+        fetchWardBoundaryPolygons(boundaryUrl, wardCode),
+        fetchWardBoundaryGroups(boundaryUrl, wardCode),
+      ]);
       setWardPolygons(polygons);
+      setWardPolygonGroups(groups);
     } catch {
       setWardPolygons([]);
+      setWardPolygonGroups([]);
     }
   }, []);
 
@@ -114,6 +116,8 @@ export function useCatalogAddress(): UseCatalogAddressResult {
       errorMessage,
       provincePolygons,
       wardPolygons,
+      provincePolygonGroups,
+      wardPolygonGroups,
       loadProvinceBoundary,
       loadWardBoundary,
       refetchProvinces,
@@ -127,6 +131,8 @@ export function useCatalogAddress(): UseCatalogAddressResult {
       errorMessage,
       provincePolygons,
       wardPolygons,
+      provincePolygonGroups,
+      wardPolygonGroups,
       loadProvinceBoundary,
       loadWardBoundary,
       refetchProvinces,
