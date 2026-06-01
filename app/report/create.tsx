@@ -12,6 +12,7 @@ import { WizardHeader } from "@/components/report-create/wizard/WizardHeader";
 import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useCatalogAddress } from "@/hooks/useCatalogAddress";
+import { catalogService } from "@/services/catalog.service";
 import { useAnalyzeReportImage } from "@/hooks/useAnalyzeReportImage";
 import { usePollutionCategories } from "@/hooks/usePollutionCategories";
 import { useSubmitPollutionReport } from "@/hooks/useSubmitPollutionReport";
@@ -412,15 +413,23 @@ export default function ReportCreateWizardScreen() {
       point: LatLng,
       admin: { provinceCode: string | null; wardCode: string | null },
     ) => {
-      let provinceGroups = provincePolygonGroups;
-      let wardGroups = wardPolygonGroups;
+      let provinceGroups: LatLng[][][] = [];
+      let wardGroups: LatLng[][][] = [];
 
-      if (admin.wardCode && wardGroups.length === 0) {
-        const ward = wards.find((item) => item.code === admin.wardCode);
+      if (admin.wardCode) {
+        let ward = wards.find((item) => item.code === admin.wardCode);
+        if (!ward && admin.provinceCode) {
+          try {
+            const response = await catalogService.getWardsByProvince(admin.provinceCode);
+            ward = response.data.data.items.find((item) => item.code === admin.wardCode);
+          } catch {
+            ward = undefined;
+          }
+        }
         if (ward?.boundaryUrl) {
           wardGroups = await fetchWardBoundaryGroups(ward.boundaryUrl, admin.wardCode);
         }
-      } else if (admin.provinceCode && provinceGroups.length === 0) {
+      } else if (admin.provinceCode) {
         const province = provinces.find((item) => item.code === admin.provinceCode);
         if (province?.boundaryUrl) {
           provinceGroups = await fetchProvinceBoundaryGroups(province.boundaryUrl);
@@ -435,7 +444,7 @@ export default function ReportCreateWizardScreen() {
         wardPolygonGroups: wardGroups,
       });
     },
-    [provincePolygonGroups, provinces, wardPolygonGroups, wards],
+    [provinces, wards],
   );
 
   const showInvalidPinAlert = useCallback((message: string) => {
@@ -499,26 +508,12 @@ export default function ReportCreateWizardScreen() {
 
   const applyGpsLocation = useCallback(
     async (coords: { latitude: number; longitude: number }) => {
-      const current = useCreateReportDraftStore.getState().location;
-      const point = { latitude: coords.latitude, longitude: coords.longitude };
-      const preserveAdmin = Boolean(current?.wardCode);
-
-      if (current?.provinceCode || current?.wardCode) {
-        const validation = await assertPinInsideBoundary(point, {
-          provinceCode: current.provinceCode ?? null,
-          wardCode: current.wardCode ?? null,
-        });
-        if (!validation.valid) {
-          showInvalidPinAlert(validation.message ?? "Vị trí pin không hợp lệ.");
-          return;
-        }
-      }
-
       const base = {
         latitude: coords.latitude,
         longitude: coords.longitude,
         capturedAt: new Date().toISOString(),
       };
+      const current = useCreateReportDraftStore.getState().location;
 
       if (provinces.length === 0) {
         if (current) patchLocation(base);
@@ -529,37 +524,44 @@ export default function ReportCreateWizardScreen() {
       const enriched = await enrichLocationWithGoong(
         { ...(current ?? {}), ...base } as ReportLocationDraft,
         provinces,
-        { preserveAdminCodes: preserveAdmin },
+        { overwriteAddress: true, preserveAdminCodes: false },
       );
 
-      if (!preserveAdmin && !current?.provinceCode) {
-        const postValidation = await assertPinInsideBoundary(point, {
-          provinceCode: enriched.provinceCode ?? null,
-          wardCode: enriched.wardCode ?? null,
-        });
-        if (!postValidation.valid) {
-          showInvalidPinAlert(postValidation.message ?? "Vị trí pin không hợp lệ.");
-          return;
-        }
-      }
+      enrichedRef.current = `${enriched.latitude.toFixed(5)},${enriched.longitude.toFixed(5)}`;
 
       if (current) {
         patchLocation({
           latitude: enriched.latitude,
           longitude: enriched.longitude,
           address: enriched.address,
-          ...(preserveAdmin
-            ? {}
-            : {
-                provinceCode: enriched.provinceCode ?? current.provinceCode,
-                wardCode: enriched.wardCode ?? current.wardCode,
-              }),
+          provinceCode: enriched.provinceCode,
+          wardCode: enriched.wardCode,
         });
       } else {
         setLocation(enriched);
       }
+
+      if (enriched.provinceCode) {
+        const province = provinces.find((item) => item.code === enriched.provinceCode);
+        await loadProvinceBoundary(province?.boundaryUrl ?? null);
+        await refetchWards(enriched.provinceCode);
+        if (enriched.wardCode) {
+          const wardsResponse = await catalogService.getWardsByProvince(enriched.provinceCode);
+          const ward = wardsResponse.data.data.items.find((item) => item.code === enriched.wardCode);
+          await loadWardBoundary(ward?.boundaryUrl ?? null, enriched.wardCode);
+        } else {
+          void loadWardBoundary(null, null);
+        }
+      }
+
+      if (!enriched.provinceCode) {
+        Alert.alert(
+          "Chưa xác định được tỉnh/phường",
+          "Đã lấy tọa độ GPS. Vui lòng chọn tỉnh và phường/xã thủ công.",
+        );
+      }
     },
-    [assertPinInsideBoundary, patchLocation, provinces, setLocation, showInvalidPinAlert],
+    [loadProvinceBoundary, loadWardBoundary, patchLocation, provinces, refetchWards, setLocation],
   );
 
   const handleLocatePress = useCallback(async () => {
@@ -633,7 +635,18 @@ export default function ReportCreateWizardScreen() {
   }, [analyze, ensureLocationSeed, setImages, setSource, useAi]);
 
   const handleProvinceSelect = useCallback(
-    async (code: string) => {
+    async (code: string | null) => {
+      if (!code) {
+        enrichedRef.current = null;
+        void loadProvinceBoundary(null);
+        void loadWardBoundary(null, null);
+        const current = useCreateReportDraftStore.getState().location;
+        if (current) {
+          patchLocation({ provinceCode: undefined, wardCode: undefined, address: undefined });
+        }
+        return;
+      }
+
       const selected = provinces.find((item) => item.code === code);
 
       // Load boundary + wards song song, lấy polygon ngay từ kết quả
@@ -672,7 +685,13 @@ export default function ReportCreateWizardScreen() {
   );
 
   const handleWardSelect = useCallback(
-    async (code: string) => {
+    async (code: string | null) => {
+      if (!code) {
+        void loadWardBoundary(null, null);
+        patchLocation({ wardCode: undefined });
+        return;
+      }
+
       const selected = wards.find((item) => item.code === code);
       await loadWardBoundary(selected?.boundaryUrl ?? null, code);
       patchLocation({ wardCode: code });

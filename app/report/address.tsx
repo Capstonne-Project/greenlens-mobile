@@ -101,7 +101,15 @@ export default function ReportAddressScreen() {
   );
 
   const handleProvinceChange = useCallback(
-    async (code: string) => {
+    async (code: string | null) => {
+      if (!code) {
+        setProvinceCode(null);
+        setWardCode(null);
+        void loadWardBoundary(null, null);
+        await loadProvinceBoundary(null);
+        return;
+      }
+
       setProvinceCode(code);
       setWardCode(null);
       void loadWardBoundary(null, null);
@@ -113,7 +121,13 @@ export default function ReportAddressScreen() {
   );
 
   const handleWardChange = useCallback(
-    async (code: string) => {
+    async (code: string | null) => {
+      if (!code) {
+        setWardCode(null);
+        void loadWardBoundary(null, null);
+        return;
+      }
+
       setWardCode(code);
       const ward = wards.find((item) => item.code === code);
       await loadWardBoundary(ward?.boundaryUrl ?? null, code);

@@ -19,8 +19,8 @@ interface AddressMapCardProps {
   marker: LatLng;
   provincePolygons: LatLng[][];
   wardPolygons: LatLng[][];
-  onProvinceChange: (code: string) => void;
-  onWardChange: (code: string) => void;
+  onProvinceChange: (code: string | null) => void;
+  onWardChange: (code: string | null) => void;
   onAddressChange: (value: string) => void;
   onMarkerChange: (coords: LatLng) => void;
 }
@@ -98,12 +98,18 @@ export function AddressMapCard({
         <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">
           Số nhà, đường
         </Text>
-        <Input
-          value={addressLine}
-          onChangeText={onAddressChange}
-          placeholder="Ví dụ: 123 Nguyễn Huệ"
-          className="mt-2 rounded-2xl border-0 bg-white px-4"
-        />
+        <View className="mt-2 overflow-hidden rounded-2xl bg-white">
+          <Input
+            value={addressLine}
+            onChangeText={onAddressChange}
+            placeholder="Ví dụ: 123 Nguyễn Huệ"
+            multiline
+            numberOfLines={3}
+            scrollEnabled
+            textAlignVertical="top"
+            className="h-auto min-h-14 max-h-28 w-full items-start border-0 bg-transparent px-4 py-3 leading-5 shadow-none"
+          />
+        </View>
       </View>
 
       <View className="overflow-hidden rounded-2xl border border-border">

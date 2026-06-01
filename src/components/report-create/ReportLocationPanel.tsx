@@ -25,8 +25,8 @@ interface ReportLocationPanelProps {
   permissionDenied?: boolean;
   isLocating?: boolean;
   onAddressChange: (value: string) => void;
-  onProvinceSelect: (code: string) => void;
-  onWardSelect: (code: string) => void;
+  onProvinceSelect: (code: string | null) => void;
+  onWardSelect: (code: string | null) => void;
   onMapPress: (coordinate: LatLng) => void;
   onLocatePress: () => void;
   onPermissionPress: () => void;
@@ -91,12 +91,18 @@ export function ReportLocationPanel({
         <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">
           Số nhà, đường
         </Text>
-        <Input
-          value={address}
-          onChangeText={onAddressChange}
-          placeholder="Ví dụ: 123 Nguyễn Huệ"
-          className="mt-2 rounded-2xl border-0 bg-white px-4"
-        />
+        <View className="mt-2 overflow-hidden rounded-2xl bg-white">
+          <Input
+            value={address}
+            onChangeText={onAddressChange}
+            placeholder="Ví dụ: 123 Nguyễn Huệ"
+            multiline
+            numberOfLines={3}
+            scrollEnabled
+            textAlignVertical="top"
+            className="h-auto min-h-14 max-h-28 w-full items-start border-0 bg-transparent px-4 py-3 leading-5 shadow-none"
+          />
+        </View>
       </View>
 
       <View className="overflow-hidden rounded-2xl border border-border">
