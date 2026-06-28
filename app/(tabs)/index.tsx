@@ -30,6 +30,10 @@ import { useUserMapLocation } from '@/hooks/useUserMapLocation';
 
 import { useViewportMapReports } from '@/hooks/useViewportMapReports';
 
+import { MapPinPreviewSheet } from '@/components/map/MapPinPreviewSheet';
+
+import { useAuthStore } from '@/stores/auth.store';
+
 import { useRouter, type Href } from 'expo-router';
 
 import { useCallback, useRef, useState } from 'react';
@@ -49,6 +53,8 @@ export default function CitizenHomeScreen() {
   const insets = useSafeAreaInsets();
 
   const router = useRouter();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const [previewPin, setPreviewPin] = useState<CitizenMapPin | null>(null);
 
   const mapRef = useRef<MapView | null>(null);
 
@@ -82,9 +88,10 @@ export default function CitizenHomeScreen() {
 
 
 
-  const { pins: visiblePins, rawCount, isLoading, errorMessage, onRegionChangeComplete } =
-
-    useViewportMapReports(filter);
+  const { pins, summary, isLoading, isSummaryLoading, errorMessage, onRegionChangeComplete } =
+    useViewportMapReports(filter, {
+      onCategoryNotFound: () => setFilter('all'),
+    });
 
   const { categories } = usePollutionCategories();
 
@@ -95,28 +102,41 @@ export default function CitizenHomeScreen() {
 
 
   const onMapPress = useCallback(() => {
-
     setSelected(null);
-
+    setPreviewPin(null);
     setFollowUserLocation(false);
-
   }, []);
 
 
 
-  const onMarkerPress = useCallback((pin: CitizenMapPin) => {
+  const openReportDetail = useCallback(
+    (pin: CitizenMapPin) => {
+      if (!isAuthenticated) {
+        setSelected(pin);
+        setPreviewPin(pin);
+        return;
+      }
+      router.push({ pathname: '/report/[id]', params: { id: pin.id, source: 'map' } } as Href);
+    },
+    [isAuthenticated, router],
+  );
 
-    setSelected((prev) => (prev?.id === pin.id ? null : pin));
+  const onMarkerPress = useCallback(
+    (pin: CitizenMapPin) => {
+      setSelected(pin);
+      openReportDetail(pin);
+    },
+    [openReportDetail],
+  );
 
-  }, []);
 
 
-
-  const onOpenReportDetail = useCallback((pin: CitizenMapPin) => {
-
-    Alert.alert('Chi tiết', `Mở báo cáo ${pin.id} — nối route sau.`);
-
-  }, []);
+  const onOpenReportDetail = useCallback(
+    (pin: CitizenMapPin) => {
+      openReportDetail(pin);
+    },
+    [openReportDetail],
+  );
 
 
 
@@ -264,7 +284,7 @@ export default function CitizenHomeScreen() {
 
           const { latitude, longitude } = event.nativeEvent.coordinate;
 
-          const pin = visiblePins.find(
+          const pin = pins.find(
 
             (item) =>
 
@@ -290,7 +310,7 @@ export default function CitizenHomeScreen() {
 
       >
 
-        {visiblePins.map((pin) => (
+        {pins.map((pin) => (
 
           <CitizenMapPinMarker
 
@@ -393,14 +413,17 @@ export default function CitizenHomeScreen() {
 
 
       <AreaSummaryBottomPanel
-
         areaTitle="Khu vực đang xem"
-
-        reportCount={rawCount}
-
+        reportCount={summary?.reportCount ?? 0}
+        days={summary?.days ?? 30}
+        dailyCounts={summary?.dailyCounts}
+        periodStart={summary?.periodStart}
+        periodEnd={summary?.periodEnd}
+        isLoading={isSummaryLoading}
         onSeeAll={() => router.push('/(tabs)/reports' as Href)}
-
       />
+
+      <MapPinPreviewSheet pin={previewPin} onClose={() => setPreviewPin(null)} />
 
     </View>
 

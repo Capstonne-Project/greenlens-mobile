@@ -4,10 +4,15 @@ import { useCreateReportDraftStore } from '@/stores/createReportDraft.store';
 import type { SubmitPollutionReportPayload } from '@/types/pollution-report.types';
 import { buildReportFileName, guessMimeTypeFromUri } from '@/utils/report-image-file';
 
+interface UploadProgress {
+  done: number;
+  total: number;
+}
+
 interface UseSubmitPollutionReportResult {
   isUploading: boolean;
   isSubmitting: boolean;
-  uploadAllImages: () => Promise<boolean>;
+  uploadAllImages: (onProgress?: (progress: UploadProgress) => void) => Promise<boolean>;
   submitReport: () => Promise<boolean>;
 }
 
@@ -20,19 +25,27 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
   const categoryId = useCreateReportDraftStore((state) => state.categoryId);
   const severity = useCreateReportDraftStore((state) => state.severity);
   const description = useCreateReportDraftStore((state) => state.description);
+  const wasteTagIds = useCreateReportDraftStore((state) => state.wasteTagIds);
+  const tempImageId = useCreateReportDraftStore((state) => state.tempImageId);
   const isAnonymous = useCreateReportDraftStore((state) => state.isAnonymous);
   const updateImage = useCreateReportDraftStore((state) => state.updateImage);
   const setSubmissionResult = useCreateReportDraftStore((state) => state.setSubmissionResult);
 
-  const uploadAllImages = useCallback(async () => {
+  const uploadAllImages = useCallback(async (onProgress?: (progress: UploadProgress) => void) => {
     if (!images.length) {
       return false;
     }
+
+    const total = images.length;
+    let done = 0;
+    onProgress?.({ done, total });
 
     setIsUploading(true);
     try {
       for (const image of images) {
         if (image.uploadStatus === 'done' && image.url && image.mimeType && image.sizeBytes) {
+          done += 1;
+          onProgress?.({ done, total });
           continue;
         }
 
@@ -53,6 +66,8 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
             mimeType: uploaded.mimeType,
             sizeBytes: uploaded.sizeBytes,
           });
+          done += 1;
+          onProgress?.({ done, total });
         } catch {
           updateImage(image.localUri, { uploadStatus: 'error' });
           return false;
@@ -99,6 +114,8 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
         mimeType: image.mimeType as string,
         sizeBytes: image.sizeBytes as number,
       })),
+      wasteTagIds: wasteTagIds.length ? wasteTagIds : [],
+      ...(tempImageId ? { tempImageId } : {}),
     };
 
     setIsSubmitting(true);
@@ -119,6 +136,8 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
     description,
     isAnonymous,
     setSubmissionResult,
+    tempImageId,
+    wasteTagIds,
   ]);
 
   return {

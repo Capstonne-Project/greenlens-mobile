@@ -101,6 +101,8 @@ export interface SubmitPollutionReportPayload {
   wardCode?: string;
   isAnonymous: boolean;
   images: SubmitPollutionReportImage[];
+  wasteTagIds?: string[];
+  tempImageId?: string;
 }
 
 export interface PollutionReportCategory {

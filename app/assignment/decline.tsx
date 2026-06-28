@@ -12,6 +12,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Toast, useToast } from '@/components/common/Toast';
 import { Text } from '@/components/ui/text';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { useAuthStore } from '@/stores/auth.store';
@@ -134,7 +135,7 @@ export default function DeclineScreen() {
     assignedAt: string;
   }>();
   const insets = useSafeAreaInsets();
-  const teamId = useAuthStore((s) => s.user?.teamId);
+  const teamId = useAuthStore((s) => s.user?.teamId ?? '');
 
   // Compute initial seconds from deadline = assignedAt + 2h
   const initialSeconds = (() => {
@@ -153,9 +154,10 @@ export default function DeclineScreen() {
   const [note, setNote]             = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [apiError, setApiError]     = useState<string | null>(null);
+  const { toastState, show: showToast, hide: hideToast } = useToast();
 
   const isOther      = selectedReason === 'Lý do khác';
-  const noteValid    = !isOther || note.trim().length >= 10;
+  const noteValid    = !isOther || note.trim().length >= 20;
   const canSubmit    = !expired && !submitting && noteValid;
 
   const handleSubmit = useCallback(async () => {
@@ -166,15 +168,14 @@ export default function DeclineScreen() {
     try {
       await cleanupAssignmentService.decline(reportId, { teamId, reason });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      // pop decline screen + detail screen
-      router.back();
-      router.back();
+      showToast('Đã từ chối nhiệm vụ thành công.', 'warning');
+      setTimeout(() => { router.back(); router.back(); }, 1400);
     } catch {
       setApiError('Không thể gửi từ chối. Vui lòng thử lại.');
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setSubmitting(false);
     }
-  }, [reportId, teamId, canSubmit, isOther, note, selectedReason]);
+  }, [reportId, teamId, canSubmit, isOther, note, selectedReason, showToast]);
 
   const progressPct = Math.round((remaining / total) * 100);
 
@@ -283,9 +284,9 @@ export default function DeclineScreen() {
               paddingTop: 2,
             }}
           />
-          {isOther && note.trim().length > 0 && note.trim().length < 10 && (
+          {isOther && note.trim().length > 0 && note.trim().length < 20 && (
             <Text className="mt-1 text-xs" style={{ color: colors.error }}>
-              Tối thiểu 10 ký tự ({note.trim().length}/10)
+              Tối thiểu 20 ký tự ({note.trim().length}/20)
             </Text>
           )}
 
@@ -343,6 +344,13 @@ export default function DeclineScreen() {
           </Pressable>
         </View>
       </View>
+
+      <Toast
+        visible={toastState.visible}
+        type={toastState.type}
+        message={toastState.message}
+        onHide={hideToast}
+      />
     </View>
   );
 }

@@ -32,7 +32,10 @@ function matchByName<T extends { name: string }>(items: T[], targetName?: string
 export async function enrichLocationWithGoong(
   location: ReportLocationDraft,
   provinces: CatalogProvince[],
-  { overwriteAddress = true }: { overwriteAddress?: boolean } = {},
+  {
+    overwriteAddress = true,
+    preserveAdminCodes = false,
+  }: { overwriteAddress?: boolean; preserveAdminCodes?: boolean } = {},
 ): Promise<ReportLocationDraft> {
   const goong = await goongService.reverseGeocode(location.latitude, location.longitude);
   if (!goong) {
@@ -41,23 +44,23 @@ export async function enrichLocationWithGoong(
 
   let provinceCode = location.provinceCode;
   let wardCode = location.wardCode;
-  // Khi overwriteAddress=true (map tap): luôn dùng địa chỉ Goong trả về
-  // Khi overwriteAddress=false (seed lần đầu): chỉ điền nếu chưa có
   let address = overwriteAddress ? (goong.addressLine ?? location.address) : (location.address ?? goong.addressLine);
 
-  const matchedProvince = matchByName(provinces, goong.provinceName);
-  if (matchedProvince) {
-    provinceCode = matchedProvince.code;
+  if (!preserveAdminCodes) {
+    const matchedProvince = matchByName(provinces, goong.provinceName);
+    if (matchedProvince) {
+      provinceCode = matchedProvince.code;
 
-    try {
-      const wardsResponse = await catalogService.getWardsByProvince(matchedProvince.code);
-      const wards = wardsResponse.data.data.items as CatalogWard[];
-      const matchedWard = matchByName(wards, goong.communeName);
-      if (matchedWard) {
-        wardCode = matchedWard.code;
+      try {
+        const wardsResponse = await catalogService.getWardsByProvince(matchedProvince.code);
+        const wards = wardsResponse.data.data.items as CatalogWard[];
+        const matchedWard = matchByName(wards, goong.communeName);
+        if (matchedWard) {
+          wardCode = matchedWard.code;
+        }
+      } catch {
+        // Giữ province nếu không tải được danh sách phường.
       }
-    } catch {
-      // Giữ province nếu không tải được danh sách phường.
     }
   }
 

@@ -1,25 +1,35 @@
 import { SafeScreen } from "@/components/layout/SafeScreen";
 import { TapScale } from "@/components/layout/TapScale";
 import { AiAnalysisBanner } from "@/components/report-create/AiAnalysisBanner";
-import { CatalogPicker } from "@/components/report-create/CatalogPicker";
+import { ReportLocationPanel } from "@/components/report-create/ReportLocationPanel";
 import { ReportCapturePanel } from "@/components/report-create/ReportCapturePanel";
 import { ReportReviewSummary } from "@/components/report-create/ReportReviewSummary";
+import { SubmitProgressOverlay, type SubmitStep, type SubmitStepStatus } from "@/components/report-create/SubmitProgressOverlay";
 import { ReportGalleryShelf } from "@/components/report-create/ReportGalleryShelf";
 import { ReportTagField } from "@/components/report-create/ReportTagField";
+import { WasteTagPicker } from "@/components/report-create/WasteTagPicker";
 import { WizardFooter } from "@/components/report-create/wizard/WizardFooter";
 import { WizardHeader } from "@/components/report-create/wizard/WizardHeader";
-import { Input } from "@/components/ui/input";
 import { Text } from "@/components/ui/text";
 import { useCatalogAddress } from "@/hooks/useCatalogAddress";
+import { catalogService } from "@/services/catalog.service";
 import { useAnalyzeReportImage } from "@/hooks/useAnalyzeReportImage";
 import { usePollutionCategories } from "@/hooks/usePollutionCategories";
 import { useSubmitPollutionReport } from "@/hooks/useSubmitPollutionReport";
+import { useWasteTags } from "@/hooks/useWasteTags";
+import { useReportLocationMapCamera } from "@/hooks/useReportLocationMapCamera";
 import { useUserMapLocation } from "@/hooks/useUserMapLocation";
 import { useCreateReportDraftStore } from "@/stores/createReportDraft.store";
 import { colors } from "@/theme/colors";
-import type { PollutionSeverity } from "@/types/pollution-report.types";
+import type { PollutionSeverity, ReportLocationDraft } from "@/types/pollution-report.types";
+import { MAX_WASTE_TAG_SELECTION } from "@/types/waste-tag.types";
 import { resolveCaptureLocation } from "@/utils/capture-location";
 import { enrichLocationWithGoong } from "@/utils/goong-admin-match";
+import { validatePinAgainstBoundary } from "@/utils/validate-pin-boundary";
+import {
+  fetchProvinceBoundaryGroups,
+  fetchWardBoundaryGroups,
+} from "@/utils/ward-boundary";
 import { extractPolygonRings } from "@/utils/geojson-boundaries";
 import { resolvePollutionCategoryIcon } from "@/utils/pollution-category-icon";
 import { guessMimeTypeFromUri } from "@/utils/report-image-file";
@@ -29,11 +39,19 @@ import * as ImagePicker from "expo-image-picker";
 import { router, type Href } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Linking, Modal, ScrollView, Switch, TextInput, TouchableOpacity, View } from "react-native";
-import MapView, { Marker, Polygon, type LatLng, type Region } from "react-native-maps";
+import MapView, { type LatLng, type Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type WizardStep = 1 | 2 | 3 | 4 | 5;
 const TOTAL_STEPS = 5;
+
+type SubmitPhase = "idle" | "validate" | "upload" | "submit" | "done";
+
+const SUBMIT_PHASE_ORDER: SubmitPhase[] = ["validate", "upload", "submit"];
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const SEVERITY_META: Record<PollutionSeverity, { label: string; accent: string }> = {
   Low: { label: "Thấp", accent: colors.severityLow },
@@ -51,7 +69,7 @@ function toStepTitle(step: WizardStep): { title: string; subtitle: string } {
     case 3:
       return { title: "Vị trí", subtitle: "Xác nhận nơi ghi nhận sự cố" };
     case 4:
-      return { title: "Mô tả", subtitle: "Mô tả, tags và chế độ ẩn danh" };
+      return { title: "Mô tả", subtitle: "Mô tả, loại rác và chế độ ẩn danh" };
     case 5:
       return { title: "Xem lại", subtitle: "Kiểm tra trước khi gửi" };
   }
@@ -134,7 +152,11 @@ export default function ReportCreateWizardScreen() {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<WizardStep>(1);
   const [isPicking, setIsPicking] = useState(false);
+  const [submitPhase, setSubmitPhase] = useState<SubmitPhase>("idle");
+  const [submitProgress, setSubmitProgress] = useState(0);
+  const [uploadDone, setUploadDone] = useState(0);
   const [tagDraft, setTagDraft] = useState("");
+  const [wasteTagLimitMessage, setWasteTagLimitMessage] = useState<string | null>(null);
   const [showAiResult, setShowAiResult] = useState(false);
   const [pendingAiOutcome, setPendingAiOutcome] = useState<"accepted" | "review" | null>(null);
   // Local selections inside AI dialog — chỉ apply khi user bấm "Áp dụng"
@@ -154,6 +176,7 @@ export default function ReportCreateWizardScreen() {
   const severity = useCreateReportDraftStore((s) => s.severity);
   const description = useCreateReportDraftStore((s) => s.description);
   const tags = useCreateReportDraftStore((s) => s.tags);
+  const wasteTagIds = useCreateReportDraftStore((s) => s.wasteTagIds);
   const isAnonymous = useCreateReportDraftStore((s) => s.isAnonymous);
 
   const setSource = useCreateReportDraftStore((s) => s.setSource);
@@ -167,6 +190,7 @@ export default function ReportCreateWizardScreen() {
   const setIsAnonymous = useCreateReportDraftStore((s) => s.setIsAnonymous);
   const addTag = useCreateReportDraftStore((s) => s.addTag);
   const removeTag = useCreateReportDraftStore((s) => s.removeTag);
+  const toggleWasteTag = useCreateReportDraftStore((s) => s.toggleWasteTag);
   const reset = useCreateReportDraftStore((s) => s.reset);
   const useAi = useCreateReportDraftStore((s) => s.useAi);
   const aiResult = useCreateReportDraftStore((s) => s.aiResult);
@@ -181,6 +205,12 @@ export default function ReportCreateWizardScreen() {
 
   const { isUploading, isSubmitting, uploadAllImages, submitReport } = useSubmitPollutionReport();
   const { isAnalyzing, analyzeError, analyze } = useAnalyzeReportImage();
+  const {
+    tags: wasteTags,
+    isLoading: isLoadingWasteTags,
+    errorMessage: wasteTagsErrorMessage,
+    refetch: refetchWasteTags,
+  } = useWasteTags(true);
 
   const {
     provinces,
@@ -208,26 +238,19 @@ export default function ReportCreateWizardScreen() {
       ? { latitude: userLocation.latitude, longitude: userLocation.longitude }
       : null;
 
-  // Animate map 1 lần khi vào step 3 để căn về vị trí marker ban đầu
-  const didCenterStep3Ref = useRef(false);
-  useEffect(() => {
-    if (step !== 3) {
-      didCenterStep3Ref.current = false;
-      return;
-    }
-    if (didCenterStep3Ref.current) return;
-    if (!marker) return;
-    didCenterStep3Ref.current = true;
-    mapRef.current?.animateToRegion(
-      { latitude: marker.latitude, longitude: marker.longitude, latitudeDelta: 0.06, longitudeDelta: 0.06 },
-      400,
-    );
-  // chỉ chạy khi bước đổi hoặc marker lần đầu xuất hiện
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, marker !== null]);
-
   const provinceCode = location?.provinceCode ?? null;
   const wardCode = location?.wardCode ?? null;
+
+  // Animate map theo ranh giới / pin
+  useReportLocationMapCamera({
+    enabled: step === 3,
+    mapRef,
+    marker,
+    provinceCode,
+    wardCode,
+    provincePolygons,
+    wardPolygons,
+  });
 
   const enrichedRef = useRef<string | null>(null); // track coords đã enrich
 
@@ -239,9 +262,14 @@ export default function ReportCreateWizardScreen() {
   }, [loadProvinceBoundary, location?.provinceCode, provinces, refetchWards, step]);
 
   useEffect(() => {
-    if (step !== 3 || !location?.wardCode || !wards.length) return;
+    if (step !== 3) return;
+    if (!location?.wardCode) {
+      void loadWardBoundary(null, null);
+      return;
+    }
+    if (!wards.length) return;
     const ward = wards.find((item) => item.code === location.wardCode);
-    void loadWardBoundary(ward?.boundaryUrl ?? null);
+    void loadWardBoundary(ward?.boundaryUrl ?? null, location.wardCode);
   }, [loadWardBoundary, location?.wardCode, step, wards]);
 
   // Enrich location bằng Goong khi vào step 3 — chỉ chạy 1 lần per coords
@@ -303,18 +331,55 @@ export default function ReportCreateWizardScreen() {
       return;
     }
 
-    const ok = await uploadAllImages();
+    setSubmitPhase("validate");
+    setUploadDone(0);
+    setSubmitProgress(0.06);
+    await delay(420);
+
+    setSubmitPhase("upload");
+    const ok = await uploadAllImages(({ done, total }) => {
+      setUploadDone(done);
+      setSubmitProgress(0.1 + 0.6 * (done / Math.max(total, 1)));
+    });
     if (!ok) {
+      setSubmitPhase("idle");
+      setSubmitProgress(0);
       Alert.alert("Tải ảnh thất bại", "Vui lòng kiểm tra kết nối và thử lại.");
       return;
     }
+
+    setSubmitProgress(0.82);
+    setSubmitPhase("submit");
     const submitted = await submitReport();
     if (!submitted) {
+      setSubmitPhase("idle");
+      setSubmitProgress(0);
       Alert.alert("Gửi báo cáo thất bại", "Vui lòng kiểm tra thông tin và thử lại.");
       return;
     }
+
+    setSubmitProgress(1);
+    setSubmitPhase("done");
+    await delay(520);
     router.replace("/report/success" as Href);
   }, [refreshLocation, step, submitReport, uploadAllImages]);
+
+  const submitSteps = useMemo<SubmitStep[]>(() => {
+    const phaseIndex = SUBMIT_PHASE_ORDER.indexOf(submitPhase);
+    const isDoneAll = submitPhase === "done";
+    const statusFor = (phase: SubmitPhase): SubmitStepStatus => {
+      if (isDoneAll) return "done";
+      const target = SUBMIT_PHASE_ORDER.indexOf(phase);
+      if (phaseIndex > target) return "done";
+      if (phaseIndex === target) return "active";
+      return "pending";
+    };
+    return [
+      { key: "validate", label: "Kiểm tra dữ liệu", status: statusFor("validate") },
+      { key: "upload", label: `Tải lên ảnh (${uploadDone}/${images.length})`, status: statusFor("upload") },
+      { key: "submit", label: "Gửi đến Officer", status: statusFor("submit") },
+    ];
+  }, [images.length, submitPhase, uploadDone]);
 
   const goBack = useCallback(() => {
     if (step === 1) return;
@@ -389,22 +454,190 @@ export default function ReportCreateWizardScreen() {
     }
   }, [provinces, refreshLocation, setLocation, userLocation]);
 
+  const assertPinInsideBoundary = useCallback(
+    async (
+      point: LatLng,
+      admin: { provinceCode: string | null; wardCode: string | null },
+    ) => {
+      let provinceGroups: LatLng[][][] = [];
+      let wardGroups: LatLng[][][] = [];
+
+      if (admin.wardCode) {
+        let ward = wards.find((item) => item.code === admin.wardCode);
+        if (!ward && admin.provinceCode) {
+          try {
+            const response = await catalogService.getWardsByProvince(admin.provinceCode);
+            ward = response.data.data.items.find((item) => item.code === admin.wardCode);
+          } catch {
+            ward = undefined;
+          }
+        }
+        if (ward?.boundaryUrl) {
+          wardGroups = await fetchWardBoundaryGroups(ward.boundaryUrl, admin.wardCode);
+        }
+      } else if (admin.provinceCode) {
+        const province = provinces.find((item) => item.code === admin.provinceCode);
+        if (province?.boundaryUrl) {
+          provinceGroups = await fetchProvinceBoundaryGroups(province.boundaryUrl);
+        }
+      }
+
+      return validatePinAgainstBoundary({
+        point,
+        provinceCode: admin.provinceCode,
+        wardCode: admin.wardCode,
+        provincePolygonGroups: provinceGroups,
+        wardPolygonGroups: wardGroups,
+      });
+    },
+    [provinces, wards],
+  );
+
+  const showInvalidPinAlert = useCallback((message: string) => {
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    Alert.alert("Vị trí không hợp lệ", message);
+  }, []);
+
   const handleMapPress = useCallback(
     async (coordinate: LatLng) => {
+      const current = useCreateReportDraftStore.getState().location;
+      const adminCodes = {
+        provinceCode: current?.provinceCode ?? null,
+        wardCode: current?.wardCode ?? null,
+      };
+
+      const validation = await assertPinInsideBoundary(coordinate, adminCodes);
+      if (!validation.valid) {
+        showInvalidPinAlert(validation.message ?? "Vị trí pin không hợp lệ.");
+        return;
+      }
+
       const base = {
         latitude: coordinate.latitude,
         longitude: coordinate.longitude,
-        capturedAt: location?.capturedAt ?? new Date().toISOString(),
+        capturedAt: current?.capturedAt ?? new Date().toISOString(),
       };
-      // Set marker tức thì để user thấy pin ngay, rồi enrich address/province/ward sau
-      setLocation(base);
-      if (provinces.length > 0) {
-        const resolved = await enrichLocationWithGoong(base, provinces);
-        setLocation(resolved);
+      const preserveAdmin = Boolean(current?.wardCode);
+
+      if (current) {
+        patchLocation(base);
+      } else {
+        setLocation({ ...base });
+      }
+
+      if (provinces.length === 0) return;
+
+      const enriched = await enrichLocationWithGoong(
+        { ...(current ?? {}), ...base } as ReportLocationDraft,
+        provinces,
+        { preserveAdminCodes: preserveAdmin },
+      );
+
+      if (current) {
+        patchLocation({
+          latitude: enriched.latitude,
+          longitude: enriched.longitude,
+          address: enriched.address,
+          ...(preserveAdmin
+            ? {}
+            : {
+                provinceCode: enriched.provinceCode ?? current.provinceCode,
+                wardCode: enriched.wardCode ?? current.wardCode,
+              }),
+        });
+      } else {
+        setLocation(enriched);
       }
     },
-    [location?.capturedAt, provinces, setLocation],
+    [assertPinInsideBoundary, patchLocation, provinces, setLocation, showInvalidPinAlert],
   );
+
+  const applyGpsLocation = useCallback(
+    async (coords: { latitude: number; longitude: number }) => {
+      const base = {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        capturedAt: new Date().toISOString(),
+      };
+      const current = useCreateReportDraftStore.getState().location;
+
+      if (provinces.length === 0) {
+        if (current) patchLocation(base);
+        else setLocation(base);
+        return;
+      }
+
+      const enriched = await enrichLocationWithGoong(
+        { ...(current ?? {}), ...base } as ReportLocationDraft,
+        provinces,
+        { overwriteAddress: true, preserveAdminCodes: false },
+      );
+
+      enrichedRef.current = `${enriched.latitude.toFixed(5)},${enriched.longitude.toFixed(5)}`;
+
+      if (current) {
+        patchLocation({
+          latitude: enriched.latitude,
+          longitude: enriched.longitude,
+          address: enriched.address,
+          provinceCode: enriched.provinceCode,
+          wardCode: enriched.wardCode,
+        });
+      } else {
+        setLocation(enriched);
+      }
+
+      if (enriched.provinceCode) {
+        const province = provinces.find((item) => item.code === enriched.provinceCode);
+        await loadProvinceBoundary(province?.boundaryUrl ?? null);
+        await refetchWards(enriched.provinceCode);
+        if (enriched.wardCode) {
+          const wardsResponse = await catalogService.getWardsByProvince(enriched.provinceCode);
+          const ward = wardsResponse.data.data.items.find((item) => item.code === enriched.wardCode);
+          await loadWardBoundary(ward?.boundaryUrl ?? null, enriched.wardCode);
+        } else {
+          void loadWardBoundary(null, null);
+        }
+      }
+
+      if (!enriched.provinceCode) {
+        Alert.alert(
+          "Chưa xác định được tỉnh/phường",
+          "Đã lấy tọa độ GPS. Vui lòng chọn tỉnh và phường/xã thủ công.",
+        );
+      }
+    },
+    [loadProvinceBoundary, loadWardBoundary, patchLocation, provinces, refetchWards, setLocation],
+  );
+
+  const handleLocatePress = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const coords = await refreshLocation();
+    if (!coords) {
+      const granted = await ensurePermission();
+      if (!granted) {
+        void Linking.openSettings();
+        return;
+      }
+      const retry = await refreshLocation();
+      if (!retry) return;
+      await applyGpsLocation(retry);
+      return;
+    }
+    await applyGpsLocation(coords);
+  }, [applyGpsLocation, ensurePermission, refreshLocation]);
+
+  const handlePermissionPress = useCallback(async () => {
+    const granted = await ensurePermission();
+    if (!granted) {
+      void Linking.openSettings();
+      return;
+    }
+    const coords = await refreshLocation();
+    if (coords) {
+      await applyGpsLocation(coords);
+    }
+  }, [applyGpsLocation, ensurePermission, refreshLocation]);
 
   const handlePickLibrary = useCallback(async () => {
     setIsPicking(true);
@@ -448,7 +681,18 @@ export default function ReportCreateWizardScreen() {
   }, [analyze, ensureLocationSeed, setImages, setSource, useAi]);
 
   const handleProvinceSelect = useCallback(
-    async (code: string) => {
+    async (code: string | null) => {
+      if (!code) {
+        enrichedRef.current = null;
+        void loadProvinceBoundary(null);
+        void loadWardBoundary(null, null);
+        const current = useCreateReportDraftStore.getState().location;
+        if (current) {
+          patchLocation({ provinceCode: undefined, wardCode: undefined, address: undefined });
+        }
+        return;
+      }
+
       const selected = provinces.find((item) => item.code === code);
 
       // Load boundary + wards song song, lấy polygon ngay từ kết quả
@@ -474,6 +718,7 @@ export default function ReportCreateWizardScreen() {
       }
 
       enrichedRef.current = null;
+      void loadWardBoundary(null, null);
 
       const current = useCreateReportDraftStore.getState().location;
       if (current) {
@@ -482,13 +727,19 @@ export default function ReportCreateWizardScreen() {
         setLocation({ latitude: centerLat, longitude: centerLng, provinceCode: code, capturedAt: new Date().toISOString() });
       }
     },
-    [loadProvinceBoundary, patchLocation, provinces, refetchWards, setLocation, userLocation],
+    [loadProvinceBoundary, loadWardBoundary, patchLocation, provinces, refetchWards, setLocation, userLocation],
   );
 
   const handleWardSelect = useCallback(
-    async (code: string) => {
+    async (code: string | null) => {
+      if (!code) {
+        void loadWardBoundary(null, null);
+        patchLocation({ wardCode: undefined });
+        return;
+      }
+
       const selected = wards.find((item) => item.code === code);
-      await loadWardBoundary(selected?.boundaryUrl ?? null);
+      await loadWardBoundary(selected?.boundaryUrl ?? null, code);
       patchLocation({ wardCode: code });
     },
     [loadWardBoundary, patchLocation, wards],
@@ -501,6 +752,29 @@ export default function ReportCreateWizardScreen() {
     setTagDraft("");
   }, [addTag, tagDraft]);
 
+  const handleToggleWasteTag = useCallback(
+    (tagId: string) => {
+      const current = useCreateReportDraftStore.getState().wasteTagIds;
+      if (current.includes(tagId)) {
+        toggleWasteTag(tagId);
+        setWasteTagLimitMessage(null);
+        return;
+      }
+      if (current.length >= MAX_WASTE_TAG_SELECTION) {
+        setWasteTagLimitMessage("Đã đạt giới hạn 10 loại rác thải.");
+        return;
+      }
+      toggleWasteTag(tagId);
+      setWasteTagLimitMessage(null);
+    },
+    [toggleWasteTag],
+  );
+
+  const selectedWasteTags = useMemo(
+    () => wasteTags.filter((tag) => wasteTagIds.includes(tag.id)),
+    [wasteTagIds, wasteTags],
+  );
+
   const { title, subtitle } = toStepTitle(step);
   const selectedCategory = categoryId
     ? (pollutionCategories.find((category) => category.id === categoryId) ?? null)
@@ -509,8 +783,19 @@ export default function ReportCreateWizardScreen() {
   const selectedWard = wardCode ? wards.find((item) => item.code === wardCode) : undefined;
   const severityMeta = severity ? SEVERITY_META[severity] : null;
 
+  const submitOverlayTitle = submitPhase === "done" ? "Hoàn tất!" : "Đang gửi báo cáo...";
+  const submitOverlaySubtitle =
+    images.length > 0 ? `${uploadDone}/${images.length} ảnh đã tải lên` : undefined;
+
   return (
     <SafeScreen className="bg-surface" edges={["bottom"]}>
+      <SubmitProgressOverlay
+        visible={submitPhase !== "idle"}
+        progress={submitProgress}
+        title={submitOverlayTitle}
+        subtitle={submitOverlaySubtitle}
+        steps={submitSteps}
+      />
       <WizardHeader title={title} subtitle={subtitle} step={step} totalSteps={TOTAL_STEPS} onClose={handleClose} />
 
       <ScrollView
@@ -574,146 +859,29 @@ export default function ReportCreateWizardScreen() {
         ) : null}
 
         {step === 3 ? (
-          <View className="gap-8">
-            {errorMessage ? (
-              <View className="rounded-2xl bg-error/10 px-4 py-3">
-                <Text className="text-sm text-error">{errorMessage}</Text>
-              </View>
-            ) : null}
-
-            <View className="overflow-hidden rounded-2xl">
-              <MapView
-                ref={mapRef}
-                style={{ height: 260, width: "100%" }}
-                initialRegion={mapRegion}
-                onPress={(event) => {
-                  void handleMapPress(event.nativeEvent.coordinate);
-                }}
-              >
-                {provincePolygons.map((ring, index) => (
-                  <Polygon
-                    key={`province-${index}`}
-                    coordinates={ring}
-                    strokeColor={colors.primary}
-                    fillColor="rgba(16, 185, 129, 0.12)"
-                    strokeWidth={2}
-                  />
-                ))}
-                {wardPolygons.map((ring, index) => (
-                  <Polygon
-                    key={`ward-${index}`}
-                    coordinates={ring}
-                    strokeColor={colors.info}
-                    fillColor="rgba(59, 130, 246, 0.12)"
-                    strokeWidth={2}
-                  />
-                ))}
-                {marker ? <Marker coordinate={marker} /> : null}
-              </MapView>
-            </View>
-
-            {/* Banner khi bị từ chối quyền vị trí */}
-            {permissionDenied ? (
-              <View className="overflow-hidden rounded-2xl bg-warning/10">
-                <View className="flex-row items-start gap-3 px-4 py-3.5">
-                  <Ionicons name="location-outline" size={20} color={colors.warning} style={{ marginTop: 1 }} />
-                  <View className="flex-1 gap-1">
-                    <Text className="text-sm font-semibold text-textPrimary">Chưa có quyền vị trí</Text>
-                    <Text className="text-sm text-textSecondary">
-                      App cần quyền vị trí để xác định nơi xảy ra sự cố. Bạn vẫn có thể chọn tỉnh/xã thủ công bên dưới.
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={async () => {
-                    const granted = await ensurePermission();
-                    if (!granted) {
-                      void Linking.openSettings();
-                    } else {
-                      const coords = await refreshLocation();
-                      if (coords) {
-                        const base = { latitude: coords.latitude, longitude: coords.longitude, capturedAt: new Date().toISOString() };
-                        setLocation(provinces.length > 0 ? await enrichLocationWithGoong(base, provinces) : base);
-                      }
-                    }
-                  }}
-                  className="flex-row items-center justify-center gap-2 border-t border-warning/20 py-3"
-                >
-                  <Ionicons name="settings-outline" size={16} color={colors.warning} />
-                  <Text className="text-sm font-semibold" style={{ color: colors.warning }}>Mở Cài đặt để cấp quyền</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              /* Lấy vị trí của tôi */
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={async () => {
-                  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  const coords = await refreshLocation();
-                  if (!coords) {
-                    const granted = await ensurePermission();
-                    if (!granted) {
-                      void Linking.openSettings();
-                      return;
-                    }
-                    const retry = await refreshLocation();
-                    if (!retry) return;
-                    const base = { latitude: retry.latitude, longitude: retry.longitude, capturedAt: new Date().toISOString() };
-                    setLocation(provinces.length > 0 ? await enrichLocationWithGoong(base, provinces) : base);
-                    return;
-                  }
-                  const base = { latitude: coords.latitude, longitude: coords.longitude, capturedAt: new Date().toISOString() };
-                  setLocation(provinces.length > 0 ? await enrichLocationWithGoong(base, provinces) : base);
-                }}
-                className="flex-row items-center justify-center gap-2 rounded-2xl bg-primary/10 py-3"
-              >
-                {isLocating ? (
-                  <Ionicons name="reload-outline" size={18} color={colors.primary} />
-                ) : (
-                  <Ionicons name="locate" size={18} color={colors.primary} />
-                )}
-                <Text className="text-sm font-semibold text-primary">
-                  {isLocating ? "Đang lấy vị trí..." : "Lấy vị trí của tôi"}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            <View className="gap-5">
-              <View>
-                <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">
-                  Số nhà, đường
-                </Text>
-                <Input
-                  value={location?.address ?? ""}
-                  onChangeText={(value) => patchLocation({ address: value })}
-                  placeholder="Ví dụ: 123 Nguyễn Huệ"
-                  className="mt-2 rounded-2xl border-0 bg-white px-4"
-                />
-              </View>
-
-              <CatalogPicker
-                label="Tỉnh / Thành phố"
-                placeholder={isLoadingProvinces ? "Đang tải..." : "Chọn tỉnh thành"}
-                value={provinceCode}
-                items={provinces.map((p) => ({ code: p.code, label: p.name }))}
-                disabled={isLoadingProvinces}
-                onSelect={(code) => void handleProvinceSelect(code)}
-              />
-              <CatalogPicker
-                label="Phường / Xã"
-                placeholder={provinceCode ? "Chọn phường xã" : "Chọn tỉnh trước"}
-                value={wardCode}
-                items={wards.map((w) => ({
-                  code: w.code,
-                  label: w.name,
-                  description: w.unitAbbreviation,
-                }))}
-                disabled={!provinceCode || isLoadingWards}
-                onSelect={(code) => void handleWardSelect(code)}
-              />
-            </View>
-          </View>
+          <ReportLocationPanel
+            mapRef={mapRef}
+            initialRegion={mapRegion}
+            marker={marker}
+            address={location?.address ?? ""}
+            provinceCode={provinceCode}
+            wardCode={wardCode}
+            provinces={provinces}
+            wards={wards}
+            isLoadingProvinces={isLoadingProvinces}
+            isLoadingWards={isLoadingWards}
+            provincePolygons={provincePolygons}
+            wardPolygons={wardPolygons}
+            errorMessage={errorMessage}
+            permissionDenied={permissionDenied}
+            isLocating={isLocating}
+            onAddressChange={(value) => patchLocation({ address: value })}
+            onProvinceSelect={(code) => void handleProvinceSelect(code)}
+            onWardSelect={(code) => void handleWardSelect(code)}
+            onMapPress={(coordinate) => void handleMapPress(coordinate)}
+            onLocatePress={() => void handleLocatePress()}
+            onPermissionPress={() => void handlePermissionPress()}
+          />
         ) : null}
 
         {step === 2 ? (
@@ -832,6 +1000,21 @@ export default function ReportCreateWizardScreen() {
               />
             </FieldBlock>
 
+            <FieldBlock label="Loại rác thải">
+              <Text className="mb-3 px-1 text-sm text-textSecondary">
+                Tùy chọn — chọn tối đa {MAX_WASTE_TAG_SELECTION} loại phù hợp với hiện trường
+              </Text>
+              <WasteTagPicker
+                tags={wasteTags}
+                selectedIds={wasteTagIds}
+                isLoading={isLoadingWasteTags}
+                errorMessage={wasteTagsErrorMessage}
+                limitMessage={wasteTagLimitMessage}
+                onToggle={handleToggleWasteTag}
+                onRetry={() => void refetchWasteTags()}
+              />
+            </FieldBlock>
+
             <FieldBlock label="Tag">
               <ReportTagField
                 tags={tags}
@@ -871,6 +1054,7 @@ export default function ReportCreateWizardScreen() {
             severityAccent={severityMeta?.accent}
             description={description}
             tags={tags}
+            wasteTags={selectedWasteTags}
             isAnonymous={isAnonymous}
           />
         ) : null}

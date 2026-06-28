@@ -1,5 +1,5 @@
-/** Mobile chỉ phân luồng Citizen vs CleanupTeam */
-export type UserRole = 'Citizen' | 'CleanupTeam';
+/** Mobile chỉ phân luồng Citizen vs Cleaner (đội dọn dẹp) */
+export type UserRole = 'Citizen' | 'Cleaner';
 
 export interface User {
   id: string;

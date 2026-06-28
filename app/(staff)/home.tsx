@@ -365,6 +365,28 @@ export default function StaffHomeScreen() {
         {/* ── Map ── */}
         <MiniMapSection pins={pins} totalCount={items.length} />
 
+        {/* ── Quick links ── */}
+        <View className="mx-4 mb-4 flex-row gap-3">
+          <Pressable
+            onPress={() => router.push('/assignment/history' as never)}
+            className="flex-1 flex-row items-center gap-2 rounded-2xl bg-white px-4 py-3"
+            style={{ elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6 }}
+          >
+            <Ionicons name="time-outline" size={20} color={colors.primary} />
+            <Text className="text-sm font-semibold text-textPrimary">Lịch sử tiến độ</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: 'auto' }} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/assignments' as never)}
+            className="flex-1 flex-row items-center gap-2 rounded-2xl bg-white px-4 py-3"
+            style={{ elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6 }}
+          >
+            <Ionicons name="list-outline" size={20} color={colors.primary} />
+            <Text className="text-sm font-semibold text-textPrimary">Nhiệm vụ</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginLeft: 'auto' }} />
+          </Pressable>
+        </View>
+
         {/* ── Officer Feed ── */}
         <View
           className="mx-4 mt-4 overflow-hidden rounded-2xl bg-white"

@@ -29,7 +29,7 @@ export function useMyAssignments({
     setIsLoading(true);
     setErrorMessage(null);
     try {
-      const res = await cleanupAssignmentService.getMyAssignments({ assignmentStatus, pageSize });
+      const res = await cleanupAssignmentService.getMyTasks({ assignmentStatus, pageSize });
       setData(res.data.data);
     } catch {
       setErrorMessage('Không tải được danh sách nhiệm vụ. Vui lòng thử lại.');

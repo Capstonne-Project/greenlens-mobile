@@ -7,6 +7,7 @@ import type {
   ReportImageDraft,
   ReportLocationDraft,
 } from '@/types/pollution-report.types';
+import { MAX_WASTE_TAG_SELECTION } from '@/types/waste-tag.types';
 
 interface CreateReportDraftState {
   source: ReportCaptureSource | null;
@@ -16,6 +17,7 @@ interface CreateReportDraftState {
   severity: PollutionSeverity | null;
   description: string;
   tags: string[];
+  wasteTagIds: string[];
   isAnonymous: boolean;
   submittedReportCode: string | null;
   slaVerifyDueAt: string | null;
@@ -37,6 +39,7 @@ interface CreateReportDraftState {
   setTags: (tags: string[]) => void;
   addTag: (tag: string) => void;
   removeTag: (tag: string) => void;
+  toggleWasteTag: (tagId: string) => void;
   setIsAnonymous: (isAnonymous: boolean) => void;
   setSubmissionResult: (code: string, slaVerifyDueAt: string) => void;
   setUseAi: (useAi: boolean) => void;
@@ -53,6 +56,7 @@ const initialState = {
   severity: null as PollutionSeverity | null,
   description: '',
   tags: [] as string[],
+  wasteTagIds: [] as string[],
   isAnonymous: true,
   submittedReportCode: null as string | null,
   slaVerifyDueAt: null as string | null,
@@ -114,6 +118,17 @@ export const useCreateReportDraftStore = create<CreateReportDraftState>((set) =>
     set((state) => ({
       tags: state.tags.filter((t) => t !== tag),
     })),
+
+  toggleWasteTag: (tagId) =>
+    set((state) => {
+      if (state.wasteTagIds.includes(tagId)) {
+        return { wasteTagIds: state.wasteTagIds.filter((id) => id !== tagId) };
+      }
+      if (state.wasteTagIds.length >= MAX_WASTE_TAG_SELECTION) {
+        return state;
+      }
+      return { wasteTagIds: [...state.wasteTagIds, tagId] };
+    }),
 
   setIsAnonymous: (isAnonymous) => set({ isAnonymous }),
 
