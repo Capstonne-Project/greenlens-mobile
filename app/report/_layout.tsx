@@ -7,6 +7,7 @@ export default function ReportFlowLayout() {
       <Stack.Screen name="address" />
       <Stack.Screen name="form" />
       <Stack.Screen name="success" />
+      <Stack.Screen name="[id]" options={{ animation: 'slide_from_right' }} />
     </Stack>
   );
 }
