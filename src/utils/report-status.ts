@@ -1,4 +1,4 @@
-import type { ReportWorkflowStatus } from '@/types/report-detail.types';
+import type { ReportWorkflowStatus } from '@/types/report-status.types';
 
 export interface ReportStatusMeta {
   label: string;
@@ -10,8 +10,8 @@ export interface ReportStatusMeta {
 const STATUS_META: Record<string, ReportStatusMeta> = {
   Submitted: { label: 'Đã gửi — chờ xác minh', textColor: '#92400E', bgColor: '#FEF3C7' },
   Verified: { label: 'Đã xác minh', textColor: '#065F46', bgColor: '#D1FAE5' },
-  Dispatched: { label: 'Đã điều phối', textColor: '#1E40AF', bgColor: '#DBEAFE' },
-  Assigned: { label: 'Đã phân công', textColor: '#1E40AF', bgColor: '#DBEAFE' },
+  Dispatched: { label: 'Đã điều phối', textColor: '#1E40AF', bgColor: '#DBEAFE' }, // legacy v2
+  Assigned: { label: 'Đã phân công', textColor: '#1E40AF', bgColor: '#DBEAFE' }, // legacy v2
   InProgress: { label: 'Đang xử lý', textColor: '#1D4ED8', bgColor: '#DBEAFE' },
   Resolved: {
     label: 'Đã xử lý — cần bạn xác nhận',
@@ -20,7 +20,7 @@ const STATUS_META: Record<string, ReportStatusMeta> = {
     highlight: true,
   },
   PenaltyIssued: {
-    label: 'Đã xử phạt — cần bạn xác nhận',
+    label: 'Đã xử lý — cần bạn xác nhận', // legacy v2 — inspection sub-process, hiển thị như Resolved
     textColor: '#9A3412',
     bgColor: '#FFEDD5',
     highlight: true,
