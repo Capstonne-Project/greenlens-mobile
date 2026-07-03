@@ -1,6 +1,10 @@
 import { Stack } from 'expo-router';
 
+import { useRoleGuard } from '@/hooks/useRoleGuard';
+
 export default function AssignmentLayout() {
+  useRoleGuard('fieldWorker');
+
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen

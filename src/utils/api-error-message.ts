@@ -27,7 +27,10 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
     }
 
     if (status === 401) {
-      return 'Email hoặc mật khẩu không đúng.';
+      return 'Phiên đăng nhập hết hạn hoặc chưa đăng nhập.';
+    }
+    if (status === 403) {
+      return msg ?? 'Bạn không có quyền xem nhiệm vụ này (không thuộc team hoặc không phải leader).';
     }
     if (status === 400 || status === 422) {
       return 'Dữ liệu gửi lên không hợp lệ.';

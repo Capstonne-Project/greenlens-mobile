@@ -30,7 +30,8 @@ export default function ReportFormScreen() {
   const setDescription = useCreateReportDraftStore((state) => state.setDescription);
   const setIsAnonymous = useCreateReportDraftStore((state) => state.setIsAnonymous);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const { isUploading, isSubmitting, uploadAllImages, submitReport } = useSubmitPollutionReport();
+  const { isUploading, isSubmitting, uploadAllImages, submitReport, lastFailureReason } =
+    useSubmitPollutionReport();
   const {
     categories: pollutionCategories,
     isLoading: isLoadingCategories,
@@ -66,18 +67,26 @@ export default function ReportFormScreen() {
     setHasUploadAttempt(true);
     const uploaded = await uploadAllImages();
     if (!uploaded) {
+      if (lastFailureReason === 'session-expired') {
+        router.replace('/(auth)/login' as Href);
+        return;
+      }
       Alert.alert('Tải ảnh thất bại', 'Vui lòng kiểm tra kết nối và thử lại.');
       return;
     }
 
     const submitted = await submitReport();
     if (!submitted) {
+      if (lastFailureReason === 'session-expired') {
+        router.replace('/(auth)/login' as Href);
+        return;
+      }
       Alert.alert('Gửi báo cáo thất bại', 'Vui lòng kiểm tra thông tin và thử lại.');
       return;
     }
 
     router.replace('/report/success' as Href);
-  }, [categoryId, severity, submitReport, uploadAllImages]);
+  }, [categoryId, severity, submitReport, uploadAllImages, lastFailureReason]);
 
   const isBusy = isUploading || isSubmitting;
 

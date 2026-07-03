@@ -15,8 +15,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Toast, useToast } from '@/components/common/Toast';
 import { Text } from '@/components/ui/text';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
+import { firstRouteParam } from '@/utils/field-worker-task';
 import { useAuthStore } from '@/stores/auth.store';
 import { colors } from '@/theme/colors';
+import type { DeclineAssignmentDto } from '@/types/cleanup-assignment.types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -130,10 +132,12 @@ function RadioRow({ label, selected, onSelect }: RadioRowProps) {
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function DeclineScreen() {
-  const { reportId, assignedAt } = useLocalSearchParams<{
-    reportId: string;
-    assignedAt: string;
+  const params = useLocalSearchParams<{
+    reportId?: string | string[];
+    assignedAt: string | string[];
   }>();
+  const reportId = firstRouteParam(params.reportId);
+  const assignedAt = firstRouteParam(params.assignedAt);
   const insets = useSafeAreaInsets();
   const teamId = useAuthStore((s) => s.user?.teamId ?? '');
 
@@ -166,7 +170,10 @@ export default function DeclineScreen() {
     setSubmitting(true);
     setApiError(null);
     try {
-      await cleanupAssignmentService.decline(reportId, { teamId, reason });
+      await cleanupAssignmentService.decline(reportId, {
+        teamId,
+        reason,
+      } as DeclineAssignmentDto);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       showToast('Đã từ chối nhiệm vụ thành công.', 'warning');
       setTimeout(() => { router.back(); router.back(); }, 1400);

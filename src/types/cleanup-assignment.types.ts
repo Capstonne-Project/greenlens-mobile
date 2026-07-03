@@ -1,14 +1,8 @@
+import type { ReportStatus } from '@/types/report-status.types';
+
 export type AssignmentStatus = 'Assigned' | 'InProgress' | 'Completed' | 'Declined';
 
-export type ReportStatus =
-  | 'Submitted'
-  | 'Verified'
-  | 'InProgress'
-  | 'Resolved'
-  | 'PenaltyIssued'
-  | 'Closed'
-  | 'Rejected'
-  | 'Duplicate';
+export type { ReportStatus };
 
 export type SeverityLevel = 'Low' | 'Medium' | 'High' | 'Critical';
 
@@ -136,7 +130,7 @@ export interface AcceptAssignmentDto {
 }
 
 export interface DeclineAssignmentDto {
-  teamId: string;
+  teamId?: string;
   reason: string;
 }
 

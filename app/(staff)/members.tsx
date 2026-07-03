@@ -86,7 +86,7 @@ export default function StaffMembersScreen() {
     }
   }, []);
 
-  useEffect(() => { void loadProfile(); }, [loadProfile]);
+  useEffect(() => { void loadProfile().catch(() => undefined); }, [loadProfile]);
 
   const leaders = profile?.members.filter((m) => m.isLeader) ?? [];
   const members = profile?.members.filter((m) => !m.isLeader) ?? [];

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
-import type { AssignmentItem, AssignmentStatus, MyAssignmentsResponse } from '@/types/cleanup-assignment.types';
+import type { AssignmentItem, AssignmentStatus } from '@/types/cleanup-assignment.types';
+import { normalizeMyTasksItems } from '@/utils/field-worker-task';
 
 interface UseMyAssignmentsParams {
   assignmentStatus?: AssignmentStatus;
@@ -9,7 +11,6 @@ interface UseMyAssignmentsParams {
 }
 
 interface UseMyAssignmentsResult {
-  data: MyAssignmentsResponse | null;
   items: AssignmentItem[];
   isLoading: boolean;
   errorMessage: string | null;
@@ -21,7 +22,7 @@ export function useMyAssignments({
   pageSize = 20,
   enabled = true,
 }: UseMyAssignmentsParams = {}): UseMyAssignmentsResult {
-  const [data, setData] = useState<MyAssignmentsResponse | null>(null);
+  const [items, setItems] = useState<AssignmentItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -30,7 +31,7 @@ export function useMyAssignments({
     setErrorMessage(null);
     try {
       const res = await cleanupAssignmentService.getMyTasks({ assignmentStatus, pageSize });
-      setData(res.data.data);
+      setItems(normalizeMyTasksItems(res.data.data));
     } catch {
       setErrorMessage('Không tải được danh sách nhiệm vụ. Vui lòng thử lại.');
     } finally {
@@ -45,12 +46,11 @@ export function useMyAssignments({
 
   return useMemo(
     () => ({
-      data,
-      items: data?.items ?? [],
+      items,
       isLoading,
       errorMessage,
       refetch,
     }),
-    [data, isLoading, errorMessage, refetch],
+    [items, isLoading, errorMessage, refetch],
   );
 }

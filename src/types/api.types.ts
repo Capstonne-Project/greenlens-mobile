@@ -24,6 +24,21 @@ export interface PaginatedResponse<T> {
   success: boolean;
 }
 
+/** Pagination chuẩn BE v3 — `{ items, pagination }` */
+export interface ApiPagination {
+  page: number;
+  pageSize: number;
+  totalItems: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+export interface PaginatedItems<T> {
+  items: T[];
+  pagination: ApiPagination;
+}
+
 export interface ApiError {
   message: string;
   statusCode: number;

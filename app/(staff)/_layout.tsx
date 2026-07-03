@@ -1,7 +1,10 @@
 import { StaffTabBar } from '@/components/layout/StaffTabBar';
+import { useRoleGuard } from '@/hooks/useRoleGuard';
 import { Tabs } from 'expo-router';
 
 export default function StaffLayout() {
+  useRoleGuard('fieldWorker');
+
   return (
     <Tabs
       tabBar={(props) => <StaffTabBar {...props} />}
