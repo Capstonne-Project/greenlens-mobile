@@ -20,7 +20,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/text';
 import { Toast, useToast } from '@/components/common/Toast';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
+import { useFieldWorkerTaskStore } from '@/stores/fieldWorkerTask.store';
 import { colors } from '@/theme/colors';
+import { getApiErrorMessage } from '@/utils/api-error-message';
+import { firstRouteParam } from '@/utils/field-worker-task';
 import type { TaskDetail } from '@/types/cleanup-assignment.types';
 
 // ─── Configs ──────────────────────────────────────────────────────────────────
@@ -161,7 +164,12 @@ function AnimatedButton({ onPress, disabled, style, className, children }: Anima
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function AssignmentDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    assignmentId?: string | string[];
+  }>();
+  const reportIdParam = firstRouteParam(params.id);
+  const assignmentIdParam = firstRouteParam(params.assignmentId);
   const insets  = useSafeAreaInsets();
 
   const [task, setTask]           = useState<TaskDetail | null>(null);
@@ -171,30 +179,34 @@ export default function AssignmentDetailScreen() {
   const { toastState, show: showToast, hide: hideToast } = useToast();
 
   const loadDetail = useCallback(async () => {
-    if (!id) return;
+    const reportId = reportIdParam;
+    if (!reportId) return;
+
     setLoading(true);
     setError(null);
     try {
-      const res = await cleanupAssignmentService.getMyTaskDetail(id);
+      const res = await cleanupAssignmentService.getMyTaskDetail(reportId);
       setTask(res.data.data);
-    } catch {
-      setError('Không thể tải chi tiết nhiệm vụ.');
+      useFieldWorkerTaskStore.getState().clearPendingItem(reportId, assignmentIdParam);
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Không thể tải chi tiết nhiệm vụ.'));
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [reportIdParam, assignmentIdParam]);
 
   useFocusEffect(
     useCallback(() => {
-      void loadDetail();
+      void loadDetail().catch(() => undefined);
     }, [loadDetail]),
   );
 
   const handleAccept = useCallback(async () => {
-    if (!id || accepting) return;
+    const reportId = task?.reportId ?? reportIdParam;
+    if (!reportId || accepting) return;
     setAccepting(true);
     try {
-      await cleanupAssignmentService.accept(id);
+      await cleanupAssignmentService.accept(reportId);
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast('Đã nhận nhiệm vụ thành công!');
       await loadDetail();
@@ -204,7 +216,7 @@ export default function AssignmentDetailScreen() {
     } finally {
       setAccepting(false);
     }
-  }, [id, accepting, loadDetail, showToast]);
+  }, [task, reportIdParam, accepting, loadDetail, showToast]);
 
   const handleOpenProgress = useCallback(() => {
     if (!task) return;
@@ -440,7 +452,7 @@ export default function AssignmentDetailScreen() {
                     router.push({
                       pathname: '/assignment/decline',
                       params: {
-                        reportId:   task.reportId,
+                        reportId: task.reportId,
                         reportCode: task.reportCode,
                         assignedAt: task.assignedAt,
                       },
