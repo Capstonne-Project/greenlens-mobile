@@ -1,5 +1,9 @@
-/** Mobile chỉ phân luồng Citizen vs Cleaner (đội dọn dẹp) */
-export type UserRole = 'Citizen' | 'Cleaner';
+/** Mobile roles — master plan §1 (LEO/Admin/CompanyManager không có shell mobile) */
+export type UserRole =
+  | 'Citizen'
+  | 'Cleaner'
+  | 'CompanyStaff'
+  | 'Inspector';
 
 export interface User {
   id: string;

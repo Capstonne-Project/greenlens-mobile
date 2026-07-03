@@ -32,9 +32,27 @@ export const api = axios.create({
   },
 });
 
+async function resolveAccessToken(): Promise<string | null> {
+  const inMemory = useAuthStore.getState().accessToken;
+  if (inMemory) return inMemory;
+  return SecureStore.getItemAsync('accessToken');
+}
+
 api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('accessToken');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  const token = await resolveAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  // FormData: để axios tự set boundary — tránh ghi đè Authorization
+  if (config.data instanceof FormData) {
+    if (typeof config.headers.delete === 'function') {
+      config.headers.delete('Content-Type');
+    } else {
+      delete config.headers['Content-Type'];
+    }
+  }
+
   return config;
 });
 
@@ -81,6 +99,11 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
     const status = error.response?.status;
+
+    if (__DEV__) {
+      console.log('[api] error', status, originalRequest?.method, originalRequest?.url);
+      console.log('[api] error body', JSON.stringify(error.response?.data));
+    }
 
     if (status !== 401 || !originalRequest) {
       return Promise.reject(error);

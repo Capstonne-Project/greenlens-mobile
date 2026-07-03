@@ -4,6 +4,7 @@ import type { User, AuthTokens } from '@/types/user.types';
 
 interface AuthState {
   user: User | null;
+  accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   setAuth: (user: User, tokens: AuthTokens) => Promise<void>;
@@ -14,19 +15,25 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user:            null,
+  accessToken:     null,
   isAuthenticated: false,
   isLoading:       true,
 
   setAuth: async (user, tokens) => {
-    await SecureStore.setItemAsync('accessToken',  tokens.accessToken);
+    await SecureStore.setItemAsync('accessToken', tokens.accessToken);
     await SecureStore.setItemAsync('refreshToken', tokens.refreshToken);
-    set({ user, isAuthenticated: true, isLoading: false });
+    set({
+      user,
+      accessToken: tokens.accessToken,
+      isAuthenticated: true,
+      isLoading: false,
+    });
   },
 
   clearAuth: async () => {
     await SecureStore.deleteItemAsync('accessToken');
     await SecureStore.deleteItemAsync('refreshToken');
-    set({ user: null, isAuthenticated: false });
+    set({ user: null, accessToken: null, isAuthenticated: false });
   },
 
   setUser: (user) => set({ user, isAuthenticated: true }),
