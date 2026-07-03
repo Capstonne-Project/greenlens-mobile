@@ -7,6 +7,9 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
 import type { StaffMapPin } from '@/hooks/useStaffMapPins';
+import type { AssignmentItem } from '@/types/cleanup-assignment.types';
+import { useFieldWorkerTaskStore } from '@/stores/fieldWorkerTask.store';
+import { getTaskRouteParams } from '@/utils/field-worker-task';
 
 const SEVERITY_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   Low:      { label: 'Thấp',         color: '#166534', bg: '#DCFCE7' },
@@ -39,7 +42,30 @@ export function StaffMapCalloutCard({ pin, onDismiss }: StaffMapCalloutCardProps
       <Pressable
         onPressIn={() => { scale.value = withSpring(0.97, { damping: 16, stiffness: 280 }); }}
         onPressOut={() => { scale.value = withSpring(1, { damping: 16, stiffness: 280 }); }}
-        onPress={() => router.push(`/assignment/${pin.reportId}` as never)}
+        onPress={() => {
+          const params = getTaskRouteParams({ assignmentId: pin.id, reportId: pin.reportId });
+          useFieldWorkerTaskStore.getState().setPendingItem({
+            reportId: pin.reportId,
+            reportCode: pin.reportCode,
+            assignmentId: pin.id,
+            assignmentStatus: pin.assignmentStatus,
+            categoryCode: '',
+            categoryName: pin.categoryName,
+            severity: pin.severity as AssignmentItem['severity'],
+            reportStatus: 'InProgress',
+            latitude: pin.latitude,
+            longitude: pin.longitude,
+            address: pin.address,
+            wardCode: '',
+            note: null,
+            assignedAt: '',
+            startedAt: null,
+            completedAt: null,
+            slaResolveDueAt: null,
+            firstImageUrl: pin.firstImageUrl,
+          });
+          router.push({ pathname: '/assignment/[id]', params } as never);
+        }}
       >
         <View
           className="overflow-hidden rounded-2xl bg-white"
@@ -95,7 +121,10 @@ export function StaffMapCalloutCard({ pin, onDismiss }: StaffMapCalloutCardProps
                 <Text className="text-sm font-semibold text-textSecondary">Đóng</Text>
               </Pressable>
               <Pressable
-                onPress={() => router.push(`/assignment/${pin.reportId}` as never)}
+                onPress={() => {
+                  const params = getTaskRouteParams({ assignmentId: pin.id, reportId: pin.reportId });
+                  router.push({ pathname: '/assignment/[id]', params } as never);
+                }}
                 className="flex-1 items-center rounded-xl py-2.5"
                 style={{ backgroundColor: colors.primary }}
               >

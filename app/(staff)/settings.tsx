@@ -6,6 +6,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/hooks/useAuth';
+import { useFieldWorkerLabels } from '@/hooks/useFieldWorkerLabels';
 import { colors } from '@/theme/colors';
 
 interface SettingRowProps {
@@ -42,6 +43,7 @@ function SettingRow({ icon, label, onPress, destructive = false }: SettingRowPro
 export default function StaffSettingsScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const labels = useFieldWorkerLabels();
 
   const handleLogout = async () => {
     await logout();
@@ -67,6 +69,9 @@ export default function StaffSettingsScreen() {
               <Text className="text-xs font-semibold text-primary">{user.teamName}</Text>
             </View>
           )}
+          <View className="mt-1 self-start rounded-full bg-surface px-2 py-0.5">
+            <Text className="text-xs font-semibold text-textSecondary">{labels.roleBadge}</Text>
+          </View>
         </View>
       </View>
 

@@ -7,8 +7,10 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 
 import { Text } from '@/components/ui/text';
 import { useMyAssignments } from '@/hooks/useMyAssignments';
+import { useFieldWorkerTaskStore } from '@/stores/fieldWorkerTask.store';
 import { colors } from '@/theme/colors';
 import type { AssignmentItem, AssignmentStatus } from '@/types/cleanup-assignment.types';
+import { getTaskRouteParams } from '@/utils/field-worker-task';
 
 // ─── Configs ────────────────────────────────────────────────────────────────
 
@@ -274,7 +276,13 @@ export default function AssignmentsScreen() {
   ];
 
   const handleCardPress = useCallback((item: AssignmentItem) => {
-    router.push(`/assignment/${item.reportId}` as never);
+    const params = getTaskRouteParams(item);
+    if (!params.id) return;
+    useFieldWorkerTaskStore.getState().setPendingItem(item);
+    router.push({
+      pathname: '/assignment/[id]',
+      params,
+    } as never);
   }, []);
 
   const renderItem = useCallback(
@@ -355,7 +363,7 @@ export default function AssignmentsScreen() {
           showsVerticalScrollIndicator={false}
           removeClippedSubviews
           maxToRenderPerBatch={10}
-          contentContainerStyle={{ paddingTop: 2, paddingBottom: 24, flexGrow: 1 }}
+          contentContainerStyle={{ paddingTop: 2, paddingBottom: insets.bottom + 100, flexGrow: 1 }}
           ListEmptyComponent={<EmptyState label={activeTabLabel.toLowerCase()} />}
           refreshControl={
             <RefreshControl
