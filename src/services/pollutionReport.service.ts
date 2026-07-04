@@ -22,11 +22,8 @@ export const pollutionReportService = {
       type: mimeType,
     } as unknown as Blob);
 
-    return apiPublic.post<ApiEnvelope<UploadReportImageResult>>("/media/reports/images", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    // BE yêu cầu Bearer khi đã login; api tự gắn token từ auth store
+    return api.post<ApiEnvelope<UploadReportImageResult>>('/media/reports/images', formData);
   },
 
   analyzeImage: ({ uri, mimeType, fileName }: UploadReportImageInput) => {
@@ -37,9 +34,7 @@ export const pollutionReportService = {
       type: mimeType,
     } as unknown as Blob);
 
-    return apiPublic.post<ApiEnvelope<AiAnalyzeResponse>>("/reports/analyze", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    return api.post<ApiEnvelope<AiAnalyzeResponse>>('/reports/analyze', formData);
   },
 
   submit: (payload: SubmitPollutionReportPayload, isAnonymous: boolean) => {

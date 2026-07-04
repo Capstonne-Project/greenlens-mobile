@@ -1,15 +1,6 @@
-export type ReportWorkflowStatus =
-  | 'Submitted'
-  | 'Verified'
-  | 'Dispatched'
-  | 'Assigned'
-  | 'InProgress'
-  | 'Resolved'
-  | 'PenaltyIssued'
-  | 'Closed'
-  | 'ClosedNoViolation'
-  | 'Rejected'
-  | 'Duplicate';
+import type { ReportWorkflowStatus } from '@/types/report-status.types';
+
+export type { ReportWorkflowStatus } from '@/types/report-status.types';
 
 export type ReportDetailSeverity = 'Low' | 'Medium' | 'High' | 'Critical';
 

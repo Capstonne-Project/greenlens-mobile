@@ -6,10 +6,12 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "greenlensapp",
+    "jsEngine": "hermes",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "jsEngine": "jsc"
     },
     "android": {
       "usesCleartextTraffic": true,
@@ -60,7 +62,10 @@
           "photosPermission": "GreenLens cần truy cập thư viện ảnh để chọn minh chứng báo cáo.",
           "cameraPermission": "GreenLens cần camera để chụp ảnh báo cáo tại hiện trường."
         }
-      ]
+      ],
+      "expo-font",
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

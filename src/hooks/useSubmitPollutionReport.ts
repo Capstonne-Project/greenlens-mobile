@@ -1,5 +1,7 @@
+import { isAxiosError } from 'axios';
 import { useCallback, useState } from 'react';
 import { pollutionReportService } from '@/services/pollutionReport.service';
+import { useAuthStore } from '@/stores/auth.store';
 import { useCreateReportDraftStore } from '@/stores/createReportDraft.store';
 import type { SubmitPollutionReportPayload } from '@/types/pollution-report.types';
 import { buildReportFileName, guessMimeTypeFromUri } from '@/utils/report-image-file';
@@ -9,16 +11,25 @@ interface UploadProgress {
   total: number;
 }
 
+type SubmitFailureReason = 'session-expired' | 'unknown';
+
 interface UseSubmitPollutionReportResult {
   isUploading: boolean;
   isSubmitting: boolean;
   uploadAllImages: (onProgress?: (progress: UploadProgress) => void) => Promise<boolean>;
   submitReport: () => Promise<boolean>;
+  lastFailureReason: SubmitFailureReason | null;
+}
+
+function isSessionExpiredError(error: unknown): boolean {
+  return isAxiosError(error) && error.response?.status === 401;
 }
 
 export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
   const [isUploading, setIsUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lastFailureReason, setLastFailureReason] = useState<SubmitFailureReason | null>(null);
+  const clearAuth = useAuthStore((state) => state.clearAuth);
 
   const images = useCreateReportDraftStore((state) => state.images);
   const location = useCreateReportDraftStore((state) => state.location);
@@ -41,6 +52,7 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
     onProgress?.({ done, total });
 
     setIsUploading(true);
+    setLastFailureReason(null);
     try {
       for (const image of images) {
         if (image.uploadStatus === 'done' && image.url && image.mimeType && image.sizeBytes) {
@@ -68,8 +80,14 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
           });
           done += 1;
           onProgress?.({ done, total });
-        } catch {
+        } catch (error) {
           updateImage(image.localUri, { uploadStatus: 'error' });
+          if (isSessionExpiredError(error)) {
+            setLastFailureReason('session-expired');
+            await clearAuth();
+          } else {
+            setLastFailureReason('unknown');
+          }
           return false;
         }
       }
@@ -78,7 +96,7 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
     } finally {
       setIsUploading(false);
     }
-  }, [images, updateImage]);
+  }, [images, updateImage, clearAuth]);
 
   const submitReport = useCallback(async () => {
     if (!location || !categoryId || !severity) {
@@ -119,12 +137,19 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
     };
 
     setIsSubmitting(true);
+    setLastFailureReason(null);
     try {
       const response = await pollutionReportService.submit(payload, isAnonymous);
       const data = response.data.data;
       setSubmissionResult(data.code, data.slaVerifyDueAt);
       return true;
-    } catch {
+    } catch (error) {
+      if (isSessionExpiredError(error)) {
+        setLastFailureReason('session-expired');
+        await clearAuth();
+      } else {
+        setLastFailureReason('unknown');
+      }
       return false;
     } finally {
       setIsSubmitting(false);
@@ -138,6 +163,7 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
     setSubmissionResult,
     tempImageId,
     wasteTagIds,
+    clearAuth,
   ]);
 
   return {
@@ -145,5 +171,6 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
     isSubmitting,
     uploadAllImages,
     submitReport,
+    lastFailureReason,
   };
 }

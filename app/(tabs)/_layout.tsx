@@ -1,7 +1,10 @@
 import { CitizenTabBar } from '@/components/layout/CitizenTabBar';
+import { useRoleGuard } from '@/hooks/useRoleGuard';
 import { Tabs } from 'expo-router';
 
 export default function CitizenTabsLayout() {
+  useRoleGuard('citizen');
+
   return (
     <Tabs
       tabBar={(props) => <CitizenTabBar {...props} />}
