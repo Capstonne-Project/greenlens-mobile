@@ -26,7 +26,7 @@ interface CitizenMapPinMarkerProps {
   pin: CitizenMapPin;
   selected: boolean;
   onPress: (pin: CitizenMapPin) => void;
-  onOpenDetail?: (pin: CitizenMapPin) => void;
+  onOpenDetail: (pin: CitizenMapPin) => void;
 }
 
 export function CitizenMapPinMarker({ pin, selected, onPress, onOpenDetail }: CitizenMapPinMarkerProps) {
@@ -64,7 +64,7 @@ export function CitizenMapPinMarker({ pin, selected, onPress, onOpenDetail }: Ci
         />
       </View>
 
-      <Callout tooltip onPress={() => onOpenDetail?.(pin)}>
+      <Callout tooltip onPress={() => onOpenDetail(pin)}>
         <MapReportCalloutCard pin={pin} />
       </Callout>
     </Marker>

@@ -25,7 +25,7 @@
 | Tác vụ | Thành viên thường | Team Leader (`isLeader: true`) |
 |--------|-------------------|--------------------------------|
 | Xem profile team | ✅ | ✅ |
-| Xem danh sách task | ✅ | ✅ |
+| Xem danh sách task | ✅ | ✅ |P
 | Xem chi tiết task | ✅ | ✅ |
 | Chấp nhận task (`accept`) | ❌ | ✅ |
 | Từ chối task (`decline`) | ❌ | ✅ (trong 2h, lý do ≥ 20 ký tự) |
