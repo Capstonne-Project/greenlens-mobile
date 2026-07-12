@@ -15,7 +15,7 @@ export default function CitizenTabsLayout() {
       <Tabs.Screen name="create" options={{ href: null, title: 'Gửi báo cáo' }} />
       <Tabs.Screen name="change-password" options={{ href: null, title: 'Đổi mật khẩu' }} />
       <Tabs.Screen name="notifications" options={{ title: 'Thông báo' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Cá nhân' }} />
+      <Tabs.Screen name="profile" options={{ title: 'Hồ sơ' }} />
     </Tabs>
   );
 }

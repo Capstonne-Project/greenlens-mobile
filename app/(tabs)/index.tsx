@@ -30,13 +30,11 @@ import { useUserMapLocation } from '@/hooks/useUserMapLocation';
 
 import { useViewportMapReports } from '@/hooks/useViewportMapReports';
 
-import { MapPinPreviewSheet } from '@/components/map/MapPinPreviewSheet';
-
 import { useAuthStore } from '@/stores/auth.store';
 
 import { useRouter, type Href } from 'expo-router';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ActivityIndicator, Alert, Platform, Text, View } from 'react-native';
 
@@ -54,9 +52,12 @@ export default function CitizenHomeScreen() {
 
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const [previewPin, setPreviewPin] = useState<CitizenMapPin | null>(null);
 
   const mapRef = useRef<MapView | null>(null);
+  const pitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const orbitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isCinematicRef = useRef(false);
+  const pressTokenRef = useRef(0);
 
   const [filter, setFilter] = useState<CategoryFilterId>('all');
 
@@ -101,41 +102,97 @@ export default function CitizenHomeScreen() {
 
 
 
-  const onMapPress = useCallback(() => {
-    setSelected(null);
-    setPreviewPin(null);
-    setFollowUserLocation(false);
+  const clearCameraAnimations = useCallback(() => {
+    if (pitchTimerRef.current) {
+      clearTimeout(pitchTimerRef.current);
+      pitchTimerRef.current = null;
+    }
+    if (orbitTimerRef.current) {
+      clearTimeout(orbitTimerRef.current);
+      orbitTimerRef.current = null;
+    }
+    isCinematicRef.current = false;
   }, []);
 
+  useEffect(() => clearCameraAnimations, [clearCameraAnimations]);
+
+  const onMapPress = useCallback(() => {
+    setSelected(null);
+    setFollowUserLocation(false);
+    clearCameraAnimations();
+    mapRef.current?.animateCamera({ pitch: 0, heading: 0 }, { duration: 350 });
+  }, [clearCameraAnimations]);
 
 
-  const openReportDetail = useCallback(
+
+  const onMarkerPress = useCallback(
+    async (pin: CitizenMapPin) => {
+      setSelected(pin);
+      setFollowUserLocation(false);
+      clearCameraAnimations();
+
+      const token = ++pressTokenRef.current;
+
+      // Khóa camera tại vị trí hiện tại ngay lập tức để hủy animation (pitch/orbit) đang
+      // chạy dở trên native — tránh 2 animateCamera tranh chấp khi bấm marker liên tiếp.
+      const currentCamera = await mapRef.current?.getCamera();
+      if (token !== pressTokenRef.current) return; // đã có lần bấm marker mới hơn — bỏ qua
+      if (currentCamera) {
+        mapRef.current?.animateCamera(currentCamera, { duration: 0 });
+      }
+
+      isCinematicRef.current = true;
+
+      const zoomDelta = 0.004;
+      const zoomDuration = 750;
+      const zoomToPitchGap = 120;
+      const pitchDuration = 600;
+      const pitchToOrbitGap = 120;
+
+      // Lệch tâm map xuống dưới marker — chừa khoảng trống phía trên cho Callout
+      // (đặc biệt cần khi camera pitch 3D làm marker bị đẩy lên gần mép trên).
+      const latitudeOffset = zoomDelta * 0.32;
+
+      const region = {
+        latitude: pin.latitude - latitudeOffset,
+        longitude: pin.longitude,
+        latitudeDelta: zoomDelta,
+        longitudeDelta: zoomDelta,
+      };
+
+      mapRef.current?.animateToRegion(region, zoomDuration);
+
+      pitchTimerRef.current = setTimeout(() => {
+        pitchTimerRef.current = null;
+        mapRef.current?.animateCamera({ pitch: 55 }, { duration: pitchDuration });
+
+        pitchTimerRef.current = setTimeout(() => {
+          pitchTimerRef.current = null;
+
+          // Orbit 1/8 vòng quanh marker — 1 animateCamera duy nhất để native tự nội suy mượt.
+          const orbitDuration = 3200;
+          mapRef.current?.animateCamera({ heading: 45 }, { duration: orbitDuration });
+
+          orbitTimerRef.current = setTimeout(() => {
+            orbitTimerRef.current = null;
+            isCinematicRef.current = false;
+            onRegionChangeComplete(region);
+          }, orbitDuration);
+        }, pitchDuration + pitchToOrbitGap);
+      }, zoomDuration + zoomToPitchGap);
+    },
+    [clearCameraAnimations, onRegionChangeComplete],
+  );
+
+  const onOpenReportDetail = useCallback(
     (pin: CitizenMapPin) => {
       if (!isAuthenticated) {
-        setSelected(pin);
-        setPreviewPin(pin);
+        router.push('/(auth)/login' as Href);
         return;
       }
       router.push({ pathname: '/report/[id]', params: { id: pin.id, source: 'map' } } as Href);
     },
     [isAuthenticated, router],
-  );
-
-  const onMarkerPress = useCallback(
-    (pin: CitizenMapPin) => {
-      setSelected(pin);
-      openReportDetail(pin);
-    },
-    [openReportDetail],
-  );
-
-
-
-  const onOpenReportDetail = useCallback(
-    (pin: CitizenMapPin) => {
-      openReportDetail(pin);
-    },
-    [openReportDetail],
   );
 
 
@@ -280,21 +337,7 @@ export default function CitizenHomeScreen() {
 
         onPress={onMapPress}
 
-        onMarkerPress={(event) => {
-
-          const { latitude, longitude } = event.nativeEvent.coordinate;
-
-          const pin = pins.find(
-
-            (item) =>
-
-              Math.abs(item.latitude - latitude) < 1e-5 && Math.abs(item.longitude - longitude) < 1e-5
-
-          );
-
-          if (pin) onMarkerPress(pin);
-
-        }}
+        onPanDrag={clearCameraAnimations}
 
         onRegionChangeComplete={(region, details) => {
 
@@ -303,6 +346,8 @@ export default function CitizenHomeScreen() {
             setFollowUserLocation(false);
 
           }
+
+          if (isCinematicRef.current) return;
 
           onRegionChangeComplete(region);
 
@@ -422,8 +467,6 @@ export default function CitizenHomeScreen() {
         isLoading={isSummaryLoading}
         onSeeAll={() => router.push('/(tabs)/reports' as Href)}
       />
-
-      <MapPinPreviewSheet pin={previewPin} onClose={() => setPreviewPin(null)} />
 
     </View>
 
