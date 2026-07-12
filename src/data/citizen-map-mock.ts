@@ -12,6 +12,9 @@ export interface CitizenMapPin {
   address: string;
   imageUrl: string;
   watchersCount: number;
+  /** Raw string từ BE (vd. "Low"/"High", "Submitted"/"Resolved") — dùng cho badge trong list card */
+  severity?: string | null;
+  status?: string | null;
 }
 
 export const CITIZEN_MAP_MOCK_PINS: CitizenMapPin[] = [

@@ -9,6 +9,7 @@ interface CitizenMapToolbarProps {
   onZoomIn?: () => void;
   layersActive?: boolean;
   locateActive?: boolean;
+  bottomOffset?: number;
 }
 
 export function CitizenMapToolbar({
@@ -18,9 +19,10 @@ export function CitizenMapToolbar({
   onZoomIn,
   layersActive = false,
   locateActive = false,
+  bottomOffset = 220,
 }: CitizenMapToolbarProps) {
   return (
-    <View className="absolute right-3 z-10 gap-2" style={{ bottom: 220 }}>
+    <View className="absolute right-3 z-10 gap-2" style={{ bottom: bottomOffset }}>
       <ToolbarIcon icon="layers-outline" onPress={onLayers ?? (() => {})} active={layersActive} />
       <ToolbarIcon icon="locate-outline" onPress={onLocate ?? (() => {})} active={locateActive} />
       <ToolbarIcon icon="options-outline" onPress={onFilters ?? (() => {})} />

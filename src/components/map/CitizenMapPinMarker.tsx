@@ -25,11 +25,19 @@ const PIN_ICON: Record<ReportCategory, keyof typeof Ionicons.glyphMap> = {
 interface CitizenMapPinMarkerProps {
   pin: CitizenMapPin;
   selected: boolean;
+  /** Ẩn Callout khi camera đang cinematic (pitch/orbit) — Callout không theo kịp xoay 3D nên bị méo/che */
+  showCallout?: boolean;
   onPress: (pin: CitizenMapPin) => void;
   onOpenDetail: (pin: CitizenMapPin) => void;
 }
 
-export function CitizenMapPinMarker({ pin, selected, onPress, onOpenDetail }: CitizenMapPinMarkerProps) {
+export function CitizenMapPinMarker({
+  pin,
+  selected,
+  showCallout = selected,
+  onPress,
+  onOpenDetail,
+}: CitizenMapPinMarkerProps) {
   const bg = PIN_COLOR[pin.category] ?? colors.textSecondary;
   const border = selected ? 'border-2 border-white' : 'border border-white/80';
 
@@ -64,9 +72,11 @@ export function CitizenMapPinMarker({ pin, selected, onPress, onOpenDetail }: Ci
         />
       </View>
 
-      <Callout tooltip onPress={() => onOpenDetail(pin)}>
-        <MapReportCalloutCard pin={pin} />
-      </Callout>
+      {showCallout ? (
+        <Callout tooltip onPress={() => onOpenDetail(pin)}>
+          <MapReportCalloutCard pin={pin} />
+        </Callout>
+      ) : null}
     </Marker>
   );
 }

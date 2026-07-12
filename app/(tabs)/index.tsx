@@ -1,6 +1,6 @@
 import { CategoryFilterChips, type CategoryFilterId } from '@/components/map/CategoryFilterChips';
 
-import { AreaSummaryBottomPanel } from '@/components/map/AreaSummaryBottomPanel';
+import { DraggableReportsSheet, REPORTS_SHEET_PEEK_HEIGHT, type SheetSnapPoint } from '@/components/map/DraggableReportsSheet';
 
 import { CitizenHomeHeader } from '@/components/map/CitizenHomeHeader';
 
@@ -67,6 +67,12 @@ export default function CitizenHomeScreen() {
 
   const [followUserLocation, setFollowUserLocation] = useState(false);
 
+  const [sheetSnap, setSheetSnap] = useState<SheetSnapPoint>('mid');
+
+  // Callout của react-native-maps không theo kịp camera pitch/orbit 3D — ẩn Callout
+  // trong lúc cinematic đang xoay, chỉ hiện lại sau khi animation kết thúc.
+  const [isCinematicPlaying, setIsCinematicPlaying] = useState(false);
+
 
 
   const {
@@ -89,7 +95,7 @@ export default function CitizenHomeScreen() {
 
 
 
-  const { pins, summary, isLoading, isSummaryLoading, errorMessage, onRegionChangeComplete } =
+  const { pins, summary, isLoading, errorMessage, onRegionChangeComplete } =
     useViewportMapReports(filter, {
       onCategoryNotFound: () => setFilter('all'),
     });
@@ -112,6 +118,7 @@ export default function CitizenHomeScreen() {
       orbitTimerRef.current = null;
     }
     isCinematicRef.current = false;
+    setIsCinematicPlaying(false);
   }, []);
 
   useEffect(() => clearCameraAnimations, [clearCameraAnimations]);
@@ -142,6 +149,7 @@ export default function CitizenHomeScreen() {
       }
 
       isCinematicRef.current = true;
+      setIsCinematicPlaying(true);
 
       const zoomDelta = 0.004;
       const zoomDuration = 750;
@@ -176,6 +184,7 @@ export default function CitizenHomeScreen() {
           orbitTimerRef.current = setTimeout(() => {
             orbitTimerRef.current = null;
             isCinematicRef.current = false;
+            setIsCinematicPlaying(false);
             onRegionChangeComplete(region);
           }, orbitDuration);
         }, pitchDuration + pitchToOrbitGap);
@@ -365,6 +374,8 @@ export default function CitizenHomeScreen() {
 
             selected={selected?.id === pin.id}
 
+            showCallout={selected?.id === pin.id && !isCinematicPlaying}
+
             onPress={onMarkerPress}
 
             onOpenDetail={onOpenReportDetail}
@@ -439,33 +450,25 @@ export default function CitizenHomeScreen() {
 
 
 
-      <CitizenMapToolbar
+      {sheetSnap !== 'full' ? (
+        <CitizenMapToolbar
+          onLayers={onChooseMapLayer}
+          onLocate={onLocateMe}
+          onFilters={() => Alert.alert('Bộ lọc', 'Lọc nâng cao — sắp có.')}
+          onZoomIn={zoomIn}
+          layersActive={mapLayerId !== DEFAULT_CITIZEN_MAP_LAYER_ID}
+          locateActive={canShowUserLocation && followUserLocation}
+          bottomOffset={REPORTS_SHEET_PEEK_HEIGHT + 16}
+        />
+      ) : null}
 
-        onLayers={onChooseMapLayer}
-
-        onLocate={onLocateMe}
-
-        onFilters={() => Alert.alert('Bộ lọc', 'Lọc nâng cao — sắp có.')}
-
-        onZoomIn={zoomIn}
-
-        layersActive={mapLayerId !== DEFAULT_CITIZEN_MAP_LAYER_ID}
-
-        locateActive={canShowUserLocation && followUserLocation}
-
-      />
-
-
-
-      <AreaSummaryBottomPanel
-        areaTitle="Khu vực đang xem"
-        reportCount={summary?.reportCount ?? 0}
-        days={summary?.days ?? 30}
-        dailyCounts={summary?.dailyCounts}
-        periodStart={summary?.periodStart}
-        periodEnd={summary?.periodEnd}
-        isLoading={isSummaryLoading}
-        onSeeAll={() => router.push('/(tabs)/reports' as Href)}
+      <DraggableReportsSheet
+        pins={pins}
+        reportCount={summary?.reportCount ?? pins.length}
+        isLoading={isLoading}
+        onOpenDetail={onOpenReportDetail}
+        onSnapChange={setSheetSnap}
+        bottomInset={insets.bottom}
       />
 
     </View>
