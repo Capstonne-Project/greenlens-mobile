@@ -13,7 +13,13 @@ export interface PublicMapReportsQuery {
   categoryId?: string;
 }
 
-/** Một dòng từ BE — field có thể khác PascalCase tùy serializer */
+/**
+ * Một dòng từ BE — field có thể khác PascalCase tùy serializer.
+ * Xác nhận BE (docs/mobile-home-map-list-sheet-api-confirmation.md):
+ * - `title` = Category.NameVi (report không có field tiêu đề riêng) — luôn có giá trị khi category active.
+ * - `address` là chuỗi tự do do citizen nhập, KHÔNG được BE rút gọn về cấp phường/quận.
+ * - `imageUrl` là ảnh đầu tiên (ThumbnailUrl ưu tiên), chỉ 1 URL.
+ */
 export interface PublicMapReportDto {
   id: string;
   code?: string | null;
@@ -21,6 +27,7 @@ export interface PublicMapReportDto {
   longitude: number;
   severity?: string | null;
   categoryCode?: string | null;
+  categoryIconUrl?: string | null;
   title?: string | null;
   description?: string | null;
   address?: string | null;

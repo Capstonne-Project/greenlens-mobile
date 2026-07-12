@@ -41,6 +41,23 @@ export function getReportStatusMeta(status: string): ReportStatusMeta {
   return STATUS_META[status] ?? FALLBACK_META;
 }
 
+const SEVERITY_META: Record<string, ReportStatusMeta> = {
+  Low: { label: 'Mức độ thấp', textColor: '#166534', bgColor: '#DCFCE7' },
+  Medium: { label: 'Mức độ trung bình', textColor: '#713F12', bgColor: '#FEF9C3' },
+  High: { label: 'Mức độ cao', textColor: '#9A3412', bgColor: '#FFEDD5' },
+  Critical: { label: 'Nghiêm trọng', textColor: '#991B1B', bgColor: '#FEE2E2' },
+};
+
+const SEVERITY_FALLBACK: ReportStatusMeta = { label: 'Chưa rõ mức độ', textColor: '#6B7280', bgColor: '#F3F4F6' };
+
+/** Nhận string severity từ BE (Low/Medium/High/Critical, không phân biệt hoa thường) */
+export function getSeverityMeta(severity?: string | null): ReportStatusMeta {
+  if (!severity) return SEVERITY_FALLBACK;
+  const normalized = severity.trim();
+  const key = Object.keys(SEVERITY_META).find((k) => k.toLowerCase() === normalized.toLowerCase());
+  return key ? SEVERITY_META[key] : SEVERITY_FALLBACK;
+}
+
 export interface ReportFooterActions {
   showClose: boolean;
   showReopen: boolean;

@@ -32,6 +32,7 @@ export function mapCategoryCodeToReportCategory(code: string | null | undefined)
   return 'other';
 }
 
+/** BE luôn trả `title` (= Category.NameVi) khi category active — fallback chỉ phòng response bất thường */
 function fallbackTitle(dto: PublicMapReportDto): string {
   if (dto.title?.trim()) return dto.title.trim();
   if (dto.code?.trim()) return dto.code.trim();
@@ -62,5 +63,7 @@ export function publicMapDtoToCitizenPin(dto: PublicMapReportDto): CitizenMapPin
     address: dto.address?.trim() || 'Khu vực hiển thị trên bản đồ',
     imageUrl,
     watchersCount: Math.max(0, dto.reporterCount ?? 0),
+    severity: dto.severity,
+    status: dto.status,
   };
 }

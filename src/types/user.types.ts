@@ -12,6 +12,8 @@ export interface User {
   role: UserRole;
   isEmailVerified: boolean;
   avatarUrl?: string | null;
+  phoneNumber?: string | null;
+  isPhoneVerified?: boolean;
   points?: number;
   reportCount?: number;
   createdAt?: string;
