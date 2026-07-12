@@ -18,7 +18,7 @@ const TAB_META: Record<
   index: { label: 'Trang chủ', icon: 'home-outline', activeIcon: 'home' },
   reports: { label: 'Báo cáo', icon: 'file-tray-outline', activeIcon: 'file-tray' },
   notifications: { label: 'Thông báo', icon: 'notifications-outline', activeIcon: 'notifications' },
-  profile: { label: 'Cá nhân', icon: 'person-outline', activeIcon: 'person' },
+  profile: { label: 'Hồ sơ', icon: 'person-outline', activeIcon: 'person' },
 };
 
 function FabPressable({ onPress }: { onPress: () => void }) {

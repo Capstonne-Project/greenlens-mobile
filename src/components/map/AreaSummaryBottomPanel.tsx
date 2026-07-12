@@ -4,7 +4,16 @@ import type { MapSummaryDailyCount } from '@/types/map-summary.types';
 import * as Haptics from 'expo-haptics';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+
+const OPEN_TRANSLATE_Y = 0;
+const CLOSE_DRAG_THRESHOLD = 40;
 
 interface AreaSummaryBottomPanelProps {
   areaTitle?: string;
@@ -153,61 +162,124 @@ export function AreaSummaryBottomPanel({
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
+  const [isOpen, setIsOpen] = useState(true);
+  const panelHeight = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const dragStartY = useSharedValue(0);
+
+  const openPanel = () => {
+    setIsOpen(true);
+    translateY.value = withSpring(OPEN_TRANSLATE_Y, { damping: 18, stiffness: 220 });
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const closePanel = () => {
+    setIsOpen(false);
+    translateY.value = withSpring(panelHeight.value, { damping: 18, stiffness: 220 });
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const panGesture = Gesture.Pan()
+    .onStart(() => {
+      dragStartY.value = translateY.value;
+    })
+    .onUpdate((event) => {
+      const next = dragStartY.value + event.translationY;
+      translateY.value = Math.max(0, Math.min(panelHeight.value, next));
+    })
+    .onEnd((event) => {
+      const shouldClose = event.translationY > CLOSE_DRAG_THRESHOLD || event.velocityY > 800;
+      if (shouldClose) {
+        runOnJS(closePanel)();
+      } else {
+        runOnJS(openPanel)();
+      }
+    });
+
+  const animatedPanelStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
   return (
-    <View className="absolute bottom-0 left-0 right-0 z-10 rounded-t-3xl border border-border bg-white px-4 pb-3 pt-4 shadow-lg shadow-black/10">
-      <View className="mb-3 flex-row items-start justify-between gap-2">
-        <View className="flex-1">
-          <Text className="text-lg font-bold text-textPrimary">{areaTitle}</Text>
-          {isLoading && dailyCounts.length === 0 ? (
-            <Text className="mt-1 text-sm text-textSecondary">Đang tải thống kê...</Text>
-          ) : hasSelection ? (
-            <View className="mt-1">
-              <Text className="text-[28px] font-bold leading-8 text-primary">
-                {selectedItem.count} báo cáo
-              </Text>
-              <Text className="mt-0.5 text-sm font-medium text-textPrimary">
-                {isTodayIso(selectedItem.date) ? 'Hôm nay' : formatSelectedDate(selectedItem.date)}
-              </Text>
+    <>
+      <GestureDetector gesture={panGesture}>
+        <Animated.View
+          onLayout={(event) => {
+            panelHeight.value = event.nativeEvent.layout.height;
+            if (!isOpen) translateY.value = event.nativeEvent.layout.height;
+          }}
+          style={animatedPanelStyle}
+          className="absolute bottom-0 left-0 right-0 z-10 rounded-t-3xl border border-border bg-white px-4 pb-3 pt-2 shadow-lg shadow-black/10"
+        >
+          <View className="mb-1 items-center py-1">
+            <View className="h-1.5 w-10 rounded-full bg-border" />
+          </View>
+
+          <View className="mb-3 flex-row items-start justify-between gap-2">
+            <View className="flex-1">
+              <Text className="text-lg font-bold text-textPrimary">{areaTitle}</Text>
+              {isLoading && dailyCounts.length === 0 ? (
+                <Text className="mt-1 text-sm text-textSecondary">Đang tải thống kê...</Text>
+              ) : hasSelection ? (
+                <View className="mt-1">
+                  <Text className="text-[28px] font-bold leading-8 text-primary">
+                    {selectedItem.count} báo cáo
+                  </Text>
+                  <Text className="mt-0.5 text-sm font-medium text-textPrimary">
+                    {isTodayIso(selectedItem.date) ? 'Hôm nay' : formatSelectedDate(selectedItem.date)}
+                  </Text>
+                </View>
+              ) : (
+                <View className="mt-1">
+                  <Text className="text-[28px] font-bold leading-8 text-primary">{reportCount} báo cáo</Text>
+                  <Text className="mt-0.5 text-sm text-textSecondary">{days} ngày qua · bấm cột để xem từng ngày</Text>
+                </View>
+              )}
             </View>
-          ) : (
-            <View className="mt-1">
-              <Text className="text-[28px] font-bold leading-8 text-primary">{reportCount} báo cáo</Text>
-              <Text className="mt-0.5 text-sm text-textSecondary">{days} ngày qua · bấm cột để xem từng ngày</Text>
+            <TapScale onPress={onSeeAll ?? (() => {})}>
+              <Text className="text-sm font-semibold text-primary">Xem tất cả {'>'}</Text>
+            </TapScale>
+          </View>
+
+          <View className="overflow-hidden rounded-xl bg-surface px-1 pb-2 pt-4">
+            {isLoading && dailyCounts.length === 0 ? (
+              <ChartSkeleton />
+            ) : dailyCounts.length === 0 ? (
+              <View className="h-[72px] items-center justify-center">
+                <Text className="text-xs text-textSecondary">Chưa có dữ liệu thống kê</Text>
+              </View>
+            ) : (
+              <View className="flex-row items-end gap-0.5">
+                {dailyCounts.map((item, index) => (
+                  <ChartBar
+                    key={item.date}
+                    count={item.count}
+                    maxBar={maxBar}
+                    isSelected={index === selectedIndex}
+                    hasSelection={hasSelection}
+                    onPress={() => onSelectBar(index)}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View className="mt-2 flex-row justify-between px-0.5">
+            <Text className="text-[10px] text-textSecondary">{startLabel}</Text>
+            <Text className="text-[10px] font-medium text-textPrimary">{endLabel}</Text>
+          </View>
+        </Animated.View>
+      </GestureDetector>
+
+      {!isOpen ? (
+        <View className="absolute bottom-4 right-4 z-10">
+          <TapScale onPress={openPanel}>
+            <View className="h-9 w-9 items-center justify-center rounded-full bg-white shadow-lg shadow-black/20">
+              <View className="h-1.5 w-6 rounded-full bg-border" />
             </View>
-          )}
+          </TapScale>
         </View>
-        <TapScale onPress={onSeeAll ?? (() => {})}>
-          <Text className="text-sm font-semibold text-primary">Xem tất cả {'>'}</Text>
-        </TapScale>
-      </View>
-
-      <View className="overflow-hidden rounded-xl bg-surface px-1 pb-2 pt-4">
-        {isLoading && dailyCounts.length === 0 ? (
-          <ChartSkeleton />
-        ) : dailyCounts.length === 0 ? (
-          <View className="h-[72px] items-center justify-center">
-            <Text className="text-xs text-textSecondary">Chưa có dữ liệu thống kê</Text>
-          </View>
-        ) : (
-          <View className="flex-row items-end gap-0.5">
-            {dailyCounts.map((item, index) => (
-              <ChartBar
-                key={item.date}
-                count={item.count}
-                maxBar={maxBar}
-                isSelected={index === selectedIndex}
-                hasSelection={hasSelection}
-                onPress={() => onSelectBar(index)}
-              />
-            ))}
-          </View>
-        )}
-      </View>
-
-      <View className="mt-2 flex-row justify-between px-0.5">
-        <Text className="text-[10px] text-textSecondary">{startLabel}</Text>
-        <Text className="text-[10px] font-medium text-textPrimary">{endLabel}</Text>
-      </View>
-    </View>
+      ) : null}
+    </>
   );
 }
