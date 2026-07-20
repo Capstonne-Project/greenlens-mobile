@@ -16,6 +16,14 @@ export default function AssignmentLayout() {
         options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
       />
       <Stack.Screen
+        name="escalate"
+        options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
+      />
+      <Stack.Screen
+        name="before-images"
+        options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
+      />
+      <Stack.Screen
         name="progress"
         options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
       />
