@@ -182,8 +182,11 @@ export function ReportReviewSummary({
         </Text>
         {wasteTags.length ? (
           <View className="mt-3 flex-row flex-wrap gap-2">
-            {wasteTags.map((tag) => (
-              <View key={tag.id} className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1">
+            {wasteTags.map((tag, index) => (
+              <View
+                key={tag.id || tag.code || `waste-${index}`}
+                className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1"
+              >
                 <Text className="text-xs font-semibold text-primary">{tag.nameVi}</Text>
               </View>
             ))}
