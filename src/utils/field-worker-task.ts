@@ -2,7 +2,7 @@ import type { AssignmentItem, AssignmentStatus, TaskDetail } from '@/types/clean
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const DECLINE_WINDOW_MS = 2 * 60 * 60 * 1000;
+const DECLINE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export function isTaskUuid(value: string | undefined | null): boolean {
   if (!value) return false;
@@ -72,6 +72,9 @@ export function firstRouteParam(value: string | string[] | undefined): string {
  * - `{ reportId, assignmentId }`
  * - `{ id: reportId, assignmentId }` (không có field reportId)
  * - `{ id: assignmentId, report: { id: reportId } }`
+ *
+ * Lưu ý: mọi API task mobile dùng `reportId`. Không tự alias `assignmentId`
+ * thành `reportId` nếu BE không trả đủ dữ liệu, vì sẽ gọi sai endpoint.
  */
 export function resolveTaskIds(raw: RawAssignmentItem): TaskIds {
   const report = raw.report;
@@ -89,8 +92,11 @@ export function resolveTaskIds(raw: RawAssignmentItem): TaskIds {
     } else if (reportId && topId !== reportId && !assignmentId) {
       assignmentId = topId;
     } else if (!reportId && !assignmentId) {
-      reportId = topId;
-      assignmentId = topId;
+      if (nestedReportId && topId !== nestedReportId) {
+        assignmentId = topId;
+      } else {
+        reportId = topId;
+      }
     } else if (!reportId && assignmentId && topId !== assignmentId) {
       reportId = topId;
     } else if (reportId && !assignmentId && topId !== reportId) {
@@ -99,7 +105,6 @@ export function resolveTaskIds(raw: RawAssignmentItem): TaskIds {
   }
 
   if (!assignmentId) assignmentId = reportId;
-  if (!reportId) reportId = assignmentId;
 
   return { reportId, assignmentId };
 }
@@ -108,6 +113,7 @@ export function deriveAssignmentFlags(
   assignmentStatus: AssignmentStatus,
   assignedAt: string | null | undefined,
   overrides?: Pick<TaskDetail, 'canDecline' | 'canUpdateProgress' | 'canResolve'>,
+  hasBeforeImages = false,
 ): Pick<TaskDetail, 'canDecline' | 'canUpdateProgress' | 'canResolve'> {
   if (overrides) {
     return {
@@ -126,7 +132,7 @@ export function deriveAssignmentFlags(
   return {
     canDecline,
     canUpdateProgress: inProgress,
-    canResolve: inProgress,
+    canResolve: inProgress && hasBeforeImages,
   };
 }
 
@@ -176,9 +182,9 @@ export interface TaskRouteParams {
   assignmentId: string;
 }
 
-/** URL segment `[id]` = reportId (GET detail). assignmentId dùng cho accept/decline. */
+/** URL segment `[id]` = reportId (GET/detail/mutations). assignmentId chỉ giữ để key UI/local store. */
 export function getTaskRouteParams(item: Pick<AssignmentItem, 'assignmentId' | 'reportId'>): TaskRouteParams {
-  const reportId = isTaskUuid(item.reportId) ? item.reportId : item.assignmentId;
+  const reportId = isTaskUuid(item.reportId) ? item.reportId : '';
   const assignmentId = isTaskUuid(item.assignmentId) ? item.assignmentId : item.reportId;
   return {
     id: reportId,

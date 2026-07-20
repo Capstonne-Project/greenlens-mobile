@@ -1,6 +1,11 @@
-import type { ReportStatus } from '@/types/report-status.types';
+import type { ReportStatus, ReportWorkflowStatus } from '@/types/report-status.types';
 
-export type AssignmentStatus = 'Assigned' | 'InProgress' | 'Completed' | 'Declined';
+export type AssignmentStatus =
+  | 'Assigned'
+  | 'InProgress'
+  | 'Completed'
+  | 'Declined'
+  | 'Escalated';
 
 export type { ReportStatus };
 
@@ -16,7 +21,7 @@ export interface AssignmentItem {
   categoryCode: string;
   categoryName: string;
   severity: SeverityLevel;
-  reportStatus: ReportStatus;
+  reportStatus: ReportWorkflowStatus;
   latitude: number;
   longitude: number;
   address: string;
@@ -49,6 +54,13 @@ export interface TaskDetailImage {
   mimeType: string;
 }
 
+export interface TaskWasteTag {
+  code: string;
+  nameVi: string;
+  nameEn?: string | null;
+  iconUrl?: string | null;
+}
+
 export interface TaskDetail {
   assignmentId: string;
   assignmentStatus: AssignmentStatus;
@@ -61,7 +73,7 @@ export interface TaskDetail {
 
   reportId: string;
   reportCode: string;
-  reportStatus: ReportStatus;
+  reportStatus: ReportWorkflowStatus;
   categoryCode: string;
   categoryName: string;
   severity: SeverityLevel;
@@ -73,6 +85,7 @@ export interface TaskDetail {
 
   slaResolveDueAt: string | null;
   reportImages: TaskDetailImage[];
+  wasteTags?: TaskWasteTag[];
 
   progressPercent: number;
   progressNote: string | null;
@@ -80,6 +93,14 @@ export interface TaskDetail {
   progressUpdatedByUserId: string | null;
 
   assignmentNote: string | null;
+
+  /** AssignedAt + 24h — hạn từ chối khi còn Assigned */
+  declineDeadlineAt?: string | null;
+  /** Đã có ≥1 ảnh MediaType.Before */
+  hasBeforeImages?: boolean;
+  beforeImageCount?: number;
+  /** Soft SLA: cập nhật tiến độ ít nhất 1 lần / 24h khi InProgress */
+  progressRequiredByAt?: string | null;
 }
 
 // ─── Progress history ─────────────────────────────────────────────────────────
@@ -89,7 +110,7 @@ export interface ProgressHistoryItem {
   reportCode: string;
   assignmentId: string;
   assignmentStatus: AssignmentStatus;
-  reportStatus: ReportStatus;
+  reportStatus: ReportWorkflowStatus;
   progressPercent: number;
   progressNote: string | null;
   progressUpdatedAt: string | null;
@@ -134,13 +155,34 @@ export interface DeclineAssignmentDto {
   reason: string;
 }
 
+/** POST /teams/my-tasks/{reportId}/escalate — reason ≥ 20 ký tự */
+export interface EscalateAssignmentDto {
+  teamId: string;
+  reason: string;
+}
+
+export interface LocalImageUpload {
+  uri: string;
+  mimeType?: string;
+  fileName?: string;
+}
+
 export interface UpdateProgressDto {
   progressPercent: number;
   progressNote?: string;
-  images?: { uri: string; mimeType?: string; fileName?: string }[];
+  images?: LocalImageUpload[];
 }
 
 export interface UpdateProgressResult {
+  uploadedImageUrls: string[];
+}
+
+/** POST /reports/{reportId}/before-images — ảnh hiện trạng trước khi dọn */
+export interface UploadBeforeImagesDto {
+  images: LocalImageUpload[];
+}
+
+export interface UploadBeforeImagesResult {
   uploadedImageUrls: string[];
 }
 

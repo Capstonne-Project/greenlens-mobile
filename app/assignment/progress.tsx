@@ -20,10 +20,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AssignmentActionButton } from '@/components/assignment/AssignmentActionButton';
+import { AssignmentScreenHeader } from '@/components/assignment/AssignmentScreenHeader';
 import { Toast, useToast } from '@/components/common/Toast';
 import { Text } from '@/components/ui/text';
+import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { colors } from '@/theme/colors';
+import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,36 +113,6 @@ function ImageThumb({ uri, onRemove }: ThumbProps) {
   );
 }
 
-// ─── Add photo button ─────────────────────────────────────────────────────────
-
-function AddPhotoButton({ onPress }: { onPress: () => void }) {
-  const scale = useSharedValue(1);
-  const anim  = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-
-  return (
-    <Animated.View style={anim}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={() => { scale.value = withSpring(0.93, { damping: 14, stiffness: 300 }); }}
-        onPressOut={() => { scale.value = withSpring(1, { damping: 14, stiffness: 300 }); }}
-        style={{
-          width: 80,
-          height: 80,
-          borderRadius: 12,
-          borderWidth: 1.5,
-          borderColor: colors.border,
-          borderStyle: 'dashed',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#F9FAFB',
-        }}
-      >
-        <Ionicons name="add" size={28} color={colors.textSecondary} />
-      </Pressable>
-    </Animated.View>
-  );
-}
-
 // ─── History row ──────────────────────────────────────────────────────────────
 
 function HistoryRow({ entry }: { entry: HistoryEntry }) {
@@ -199,10 +173,12 @@ export default function ProgressUpdateScreen() {
   const [note, setNote]           = useState('');
   const [images, setImages]       = useState<PickedImage[]>([]);
   const [submitting, setSubmit]   = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [apiError, setApiError]   = useState<string | null>(null);
   const { toastState, show: showToast, hide: hideToast } = useToast();
+  const { isLeader, isLoading: isAccessLoading, errorMessage: accessError } = useTeamAccess();
 
-  const showWarning = hoursAgo !== null && hoursAgo >= 2;
+  const showWarning = hoursAgo !== null && hoursAgo >= 24;
 
   // Sync input text → percent value
   const handleInputChange = useCallback((text: string) => {
@@ -221,26 +197,64 @@ export default function ProgressUpdateScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
-      quality: 0.85,
+      quality: 1,
     });
-    if (!result.canceled) {
-      const picked = result.assets
-        .slice(0, 5 - images.length)
-        .map((a) => ({
-          uri: a.uri,
-          mimeType: a.mimeType ?? 'image/jpeg',
-          fileName: a.fileName ?? 'progress.jpg',
-        }));
+    if (result.canceled) return;
+
+    setProcessing(true);
+    try {
+      const assets = result.assets.slice(0, 5 - images.length);
+      const picked = await Promise.all(
+        assets.map((a) =>
+          compressImage(a.uri, {
+            ...UPLOAD_COMPRESS_PRESET,
+            baseName: 'progress',
+            sourceWidth: a.width,
+            sourceHeight: a.height,
+          }),
+        ),
+      );
       setImages((prev) => [...prev, ...picked].slice(0, 5));
+    } finally {
+      setProcessing(false);
     }
   }, [images.length]);
+
+  const takePhoto = useCallback(async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setApiError('Cần quyền camera để chụp ảnh tiến độ.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 1,
+    });
+    if (result.canceled) return;
+
+    setProcessing(true);
+    try {
+      const asset = result.assets[0];
+      const picked = await compressImage(asset.uri, {
+        ...UPLOAD_COMPRESS_PRESET,
+        baseName: 'progress',
+        sourceWidth: asset.width,
+        sourceHeight: asset.height,
+      });
+      setImages((current) => [...current, picked].slice(0, 5));
+    } catch {
+      setApiError('Không thể xử lý ảnh. Vui lòng thử lại.');
+    } finally {
+      setProcessing(false);
+    }
+  }, []);
 
   const removeImage = useCallback((index: number) => {
     setImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (submitting || !reportId) return;
+    if (submitting || !isLeader || !reportId) return;
     setSubmit(true);
     setApiError(null);
     try {
@@ -257,10 +271,10 @@ export default function ProgressUpdateScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setSubmit(false);
     }
-  }, [submitting, reportId, percent, note, images, showToast]);
+  }, [submitting, isLeader, reportId, percent, note, images, showToast]);
 
   const validPercent = percent >= 0 && percent <= 100;
-  const canSubmit    = validPercent && !submitting;
+  const canSubmit = isLeader && validPercent && !submitting && !processing;
 
   return (
     <View style={{ flex: 1 }}>
@@ -269,24 +283,22 @@ export default function ProgressUpdateScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={{ paddingTop: insets.top }}
     >
-      {/* ── Header ── */}
-      <View className="flex-row items-center px-4 pb-3 pt-3">
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={8}
-          className="mr-3 h-9 w-9 items-center justify-center rounded-full"
-          style={{ backgroundColor: '#F3F4F6' }}
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-        </Pressable>
-        <Text className="text-[17px] font-bold text-textPrimary">Cập nhật tiến độ</Text>
-      </View>
+      <AssignmentScreenHeader title="Cập nhật tiến độ" subtitle="Bước tùy chọn · 2/3" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
+        {!isAccessLoading && !isLeader ? (
+          <View className="mx-4 mb-4 rounded-xl border border-border bg-surface p-4">
+            <Text className="font-semibold text-textPrimary">Chỉ trưởng nhóm được cập nhật</Text>
+            <Text className="mt-1 text-sm text-textSecondary">
+              {accessError ?? 'Bạn có thể quay lại màn chi tiết để theo dõi nhiệm vụ.'}
+            </Text>
+          </View>
+        ) : null}
+
         {/* ── Warning banner ── */}
         {showWarning && (
           <View
@@ -388,13 +400,46 @@ export default function ProgressUpdateScreen() {
 
           {/* ── Images section ── */}
           <SectionLabel text={`Đính kèm · ${images.length} ảnh`} />
+          <View className="mb-3 flex-row gap-2">
+            <View className="flex-1">
+              <AssignmentActionButton
+                label="Chụp ảnh"
+                icon="camera"
+                onPress={takePhoto}
+                variant="secondary"
+                compact
+                disabled={processing || images.length >= 5 || !isLeader}
+              />
+            </View>
+            <View className="flex-1">
+              <AssignmentActionButton
+                label="Thư viện"
+                icon="images-outline"
+                onPress={pickImages}
+                variant="quiet"
+                compact
+                disabled={processing || images.length >= 5 || !isLeader}
+              />
+            </View>
+          </View>
           <View className="mb-6 flex-row flex-wrap gap-0">
             {images.map((img, i) => (
               <ImageThumb key={i} uri={img.uri} onRemove={() => removeImage(i)} />
             ))}
-            {images.length < 5 && (
-              <AddPhotoButton onPress={pickImages} />
-            )}
+            {processing ? (
+              <View
+                style={{
+                  width: 80,
+                  height: 80,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#F9FAFB',
+                }}
+              >
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : null}
           </View>
 
           {/* ── Today's history ── */}
@@ -428,23 +473,14 @@ export default function ProgressUpdateScreen() {
         className="absolute bottom-0 left-0 right-0 bg-white px-4 pt-3"
         style={{ paddingBottom: Math.max(insets.bottom, 16) }}
       >
-        <Pressable
+        <AssignmentActionButton
+          label="Lưu cập nhật"
+          loadingLabel="Đang gửi cập nhật"
+          icon="checkmark"
           onPress={handleSubmit}
           disabled={!canSubmit}
-          className="h-14 items-center justify-center rounded-2xl"
-          style={{ backgroundColor: canSubmit ? colors.primary : colors.border }}
-        >
-          {submitting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text
-              className="text-base font-bold"
-              style={{ color: canSubmit ? '#fff' : colors.textDisabled }}
-            >
-              Gửi cập nhật
-            </Text>
-          )}
-        </Pressable>
+          loading={submitting}
+        />
       </View>
     </KeyboardAvoidingView>
 

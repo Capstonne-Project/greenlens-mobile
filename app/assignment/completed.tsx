@@ -1,59 +1,85 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Pressable, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
+import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AssignmentActionButton } from '@/components/assignment/AssignmentActionButton';
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
+import { firstRouteParam } from '@/utils/field-worker-task';
 
 export default function AssignmentCompletedScreen() {
   const insets = useSafeAreaInsets();
-  const { reportCode } = useLocalSearchParams<{ reportCode?: string }>();
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const params = useLocalSearchParams<{
+    reportId?: string | string[];
+    reportCode?: string | string[];
+  }>();
+  const reportId = firstRouteParam(params.reportId);
+  const reportCode = firstRouteParam(params.reportCode);
+
+  const openDetail = () => {
+    if (!reportId) return;
+    router.replace({
+      pathname: '/assignment/[id]',
+      params: { id: reportId },
+    } as never);
+  };
 
   return (
     <View
-      className="flex-1 items-center justify-center bg-background px-6"
-      style={{ paddingTop: insets.top, paddingBottom: insets.bottom + 24 }}
+      className="flex-1 bg-white px-5"
+      style={{ paddingTop: insets.top + 28, paddingBottom: insets.bottom + 20 }}
     >
-      <View
-        className="mb-6 h-24 w-24 items-center justify-center rounded-full"
-        style={{ backgroundColor: '#D1FAE5' }}
-      >
-        <Ionicons name="checkmark-done" size={48} color={colors.primary} />
+      <View className="flex-1">
+        <View className="h-12 w-12 items-center justify-center rounded-full bg-primary">
+          <Ionicons name="checkmark" size={25} color={colors.white} />
+        </View>
+
+        <Text className="mt-6 text-3xl font-bold leading-10 text-textPrimary">
+          Phần việc của đội đã hoàn thành
+        </Text>
+        <Text className="mt-3 text-base leading-6 text-textSecondary">
+          Ảnh sau xử lý đã được lưu và trạng thái nhiệm vụ đã chuyển sang hoàn thành.
+        </Text>
+
+        <View className="mt-8 border-y border-border py-4">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-sm text-textSecondary">Mã báo cáo</Text>
+            <Text className="text-sm font-semibold text-textPrimary">
+              {reportCode || '—'}
+            </Text>
+          </View>
+          <View className="mt-3 flex-row items-start justify-between gap-4">
+            <Text className="text-sm text-textSecondary">Kết quả</Text>
+            <Text className="flex-1 text-right text-sm font-medium text-textPrimary">
+              Đã ghi nhận phần việc của đội
+            </Text>
+          </View>
+        </View>
+
+        <View className="mt-5 flex-row items-start gap-2">
+          <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
+          <Text className="flex-1 text-xs leading-5 text-textSecondary">
+            Báo cáo toàn hệ thống chỉ chuyển sang Resolved khi mọi đội đang được giao đều hoàn thành.
+          </Text>
+        </View>
       </View>
 
-      <Text className="mb-2 text-center text-2xl font-bold text-textPrimary">
-        Phần việc đã hoàn thành
-      </Text>
-
-      {reportCode ? (
-        <Text className="mb-2 text-center text-sm text-textSecondary">
-          Mã báo cáo: {reportCode}
-        </Text>
-      ) : null}
-
-      <Text className="mb-10 max-w-xs text-center text-sm leading-5 text-textSecondary">
-        Đội của bạn đã xác nhận hoàn thành. Báo cáo sẽ chuyển sang Resolved khi tất cả đội được giao đều hoàn thành.
-      </Text>
-
-      <Animated.View style={[animStyle, { width: '100%' }]}>
-        <Pressable
-          onPress={() => router.replace('/(staff)/home' as never)}
-          onPressIn={() => { scale.value = withSpring(0.96); }}
-          onPressOut={() => { scale.value = withSpring(1); }}
-          className="h-14 w-full items-center justify-center rounded-2xl"
-          style={{ backgroundColor: colors.primary }}
-        >
-          <Text className="text-base font-bold text-white">Về trang chủ</Text>
-        </Pressable>
-      </Animated.View>
+      <View className="gap-3">
+        {reportId ? (
+          <AssignmentActionButton
+            label="Xem nhiệm vụ vừa hoàn thành"
+            icon="document-text-outline"
+            onPress={openDetail}
+            variant="secondary"
+          />
+        ) : null}
+        <AssignmentActionButton
+          label="Về danh sách nhiệm vụ"
+          icon="list"
+          onPress={() => router.replace('/(staff)/assignments' as never)}
+        />
+      </View>
     </View>
   );
 }

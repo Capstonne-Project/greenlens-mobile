@@ -13,9 +13,9 @@ import { Text } from '@/components/ui/text';
 import { useEditProfile } from '@/hooks/useEditProfile';
 import { colors } from '@/theme/colors';
 import { getApiErrorMessage } from '@/utils/api-error-message';
+import { compressImage } from '@/utils/compress-image';
 
 const MAX_FULL_NAME_LENGTH = 200;
-const MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
 
 export default function EditProfileScreen() {
   const { user, isSavingName, isUploadingAvatar, updateFullName, uploadAvatar } = useEditProfile();
@@ -39,29 +39,27 @@ export default function EditProfileScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.9,
+      quality: 1,
       allowsEditing: true,
       aspect: [1, 1],
     });
     if (result.canceled || !result.assets[0]) return;
 
     const asset = result.assets[0];
-    if (asset.fileSize && asset.fileSize > MAX_AVATAR_SIZE_BYTES) {
-      Alert.alert('Ảnh quá lớn', 'Vui lòng chọn ảnh dưới 5MB.');
-      return;
-    }
-
-    const mimeType = asset.mimeType ?? 'image/jpeg';
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) {
-      Alert.alert('Sai định dạng', 'Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP.');
-      return;
-    }
 
     try {
+      // Nén + convert HEIC → JPEG; avatar chỉ cần ~512px là đủ nét.
+      const compressed = await compressImage(asset.uri, {
+        baseName: 'avatar',
+        maxDimension: 512,
+        quality: 0.8,
+        sourceWidth: asset.width,
+        sourceHeight: asset.height,
+      });
       await uploadAvatar({
-        uri: asset.uri,
-        mimeType,
-        fileName: asset.fileName ?? `avatar.${mimeType.split('/')[1]}`,
+        uri: compressed.uri,
+        mimeType: compressed.mimeType,
+        fileName: compressed.fileName,
       });
     } catch (err) {
       Alert.alert('Không thành công', getApiErrorMessage(err, 'Tải lên ảnh đại diện thất bại.'));

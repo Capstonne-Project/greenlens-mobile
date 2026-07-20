@@ -22,6 +22,7 @@ const STATUS_COLOR: Record<AssignmentStatus, string> = {
   InProgress: '#F97316',
   Completed:  colors.primary,
   Declined:   '#9CA3AF',
+  Escalated:  '#7C3AED',
 };
 
 function itemToPin(item: AssignmentItem): StaffMapPin | null {
@@ -42,7 +43,7 @@ function itemToPin(item: AssignmentItem): StaffMapPin | null {
 }
 
 export function useStaffMapPins() {
-  const { items, isLoading } = useMyAssignments({ pageSize: 200 });
+  const { items, isLoading } = useMyAssignments({ pageSize: 100 });
 
   const pins = useMemo(
     () => items.map(itemToPin).filter((p): p is StaffMapPin => p !== null),

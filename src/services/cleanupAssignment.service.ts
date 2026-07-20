@@ -2,6 +2,8 @@ import { api } from './api';
 import type { ApiEnvelope } from '@/types/api.types';
 import type {
   DeclineAssignmentDto,
+  EscalateAssignmentDto,
+  LocalImageUpload,
   MyAssignmentsParams,
   MyAssignmentsResponse,
   MyProgressResponse,
@@ -10,8 +12,57 @@ import type {
   TeamProfile,
   UpdateProgressDto,
   UpdateProgressResult,
+  UploadBeforeImagesDto,
+  UploadBeforeImagesResult,
 } from '@/types/cleanup-assignment.types';
+import { compressImageForUpload } from '@/utils/compress-image';
 import { normalizeTaskDetail } from '@/utils/field-worker-task';
+import { uploadReportImage } from '@/services/pollutionReport.service';
+import type { MediaUploadPurpose } from '@/types/pollution-report.types';
+
+async function compressUploadImages(
+  images: LocalImageUpload[],
+  baseName: string,
+): Promise<LocalImageUpload[]> {
+  return Promise.all(
+    images.map(async (img, index) => {
+      const compressed = await compressImageForUpload(img.uri, `${baseName}_${index + 1}`);
+      return {
+        uri: compressed.uri,
+        mimeType: compressed.mimeType,
+        fileName: compressed.fileName,
+      };
+    }),
+  );
+}
+
+async function uploadDirectImages(
+  images: LocalImageUpload[],
+  purpose: MediaUploadPurpose,
+  fallbackName: string,
+  reportId?: string,
+): Promise<string[]> {
+  const urls: string[] = [];
+
+  // Limit concurrency to two so weak mobile connections remain stable.
+  for (let index = 0; index < images.length; index += 2) {
+    const batch = images.slice(index, index + 2);
+    const uploaded = await Promise.all(
+      batch.map((image, batchIndex) =>
+        uploadReportImage({
+          uri: image.uri,
+          mimeType: image.mimeType ?? 'image/jpeg',
+          fileName: image.fileName ?? `${fallbackName}_${index + batchIndex + 1}.jpg`,
+          purpose,
+          reportId,
+        }),
+      ),
+    );
+    urls.push(...uploaded.map((item) => item.url));
+  }
+
+  return urls;
+}
 
 export const cleanupAssignmentService = {
   getMyTasks: (params?: MyAssignmentsParams) =>
@@ -28,30 +79,40 @@ export const cleanupAssignmentService = {
   decline: (reportId: string, dto: DeclineAssignmentDto) =>
     api.put<void>(`/teams/my-tasks/${reportId}/decline`, dto),
 
-  updateProgress: (reportId: string, dto: UpdateProgressDto) => {
-    const formData = new FormData();
-    formData.append('progressPercent', String(dto.progressPercent));
-    if (dto.progressNote) formData.append('progressNote', dto.progressNote);
-    dto.images?.forEach((img) => {
-      formData.append('images', {
-        uri: img.uri,
-        type: img.mimeType ?? 'image/jpeg',
-        name: img.fileName ?? 'progress.jpg',
-      } as unknown as Blob);
+  /** POST /teams/my-tasks/{reportId}/escalate — leader, InProgress → Escalated */
+  escalate: (reportId: string, dto: EscalateAssignmentDto) =>
+    api.post<void>(`/teams/my-tasks/${reportId}/escalate`, dto),
+
+  /** POST /reports/{reportId}/before-images — bắt buộc sau accept, trước resolve */
+  uploadBeforeImages: async (reportId: string, dto: UploadBeforeImagesDto) => {
+    const images = await compressUploadImages(dto.images, 'before');
+    const imageUrls = await uploadDirectImages(images, 'Before', 'before', reportId);
+    return api.post<ApiEnvelope<UploadBeforeImagesResult>>(
+      `/reports/${reportId}/before-images`,
+      { imageUrls },
+    );
+  },
+
+  updateProgress: async (reportId: string, dto: UpdateProgressDto) => {
+    const images = dto.images?.length
+      ? await compressUploadImages(dto.images, 'progress')
+      : [];
+    const imageUrls = images.length
+      ? await uploadDirectImages(images, 'Progress', 'progress', reportId)
+      : [];
+
+    return api.put<ApiEnvelope<UpdateProgressResult>>(`/reports/${reportId}/progress`, {
+      progressPercent: dto.progressPercent,
+      progressNote: dto.progressNote ?? null,
+      imageUrls,
     });
-    return api.put<ApiEnvelope<UpdateProgressResult>>(`/reports/${reportId}/progress`, formData);
   },
 
   uploadAfterImagesForResolve: async (
-    reportId: string,
     images: NonNullable<UpdateProgressDto['images']>,
-    progressPercent: number,
   ): Promise<string[]> => {
-    const response = await cleanupAssignmentService.updateProgress(reportId, {
-      progressPercent,
-      images,
-    });
-    return response.data.data.uploadedImageUrls ?? [];
+    const compressedImages = await compressUploadImages(images, 'after');
+    return uploadDirectImages(compressedImages, 'After', 'after');
   },
 
   resolve: (reportId: string, dto: ResolveAssignmentDto) =>

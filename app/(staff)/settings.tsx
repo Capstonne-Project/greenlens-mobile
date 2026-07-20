@@ -87,7 +87,7 @@ export default function StaffSettingsScreen() {
       </View>
 
       <View className="mx-4 mt-4 overflow-hidden rounded-2xl bg-white shadow-sm" style={{ elevation: 2 }}>
-        <SettingRow icon="log-out-outline" label="Đăng xuất" onPress={handleLogout} destructive />
+        <SettingRow icon="log-out-outline" label="Đăng xuất" onPress={() => void handleLogout()} destructive />
       </View>
     </View>
   );

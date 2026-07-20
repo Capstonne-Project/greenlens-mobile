@@ -62,7 +62,9 @@ export type ReportCaptureSource = 'camera' | 'library';
 export interface ReportImageDraft {
   localUri: string;
   url?: string;
+  key?: string;
   mimeType?: string;
+  fileName?: string;
   sizeBytes?: number;
   uploadStatus: ReportImageUploadStatus;
 }
@@ -84,8 +86,28 @@ export interface UploadReportImageResult {
   sizeBytes: number;
 }
 
+export type MediaUploadPurpose =
+  | 'ReportImage'
+  | 'Before'
+  | 'Progress'
+  | 'After'
+  | 'Comment'
+  | 'Avatar';
+
+export interface PresignMediaUploadResult {
+  uploadUrl: string;
+  publicUrl: string;
+  key: string;
+  contentType: string;
+  requiredHeaders: Record<string, string>;
+  expiresInSeconds: number;
+  maxSizeBytes: number;
+  purpose: MediaUploadPurpose;
+}
+
 export interface SubmitPollutionReportImage {
   url: string;
+  key?: string;
   mimeType: string;
   sizeBytes: number;
 }
@@ -99,7 +121,7 @@ export interface SubmitPollutionReportPayload {
   address?: string;
   provinceCode?: string;
   wardCode?: string;
-  isAnonymous: boolean;
+  hideReporterName: boolean;
   images: SubmitPollutionReportImage[];
   wasteTagIds?: string[];
   tempImageId?: string;
@@ -135,7 +157,7 @@ export interface SubmitPollutionReportResult {
   reporterId: string | null;
   status: string;
   createdAt: string;
-  slaVerifyDueAt: string;
+  slaVerifyDueAt: string | null;
   aiPending: boolean;
   images: PollutionReportImageRecord[];
 }

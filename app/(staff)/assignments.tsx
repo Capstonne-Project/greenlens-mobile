@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
+import { AssignmentActionButton } from '@/components/assignment/AssignmentActionButton';
 import { Text } from '@/components/ui/text';
 import { useMyAssignments } from '@/hooks/useMyAssignments';
 import { useFieldWorkerTaskStore } from '@/stores/fieldWorkerTask.store';
@@ -27,6 +29,17 @@ const SEVERITY_THUMB_BG: Record<string, string> = {
   Medium:   '#FEF3C7',
   High:     '#FFEDD5',
   Critical: '#FEE2E2',
+};
+
+const ASSIGNMENT_STATUS_CHIP: Record<
+  AssignmentStatus,
+  { label: string; color: string; bg: string } | null
+> = {
+  Assigned:   { label: 'Chờ nhận',   color: '#1E40AF', bg: '#DBEAFE' },
+  InProgress: { label: 'Đang làm',   color: '#92400E', bg: '#FEF3C7' },
+  Completed:  { label: 'Xong',       color: '#065F46', bg: '#D1FAE5' },
+  Declined:   { label: 'Từ chối',    color: '#991B1B', bg: '#FEE2E2' },
+  Escalated:  { label: 'Đã báo vượt khả năng', color: '#7C3AED', bg: '#EDE9FE' },
 };
 
 type FilterTab = { label: string; value: AssignmentStatus | undefined; count?: number };
@@ -68,6 +81,7 @@ const AssignmentCard = React.memo(function AssignmentCard({ item, onPress }: Ass
 
   const severity = SEVERITY_CONFIG[item.severity] ?? SEVERITY_CONFIG.Medium;
   const thumbBg  = SEVERITY_THUMB_BG[item.severity] ?? '#F7F8FA';
+  const statusChip = ASSIGNMENT_STATUS_CHIP[item.assignmentStatus];
 
   const assignedTime = item.assignedAt
     ? new Date(item.assignedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
@@ -86,6 +100,12 @@ const AssignmentCard = React.memo(function AssignmentCard({ item, onPress }: Ass
 
   // Extract officer name từ note hoặc dùng placeholder
   const officerLabel = `Officer · ${assignedDateLabel}`;
+  const nextStepHint =
+    item.assignmentStatus === 'InProgress'
+      ? 'Tiếp tục · ảnh hiện trạng / tiến độ'
+      : item.assignmentStatus === 'Assigned'
+        ? 'Chạm để xem & nhận nhiệm vụ'
+        : null;
 
   return (
     <Animated.View style={animStyle} className="mx-4 mb-3">
@@ -94,7 +114,11 @@ const AssignmentCard = React.memo(function AssignmentCard({ item, onPress }: Ass
         onPressOut={() => { scale.value = withSpring(1, { damping: 16, stiffness: 280 }); }}
         onPress={() => onPress(item)}
         className="flex-row rounded-2xl bg-white p-3 shadow-sm"
-        style={{ elevation: 2 }}
+        style={{
+          elevation: 2,
+          borderWidth: item.assignmentStatus === 'InProgress' ? 1 : 0,
+          borderColor: item.assignmentStatus === 'InProgress' ? '#FDE68A' : 'transparent',
+        }}
       >
         {/* Thumbnail */}
         <View
@@ -102,7 +126,6 @@ const AssignmentCard = React.memo(function AssignmentCard({ item, onPress }: Ass
           style={{ backgroundColor: thumbBg }}
         >
           {item.firstImageUrl ? (
-            // eslint-disable-next-line @typescript-eslint/no-require-imports
             <Animated.Image
               source={{ uri: item.firstImageUrl }}
               className="h-16 w-16 rounded-xl"
@@ -115,13 +138,22 @@ const AssignmentCard = React.memo(function AssignmentCard({ item, onPress }: Ass
 
         {/* Content */}
         <View className="flex-1">
-          {/* Code + severity badge */}
-          <View className="mb-1 flex-row items-center justify-between">
+          {/* Code + badges */}
+          <View className="mb-1 flex-row items-center justify-between gap-2">
             <Text className="text-xs text-textSecondary">{item.reportCode}</Text>
-            <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: severity.bg }}>
-              <Text className="text-[11px] font-semibold" style={{ color: severity.color }}>
-                {severity.label}
-              </Text>
+            <View className="flex-row items-center gap-1">
+              {statusChip ? (
+                <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: statusChip.bg }}>
+                  <Text className="text-[11px] font-semibold" style={{ color: statusChip.color }}>
+                    {statusChip.label}
+                  </Text>
+                </View>
+              ) : null}
+              <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: severity.bg }}>
+                <Text className="text-[11px] font-semibold" style={{ color: severity.color }}>
+                  {severity.label}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -137,6 +169,16 @@ const AssignmentCard = React.memo(function AssignmentCard({ item, onPress }: Ass
               {item.address}
             </Text>
           </View>
+
+          {nextStepHint ? (
+            <Text
+              className="mb-1 text-[11px] font-medium"
+              style={{ color: item.assignmentStatus === 'InProgress' ? '#92400E' : colors.primary }}
+              numberOfLines={1}
+            >
+              {nextStepHint}
+            </Text>
+          ) : null}
 
           {/* Footer: officer · time | SLA */}
           <View className="flex-row items-center justify-between">
@@ -208,32 +250,45 @@ interface FilterChipProps {
 }
 
 function FilterChip({ tab, isActive, onPress }: FilterChipProps) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   return (
-    <Pressable
-      onPress={onPress}
-      className="flex-row items-center gap-1 px-4 py-2"
-      style={{ borderBottomWidth: 2, borderBottomColor: isActive ? colors.primary : 'transparent' }}
-    >
-      <Text
-        className="text-sm font-semibold"
-        style={{ color: isActive ? colors.primary : colors.textSecondary }}
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => {
+          scale.value = withSpring(0.96, { damping: 18, stiffness: 320 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 18, stiffness: 320 });
+        }}
+        className="flex-row items-center gap-1 rounded-full px-4 py-2"
+        style={{ backgroundColor: isActive ? colors.textPrimary : colors.surface }}
       >
-        {tab.label}
-      </Text>
-      {tab.count !== undefined && tab.count > 0 && (
-        <View
-          className="h-5 min-w-5 items-center justify-center rounded-full px-1"
-          style={{ backgroundColor: isActive ? colors.primary : colors.border }}
+        <Text
+          className="text-sm font-semibold"
+          style={{ color: isActive ? colors.white : colors.textSecondary }}
         >
-          <Text
-            className="text-[11px] font-bold"
-            style={{ color: isActive ? colors.white : colors.textSecondary }}
+          {tab.label}
+        </Text>
+        {tab.count !== undefined && tab.count > 0 ? (
+          <View
+            className="h-5 min-w-5 items-center justify-center rounded-full px-1"
+            style={{ backgroundColor: isActive ? colors.primary : colors.border }}
           >
-            {tab.count}
-          </Text>
-        </View>
-      )}
-    </Pressable>
+            <Text
+              className="text-[11px] font-bold"
+              style={{ color: isActive ? colors.white : colors.textSecondary }}
+            >
+              {tab.count}
+            </Text>
+          </View>
+        ) : null}
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -241,9 +296,12 @@ function FilterChip({ tab, isActive, onPress }: FilterChipProps) {
 
 function SortLabel({ count, label }: { count: number; label: string }) {
   return (
-    <View className="mx-4 mb-3 flex-row items-center gap-1">
+    <View className="mx-4 mb-3 flex-row items-center justify-between">
       <Text className="text-xs font-semibold uppercase tracking-wide text-textSecondary">
-        Sắp xếp: {label} · {count} task
+        {count} nhiệm vụ
+      </Text>
+      <Text className="text-xs text-textSecondary">
+        {label}
       </Text>
     </View>
   );
@@ -256,8 +314,8 @@ export default function AssignmentsScreen() {
   const [activeFilter, setActiveFilter] = useState<AssignmentStatus | undefined>(undefined);
 
   // Fetch tất cả để đếm count cho từng tab
-  const { items: allItems } = useMyAssignments({ pageSize: 200 });
-  const { items, isLoading, refetch } = useMyAssignments({
+  const { items: allItems, refetch: refetchAll } = useMyAssignments({ pageSize: 100 });
+  const { items, isLoading, errorMessage, refetch } = useMyAssignments({
     assignmentStatus: activeFilter,
     pageSize: 50,
   });
@@ -267,12 +325,17 @@ export default function AssignmentsScreen() {
     [allItems],
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      void Promise.all([refetchAll(), refetch()]);
+    }, [refetch, refetchAll]),
+  );
+
   const FILTER_TABS: FilterTab[] = [
     { label: 'Tất cả',      value: undefined,    count: allItems.length },
-    { label: 'Chờ xác nhận', value: 'Assigned',  count: countOf('Assigned') },
-    { label: 'Đang làm',    value: 'InProgress', count: countOf('InProgress') },
+    { label: 'Chờ nhận',     value: 'Assigned',  count: countOf('Assigned') },
+    { label: 'Đang xử lý',   value: 'InProgress', count: countOf('InProgress') },
     { label: 'Hoàn thành',  value: 'Completed',  count: countOf('Completed') },
-    { label: 'Từ chối',     value: 'Declined',   count: countOf('Declined') },
   ];
 
   const handleCardPress = useCallback((item: AssignmentItem) => {
@@ -299,24 +362,18 @@ export default function AssignmentsScreen() {
   return (
     <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
       {/* Header */}
-      <View className="flex-row items-center justify-between px-4 pb-2 pt-3">
-        <Text className="text-2xl font-bold text-primary">GreenLens</Text>
-        <View className="flex-row items-center gap-3">
-          <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-surface">
-            <Ionicons name="search-outline" size={20} color={colors.textPrimary} />
-          </Pressable>
-          <Pressable className="h-9 w-9 items-center justify-center rounded-full bg-surface">
-            <Ionicons name="options-outline" size={20} color={colors.textPrimary} />
-          </Pressable>
-        </View>
+      <View className="px-4 pb-4 pt-3">
+        <Text className="text-2xl font-bold text-textPrimary">Nhiệm vụ</Text>
+        <Text className="mt-1 text-sm text-textSecondary">
+          Theo dõi công việc của đội theo từng trạng thái.
+        </Text>
       </View>
 
       {/* Status filter tabs */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 12 }}
-        className="border-b border-border"
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 14, gap: 8 }}
         style={{ flexGrow: 0 }}
       >
         {FILTER_TABS.map((tab) => (
@@ -329,31 +386,29 @@ export default function AssignmentsScreen() {
         ))}
       </ScrollView>
 
-      {/* Sub-filter chips row */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}
-        style={{ flexGrow: 0 }}
-      >
-        {['Severity', 'Loại', 'Khu vực', 'SLA'].map((label) => (
-          <Pressable
-            key={label}
-            className="flex-row items-center gap-1 rounded-full border border-border bg-white px-3 py-1.5"
-          >
-            <Text className="text-xs font-medium text-textPrimary">{label}</Text>
-            <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />
-          </Pressable>
-        ))}
-      </ScrollView>
-
       {/* Sort label */}
       {!isLoading && items.length > 0 && (
-        <SortLabel count={items.length} label={`GẤP NHẤT · ${activeTabLabel.toUpperCase()}`} />
+        <SortLabel count={items.length} label="Ưu tiên theo SLA" />
       )}
 
       {/* List */}
-      {isLoading && items.length === 0 ? (
+      {errorMessage && items.length === 0 ? (
+        <View className="flex-1 items-center justify-center px-8">
+          <Ionicons name="cloud-offline-outline" size={42} color={colors.textDisabled} />
+          <Text className="mt-3 text-center text-sm leading-5 text-textSecondary">
+            {errorMessage}
+          </Text>
+          <View className="mt-4 w-40">
+            <AssignmentActionButton
+              label="Thử lại"
+              icon="refresh"
+              onPress={() => void refetch()}
+              variant="secondary"
+              compact
+            />
+          </View>
+        </View>
+      ) : isLoading && items.length === 0 ? (
         <View>{[0, 1, 2, 3].map((n) => <AssignmentCardSkeleton key={n} />)}</View>
       ) : (
         <FlatList

@@ -67,5 +67,16 @@ Không có field tiêu đề riêng trên `Report`. `title` trong response hiệ
 
 ## Việc BE cần làm tiếp (nếu có)
 
-- [ ] Không có việc gì bắt buộc — API đã sẵn sàng dùng ngay cho màn Home Map List Sheet.
+- [ ] Không có việc gì bắt buộc cho Home Map List Sheet — API đã sẵn sàng dùng ngay.
 - [ ] **Chờ xác nhận từ bạn**: có cần giới hạn `address` về cấp phường/quận cho public map không (mục 2)? Nếu có, đây là 1 thay đổi nhỏ ở `GetPublicMapReportsQueryHandler.cs` (đổi projection field `address`) + cần bảng lookup Ward/Province đã có sẵn ở `Infrastructure/Seeders/Location/`.
+
+### Phần tiếp theo (ưu tiên sau map sheet) — Citizen + Team dọn
+
+Contract handoff đã gộp tại [`mobile-citizen-and-cleanup-handoff.md`](./mobile-citizen-and-cleanup-handoff.md):
+
+| Role | Core (BE sẵn) | Tiếp theo (optional / FE) |
+|------|---------------|---------------------------|
+| **Citizen (user)** | Close / Reopen / Rate + detail flags | Wire Rate UI; map list sheet dùng field confirmation này; address privacy nếu product OK |
+| **Team dọn** | Accept → Before → Progress → Resolve | Escalate, `wasteTags` chip, check-in GPS optional |
+
+Chi tiết API mở rộng + checklist sprint: **Phần E** trong file handoff trên.

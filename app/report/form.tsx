@@ -11,8 +11,13 @@ import { usePollutionCategories } from '@/hooks/usePollutionCategories';
 import { useSubmitPollutionReport } from '@/hooks/useSubmitPollutionReport';
 import { useAuthStore } from '@/stores/auth.store';
 import { useCreateReportDraftStore } from '@/stores/createReportDraft.store';
+import {
+  REPORT_DESCRIPTION_MAX_LENGTH,
+  REPORT_DESCRIPTION_MIN_LENGTH,
+  validateReportDescription,
+} from '@/utils/report-validation';
 import { router, type Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,8 +35,14 @@ export default function ReportFormScreen() {
   const setDescription = useCreateReportDraftStore((state) => state.setDescription);
   const setIsAnonymous = useCreateReportDraftStore((state) => state.setIsAnonymous);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const { isUploading, isSubmitting, uploadAllImages, submitReport, lastFailureReason } =
-    useSubmitPollutionReport();
+  const {
+    isUploading,
+    isSubmitting,
+    uploadAllImages,
+    submitReport,
+    fieldErrors,
+    clearFieldError,
+  } = useSubmitPollutionReport();
   const {
     categories: pollutionCategories,
     isLoading: isLoadingCategories,
@@ -39,6 +50,15 @@ export default function ReportFormScreen() {
     refetch: refetchCategories,
   } = usePollutionCategories();
   const [hasUploadAttempt, setHasUploadAttempt] = useState(false);
+  const descriptionError = useMemo(
+    () => validateReportDescription(description),
+    [description],
+  );
+  const visibleDescriptionError =
+    hasUploadAttempt || description.trim().length > 0
+      ? (fieldErrors.description ?? descriptionError)
+      : null;
+  const descriptionLength = description.trim().length;
 
   useEffect(() => {
     if (!images.length) {
@@ -65,20 +85,47 @@ export default function ReportFormScreen() {
     }
 
     setHasUploadAttempt(true);
-    const uploaded = await uploadAllImages();
-    if (!uploaded) {
-      if (lastFailureReason === 'session-expired') {
+    if (descriptionError) {
+      return;
+    }
+    const uploadResult = await uploadAllImages();
+    if (!uploadResult.ok) {
+      if (uploadResult.reason === 'session-expired') {
         router.replace('/(auth)/login' as Href);
+        return;
+      }
+      if (uploadResult.reason === 'timeout') {
+        Alert.alert(
+          'Tải ảnh quá lâu',
+          'Máy chủ chưa phản hồi kịp (thường do upload lên cloud chậm). Thử lại với ảnh nhỏ hơn hoặc kiểm tra BE/R2.',
+        );
+        return;
+      }
+      if (uploadResult.reason === 'network') {
+        Alert.alert(
+          'Không kết nối được máy chủ',
+          'Kiểm tra EXPO_PUBLIC_API_URL và máy chạy BE cùng Wi‑Fi với điện thoại.',
+        );
         return;
       }
       Alert.alert('Tải ảnh thất bại', 'Vui lòng kiểm tra kết nối và thử lại.');
       return;
     }
 
-    const submitted = await submitReport();
-    if (!submitted) {
-      if (lastFailureReason === 'session-expired') {
+    const submitResult = await submitReport();
+    if (!submitResult.ok) {
+      if (submitResult.reason === 'session-expired') {
         router.replace('/(auth)/login' as Href);
+        return;
+      }
+      if (submitResult.reason === 'validation') {
+        return;
+      }
+      if (submitResult.reason === 'timeout' || submitResult.reason === 'network') {
+        Alert.alert(
+          'Không nhận được phản hồi',
+          'Máy chủ có thể đã tạo báo cáo rồi (check mục Báo cáo của tôi trước khi gửi lại). Nếu chưa có thì thử lại.',
+        );
         return;
       }
       Alert.alert('Gửi báo cáo thất bại', 'Vui lòng kiểm tra thông tin và thử lại.');
@@ -86,7 +133,7 @@ export default function ReportFormScreen() {
     }
 
     router.replace('/report/success' as Href);
-  }, [categoryId, severity, submitReport, uploadAllImages, lastFailureReason]);
+  }, [categoryId, descriptionError, severity, submitReport, uploadAllImages]);
 
   const isBusy = isUploading || isSubmitting;
 
@@ -147,13 +194,35 @@ export default function ReportFormScreen() {
         <ReportSectionCard title="Mô tả thêm">
           <Input
             value={description}
-            onChangeText={setDescription}
+            onChangeText={(value) => {
+              clearFieldError('description');
+              setDescription(value);
+            }}
             placeholder="Mô tả ngắn gọn hiện trường, tác động hoặc mức độ cấp bách"
             multiline
             numberOfLines={4}
+            maxLength={REPORT_DESCRIPTION_MAX_LENGTH}
             textAlignVertical="top"
-            className="min-h-[120px] rounded-2xl border-border bg-surface px-4 py-3"
+            className={`min-h-[120px] rounded-2xl bg-surface px-4 py-3 ${
+              visibleDescriptionError ? 'border-error' : 'border-border'
+            }`}
           />
+          <View className="mt-2 flex-row items-start justify-between gap-3">
+            <Text className={`flex-1 text-xs leading-5 ${visibleDescriptionError ? 'text-error' : 'text-textSecondary'}`}>
+              {visibleDescriptionError ??
+                `Nhập từ ${REPORT_DESCRIPTION_MIN_LENGTH}-${REPORT_DESCRIPTION_MAX_LENGTH} ký tự.`}
+            </Text>
+            <Text
+              className={`text-xs font-semibold ${
+                descriptionLength < REPORT_DESCRIPTION_MIN_LENGTH ||
+                descriptionLength > REPORT_DESCRIPTION_MAX_LENGTH
+                  ? 'text-error'
+                  : 'text-textSecondary'
+              }`}
+            >
+              {descriptionLength}/{REPORT_DESCRIPTION_MAX_LENGTH}
+            </Text>
+          </View>
         </ReportSectionCard>
 
         <View className="flex-row items-center justify-between rounded-3xl border border-border bg-white px-4 py-4">
@@ -188,7 +257,7 @@ export default function ReportFormScreen() {
       >
         <Button
           className="h-12 rounded-2xl"
-          disabled={isBusy || !categoryId || !severity}
+          disabled={isBusy || !categoryId || !severity || Boolean(descriptionError)}
           onPress={() => void handleSubmit()}
         >
           <Text className="font-semibold text-primary-foreground">
