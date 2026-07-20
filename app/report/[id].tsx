@@ -11,7 +11,7 @@ export default function ReportDetailScreen() {
 
   const detailSource: ReportDetailSource = source === 'map' ? 'map' : 'tab';
 
-  const { detail, history, isLoading, isActionBusy, errorMessage, refetch, closeReport, reopenReport } =
+  const { detail, history, isLoading, isActionBusy, errorMessage, refetch, closeReport, reopenReport, rateReport } =
     useReportDetail(id, Boolean(id));
 
   const handleBack = useCallback(() => {
@@ -38,6 +38,9 @@ export default function ReportDetailScreen() {
       }}
       onReopen={async () => {
         await reopenReport();
+      }}
+      onRate={async (dto) => {
+        await rateReport(dto);
       }}
     />
   );
