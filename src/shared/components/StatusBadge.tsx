@@ -17,6 +17,7 @@ const ASSIGNMENT_META: Record<AssignmentStatus, { label: string; textColor: stri
   InProgress: { label: 'Đang xử lý', textColor: '#065F46', bgColor: '#D1FAE5' },
   Completed: { label: 'Hoàn thành', textColor: '#374151', bgColor: '#F3F4F6' },
   Declined: { label: 'Từ chối', textColor: '#991B1B', bgColor: '#FEE2E2' },
+  Escalated: { label: 'Đã chuyển cấp', textColor: '#6D28D9', bgColor: '#EDE9FE' },
 };
 
 function resolveMeta(kind: StatusBadgeKind, status: string) {
