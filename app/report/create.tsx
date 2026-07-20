@@ -27,12 +27,17 @@ import { resolveCaptureLocation } from "@/utils/capture-location";
 import { enrichLocationWithGoong } from "@/utils/goong-admin-match";
 import { validatePinAgainstBoundary } from "@/utils/validate-pin-boundary";
 import {
+  REPORT_DESCRIPTION_MAX_LENGTH,
+  REPORT_DESCRIPTION_MIN_LENGTH,
+  validateReportDescription,
+} from "@/utils/report-validation";
+import {
   fetchProvinceBoundaryGroups,
   fetchWardBoundaryGroups,
 } from "@/utils/ward-boundary";
 import { extractPolygonRings } from "@/utils/geojson-boundaries";
 import { resolvePollutionCategoryIcon } from "@/utils/pollution-category-icon";
-import { guessMimeTypeFromUri } from "@/utils/report-image-file";
+import { compressImage, UPLOAD_COMPRESS_PRESET } from "@/utils/compress-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -203,8 +208,15 @@ export default function ReportCreateWizardScreen() {
     ? ({ LOW: "Low", MEDIUM: "Medium", HIGH: "High", CRITICAL: "Critical" } as const)[aiResult.classify.severity] ?? null
     : null;
 
-  const { isUploading, isSubmitting, uploadAllImages, submitReport } = useSubmitPollutionReport();
-  const { isAnalyzing, analyzeError, analyze } = useAnalyzeReportImage();
+  const {
+    isUploading,
+    isSubmitting,
+    uploadAllImages,
+    submitReport,
+    fieldErrors,
+    clearFieldError,
+  } = useSubmitPollutionReport();
+  const { isAnalyzing, analyzeError, prepareImage, uploadDraftImage } = useAnalyzeReportImage();
   const {
     tags: wasteTags,
     isLoading: isLoadingWasteTags,
@@ -310,20 +322,34 @@ export default function ReportCreateWizardScreen() {
       })),
     [images],
   );
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const descriptionError = useMemo(
+    () => validateReportDescription(description),
+    [description],
+  );
+  const visibleDescriptionError =
+    submitAttempted || description.trim().length > 0
+      ? (fieldErrors.description ?? descriptionError)
+      : null;
+  const descriptionLength = description.trim().length;
 
   const canGoNext = useMemo(() => {
     if (step === 1) return images.length > 0;
     if (step === 2) return Boolean(categoryId && severity);
     if (step === 3) return Boolean(location);
-    if (step === 4) return true;
+    if (step === 4) return !descriptionError;
     if (step === 5) return Boolean(images.length && location && categoryId && severity);
     return false;
-  }, [categoryId, images.length, location, severity, step]);
+  }, [categoryId, descriptionError, images.length, location, severity, step]);
 
   const canGoBack = step > 1;
 
   const goNext = useCallback(async () => {
     if (step < 5) {
+      if (step === 4 && descriptionError) {
+        setSubmitAttempted(true);
+        return;
+      }
       if (step === 3) {
         await refreshLocation();
       }
@@ -332,28 +358,58 @@ export default function ReportCreateWizardScreen() {
     }
 
     setSubmitPhase("validate");
+    setSubmitAttempted(true);
+    if (descriptionError) {
+      setStep(4);
+      setSubmitPhase("idle");
+      setSubmitProgress(0);
+      return;
+    }
     setUploadDone(0);
     setSubmitProgress(0.06);
     await delay(420);
 
     setSubmitPhase("upload");
-    const ok = await uploadAllImages(({ done, total }) => {
+    const uploadResult = await uploadAllImages(({ done, total }) => {
       setUploadDone(done);
       setSubmitProgress(0.1 + 0.6 * (done / Math.max(total, 1)));
     });
-    if (!ok) {
+    if (!uploadResult.ok) {
       setSubmitPhase("idle");
       setSubmitProgress(0);
-      Alert.alert("Tải ảnh thất bại", "Vui lòng kiểm tra kết nối và thử lại.");
+      if (uploadResult.reason === "timeout") {
+        Alert.alert(
+          "Tải ảnh quá lâu",
+          "Máy chủ chưa phản hồi kịp. Thường do upload cloud (R2) chậm — thử lại hoặc kiểm tra cấu hình BE.",
+        );
+      } else if (uploadResult.reason === "network") {
+        Alert.alert(
+          "Không kết nối được máy chủ",
+          "Kiểm tra EXPO_PUBLIC_API_URL và BE đang chạy cùng Wi‑Fi.",
+        );
+      } else {
+        Alert.alert("Tải ảnh thất bại", "Vui lòng kiểm tra kết nối và thử lại.");
+      }
       return;
     }
 
     setSubmitProgress(0.82);
     setSubmitPhase("submit");
-    const submitted = await submitReport();
-    if (!submitted) {
+    const submitResult = await submitReport();
+    if (!submitResult.ok) {
       setSubmitPhase("idle");
       setSubmitProgress(0);
+      if (submitResult.reason === "validation") {
+        setStep(4);
+        return;
+      }
+      if (submitResult.reason === "timeout" || submitResult.reason === "network") {
+        Alert.alert(
+          "Không nhận được phản hồi",
+          "Máy chủ có thể đã tạo báo cáo rồi (check mục Báo cáo của tôi trước khi gửi lại). Nếu chưa có thì thử lại.",
+        );
+        return;
+      }
       Alert.alert("Gửi báo cáo thất bại", "Vui lòng kiểm tra thông tin và thử lại.");
       return;
     }
@@ -362,7 +418,7 @@ export default function ReportCreateWizardScreen() {
     setSubmitPhase("done");
     await delay(520);
     router.replace("/report/success" as Href);
-  }, [refreshLocation, step, submitReport, uploadAllImages]);
+  }, [descriptionError, refreshLocation, step, submitReport, uploadAllImages]);
 
   const submitSteps = useMemo<SubmitStep[]>(() => {
     const phaseIndex = SUBMIT_PHASE_ORDER.indexOf(submitPhase);
@@ -397,7 +453,7 @@ export default function ReportCreateWizardScreen() {
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ["images"],
-        quality: 0.92,
+        quality: 1,
         exif: true,
       });
 
@@ -415,22 +471,40 @@ export default function ReportCreateWizardScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSource("camera");
       setLocation(resolved);
-      const mimeType = asset.mimeType ?? guessMimeTypeFromUri(asset.uri);
-      setImages([{ localUri: asset.uri, mimeType, sizeBytes: asset.fileSize, uploadStatus: "pending" }]);
+      let compressed;
+      try {
+        compressed = await compressImage(asset.uri, {
+          ...UPLOAD_COMPRESS_PRESET,
+          baseName: "report",
+          sourceWidth: asset.width,
+          sourceHeight: asset.height,
+        });
+      } catch {
+        Alert.alert("Không xử lý được ảnh", "Vui lòng chụp lại hoặc chọn ảnh khác.");
+        return;
+      }
+      const mimeType = compressed.mimeType;
+      setImages([{ localUri: compressed.uri, mimeType, fileName: compressed.fileName, uploadStatus: "pending" }]);
 
-      if (useAi) {
-        const outcome = await analyze(asset.uri, mimeType);
-        if (outcome === "rejected") {
-          Alert.alert("Ảnh không phù hợp", "Ảnh này bị hệ thống AI đánh dấu là không liên quan. Vui lòng chọn ảnh khác.");
-        } else if (outcome === "accepted" || outcome === "review") {
-          setPendingAiOutcome(outcome);
-          setShowAiResult(true);
-        }
+      // Step 1: always upload (R2 → BE proxy fallback). AI classify only if toggle on.
+      const outcome = await prepareImage(compressed.uri, mimeType, compressed.fileName, {
+        runAi: useAi,
+      });
+      if (outcome === "error") {
+        Alert.alert(
+          "Không tải được ảnh",
+          "Kiểm tra mạng rồi thử lại. Ảnh phải lên được server trước khi gửi báo cáo.",
+        );
+      } else if (outcome === "rejected") {
+        Alert.alert("Ảnh không phù hợp", "Ảnh này bị hệ thống AI đánh dấu là không liên quan. Vui lòng chọn ảnh khác.");
+      } else if (outcome === "accepted" || outcome === "review") {
+        setPendingAiOutcome(outcome);
+        setShowAiResult(true);
       }
     } finally {
       setIsPicking(false);
     }
-  }, [analyze, provinces, setImages, setLocation, setSource, useAi]);
+  }, [prepareImage, provinces, setImages, setLocation, setSource, useAi]);
 
   const ensureLocationSeed = useCallback(async () => {
     const existing = useCreateReportDraftStore.getState().location;
@@ -652,33 +726,61 @@ export default function ReportCreateWizardScreen() {
         mediaTypes: ["images"],
         allowsMultipleSelection: true,
         selectionLimit: 5,
-        quality: 0.92,
+        quality: 1,
       });
       if (result.canceled || !result.assets.length) return;
 
       setSource("library");
-      const drafted = result.assets.map((asset) => ({
-        localUri: asset.uri,
-        mimeType: asset.mimeType ?? guessMimeTypeFromUri(asset.uri),
-        sizeBytes: asset.fileSize,
-        uploadStatus: "pending" as const,
-      }));
+      let drafted;
+      try {
+        drafted = await Promise.all(
+          result.assets.map(async (asset) => {
+            const compressed = await compressImage(asset.uri, {
+              ...UPLOAD_COMPRESS_PRESET,
+              baseName: "report",
+              sourceWidth: asset.width,
+              sourceHeight: asset.height,
+            });
+            return {
+              localUri: compressed.uri,
+              mimeType: compressed.mimeType,
+              fileName: compressed.fileName,
+              uploadStatus: "pending" as const,
+            };
+          }),
+        );
+      } catch {
+        Alert.alert("Không xử lý được ảnh", "Vui lòng chọn lại ảnh khác (ưu tiên JPG).");
+        return;
+      }
       setImages(drafted);
       await ensureLocationSeed();
 
-      if (useAi && drafted[0]) {
-        const outcome = await analyze(drafted[0].localUri, drafted[0].mimeType);
-        if (outcome === "rejected") {
-          Alert.alert("Ảnh không phù hợp", "Ảnh này bị hệ thống AI đánh dấu là không liên quan. Vui lòng chọn ảnh khác.");
-        } else if (outcome === "accepted" || outcome === "review") {
-          setPendingAiOutcome(outcome);
-          setShowAiResult(true);
-        }
+      // Step 1: upload all now (extras || first+optional AI in parallel).
+      const [first, ...rest] = drafted;
+      const restPromise = Promise.all(
+        rest.map((img) => uploadDraftImage(img.localUri, img.mimeType, img.fileName)),
+      );
+      const firstOutcome = first
+        ? await prepareImage(first.localUri, first.mimeType, first.fileName, { runAi: useAi })
+        : null;
+      const restResults = await restPromise;
+
+      if (firstOutcome === "error" || restResults.some((ok) => !ok)) {
+        Alert.alert(
+          "Không tải được ảnh",
+          "Một số ảnh chưa lên được server. Kiểm tra mạng rồi chọn lại.",
+        );
+      } else if (firstOutcome === "rejected") {
+        Alert.alert("Ảnh không phù hợp", "Ảnh này bị hệ thống AI đánh dấu là không liên quan. Vui lòng chọn ảnh khác.");
+      } else if (firstOutcome === "accepted" || firstOutcome === "review") {
+        setPendingAiOutcome(firstOutcome);
+        setShowAiResult(true);
       }
     } finally {
       setIsPicking(false);
     }
-  }, [analyze, ensureLocationSeed, setImages, setSource, useAi]);
+  }, [prepareImage, uploadDraftImage, ensureLocationSeed, setImages, setSource, useAi]);
 
   const handleProvinceSelect = useCallback(
     async (code: string | null) => {
@@ -836,8 +938,10 @@ export default function ReportCreateWizardScreen() {
 
             {isAnalyzing ? (
               <View className="flex-row items-center gap-2 rounded-2xl bg-white px-4 py-3.5">
-                <Ionicons name="sparkles" size={16} color={colors.primary} />
-                <Text className="text-sm text-textSecondary">Đang phân tích ảnh...</Text>
+                <Ionicons name={useAi ? "sparkles" : "cloud-upload-outline"} size={16} color={colors.primary} />
+                <Text className="text-sm text-textSecondary">
+                  {useAi ? "Đang tải ảnh và phân tích AI..." : "Đang tải ảnh lên server..."}
+                </Text>
               </View>
             ) : null}
 
@@ -990,14 +1094,42 @@ export default function ReportCreateWizardScreen() {
             <FieldBlock label="Mô tả">
               <TextInput
                 value={description}
-                onChangeText={setDescription}
+                onChangeText={(value) => {
+                  clearFieldError("description");
+                  setDescription(value);
+                }}
                 placeholder="Hiện trường, tác động, mức độ cấp bách"
                 placeholderTextColor={colors.textDisabled}
                 multiline
                 numberOfLines={6}
+                maxLength={REPORT_DESCRIPTION_MAX_LENGTH}
                 textAlignVertical="top"
-                className="min-h-[148px] rounded-2xl bg-white px-4 py-3.5 text-[16px] leading-6 text-textPrimary"
+                className="min-h-[148px] rounded-2xl border bg-white px-4 py-3.5 text-[16px] leading-6 text-textPrimary"
+                style={{
+                  borderColor: visibleDescriptionError ? colors.error : colors.border,
+                }}
               />
+              <View className="flex-row items-start justify-between gap-3 px-1">
+                <Text
+                  className="flex-1 text-xs leading-5"
+                  style={{ color: visibleDescriptionError ? colors.error : colors.textSecondary }}
+                >
+                  {visibleDescriptionError ??
+                    `Nhập từ ${REPORT_DESCRIPTION_MIN_LENGTH}-${REPORT_DESCRIPTION_MAX_LENGTH} ký tự.`}
+                </Text>
+                <Text
+                  className="text-xs font-semibold"
+                  style={{
+                    color:
+                      descriptionLength < REPORT_DESCRIPTION_MIN_LENGTH ||
+                      descriptionLength > REPORT_DESCRIPTION_MAX_LENGTH
+                        ? colors.error
+                        : colors.textSecondary,
+                  }}
+                >
+                  {descriptionLength}/{REPORT_DESCRIPTION_MAX_LENGTH}
+                </Text>
+              </View>
             </FieldBlock>
 
             <FieldBlock label="Loại rác thải">
@@ -1069,17 +1201,25 @@ export default function ReportCreateWizardScreen() {
         onNext={() => void goNext()}
       />
 
-      {/* AI Analyzing dialog */}
+      {/* Upload / AI prepare dialog */}
       <Modal visible={isAnalyzing} transparent animationType="fade">
         <View className="flex-1 items-center justify-center bg-black/50 px-8">
           <View className="w-full items-center gap-4 rounded-3xl bg-white px-6 py-8">
             <View className="h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Ionicons name="sparkles" size={28} color={colors.primary} />
+              <Ionicons
+                name={useAi ? "sparkles" : "cloud-upload-outline"}
+                size={28}
+                color={colors.primary}
+              />
             </View>
             <View className="items-center gap-1.5">
-              <Text className="text-lg font-bold text-textPrimary">AI đang phân tích</Text>
+              <Text className="text-lg font-bold text-textPrimary">
+                {useAi ? "AI đang phân tích" : "Đang tải ảnh lên"}
+              </Text>
               <Text className="text-center text-sm text-textSecondary">
-                Hệ thống đang nhận diện loại ô nhiễm và mức độ từ ảnh của bạn...
+                {useAi
+                  ? "Hệ thống đang tải ảnh và nhận diện loại ô nhiễm / mức độ..."
+                  : "Ảnh được tải sớm để bước gửi báo cáo nhanh và ổn định hơn."}
               </Text>
             </View>
           </View>
