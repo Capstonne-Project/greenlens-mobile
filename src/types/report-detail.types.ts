@@ -11,16 +11,37 @@ export interface ReportMediaItem {
 }
 
 export interface ReportAssignmentItem {
+  id?: string;
+  teamId?: string;
   teamName: string;
   status: string;
   progressPercent: number;
   progressNote?: string | null;
+  progressUpdatedAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
 }
 
+/** BE trả `tagId` (GetReportById); một số payload cũ có thể dùng `id`. */
 export interface ReportDetailWasteTag {
   id: string;
+  tagId?: string;
   code?: string;
   nameVi: string;
+}
+
+/** POST /reports/{id}/rate — đánh giá chất lượng xử lý (1 lần / report) */
+export interface ReportSatisfaction {
+  isSatisfied: boolean;
+  rating?: number | null;
+  comment?: string | null;
+  ratedAt?: string | null;
+}
+
+export interface RateReportDto {
+  isSatisfied: boolean;
+  rating?: number;
+  comment?: string;
 }
 
 export interface ReportDetail {
@@ -47,6 +68,10 @@ export interface ReportDetail {
   closedAt?: string | null;
   slaVerifyDueAt?: string | null;
   slaResolveDueAt?: string | null;
+
+  /** Có sẵn khi reporter đã đánh giá (Phần B2 handoff) */
+  satisfaction?: ReportSatisfaction | null;
+  hasCurrentUserRated?: boolean;
 }
 
 export interface ReportHistoryItem {

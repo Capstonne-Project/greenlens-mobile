@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { reportDetailService } from '@/services/reportDetail.service';
-import type { ReportDetail, ReportHistoryItem } from '@/types/report-detail.types';
+import type {
+  RateReportDto,
+  ReportAssignmentItem,
+  ReportDetail,
+  ReportDetailWasteTag,
+  ReportHistoryItem,
+  ReportMediaItem,
+} from '@/types/report-detail.types';
 import { getApiErrorMessage } from '@/utils/api-error-message';
 
 interface UseReportDetailResult {
@@ -12,6 +19,35 @@ interface UseReportDetailResult {
   refetch: () => Promise<void>;
   closeReport: () => Promise<boolean>;
   reopenReport: () => Promise<boolean>;
+  rateReport: (dto: RateReportDto) => Promise<boolean>;
+}
+
+function normalizeWasteTags(raw: ReportDetailWasteTag[] | undefined): ReportDetailWasteTag[] {
+  return (raw ?? []).map((tag, index) => {
+    const id = String(tag.id || tag.tagId || tag.code || `waste-tag-${index}`);
+    return {
+      id,
+      tagId: tag.tagId,
+      code: tag.code,
+      nameVi: tag.nameVi || 'Loại rác',
+    };
+  });
+}
+
+function normalizeAssignments(raw: ReportAssignmentItem[] | undefined): ReportAssignmentItem[] {
+  return (raw ?? []).map((item, index) => ({
+    ...item,
+    id: item.id || item.teamId || `assignment-${index}`,
+    teamName: item.teamName || 'Đội xử lý',
+    progressPercent: item.progressPercent ?? 0,
+  }));
+}
+
+function normalizeMedia(raw: ReportMediaItem[] | undefined): ReportMediaItem[] {
+  return (raw ?? []).map((item, index) => ({
+    ...item,
+    id: item.id || `media-${index}`,
+  }));
 }
 
 export function useReportDetail(reportId: string | undefined, enabled = true): UseReportDetailResult {
@@ -37,12 +73,13 @@ export function useReportDetail(reportId: string | undefined, enabled = true): U
 
       if (requestId !== requestIdRef.current) return;
 
+      const data = detailRes.data.data;
       setDetail({
-        ...detailRes.data.data,
-        media: detailRes.data.data.media ?? [],
-        assignments: detailRes.data.data.assignments ?? [],
-        wasteTags: detailRes.data.data.wasteTags ?? [],
-        reopenedCount: detailRes.data.data.reopenedCount ?? 0,
+        ...data,
+        media: normalizeMedia(data.media),
+        assignments: normalizeAssignments(data.assignments),
+        wasteTags: normalizeWasteTags(data.wasteTags),
+        reopenedCount: data.reopenedCount ?? 0,
       });
       setHistory(historyRes.data.data.items ?? []);
     } catch (error) {
@@ -92,6 +129,24 @@ export function useReportDetail(reportId: string | undefined, enabled = true): U
     }
   }, [refetch, reportId]);
 
+  const rateReport = useCallback(
+    async (dto: RateReportDto) => {
+      if (!reportId) return false;
+      setIsActionBusy(true);
+      try {
+        await reportDetailService.rate(reportId, dto);
+        await refetch();
+        return true;
+      } catch (error) {
+        setErrorMessage(getApiErrorMessage(error, 'Không thể gửi đánh giá.'));
+        return false;
+      } finally {
+        setIsActionBusy(false);
+      }
+    },
+    [refetch, reportId],
+  );
+
   return useMemo(
     () => ({
       detail,
@@ -102,7 +157,8 @@ export function useReportDetail(reportId: string | undefined, enabled = true): U
       refetch,
       closeReport,
       reopenReport,
+      rateReport,
     }),
-    [detail, history, isLoading, isActionBusy, errorMessage, refetch, closeReport, reopenReport],
+    [detail, history, isLoading, isActionBusy, errorMessage, refetch, closeReport, reopenReport, rateReport],
   );
 }
