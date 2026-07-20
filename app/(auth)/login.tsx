@@ -46,12 +46,18 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert("Thiếu thông tin", "Vui lòng nhập đầy đủ email/số điện thoại và mật khẩu.");
+      return;
+    }
+
+    if (!acceptTerms) {
+      Alert.alert("Điều khoản", "Bạn cần đồng ý điều khoản sử dụng để đăng nhập.");
       return;
     }
 
@@ -126,7 +132,21 @@ export default function LoginScreen() {
             </TapItem>
           </View>
 
-          <Button onPress={handleLogin} disabled={isSubmitting} className="h-16 rounded-3xl">
+          <TapItem onPress={() => setAcceptTerms((prev) => !prev)} className="flex-row items-start gap-3">
+            <View className="mt-0.5 h-6 w-6 items-center justify-center rounded-md border-2 border-border bg-white">
+              {acceptTerms && <View className="h-4 w-4 rounded-sm bg-primary" />}
+            </View>
+            <Text className="flex-1 text-sm leading-5 text-textSecondary">
+              Tôi đồng ý với <Text className="font-semibold text-primary">Điều khoản sử dụng</Text> và{" "}
+              <Text className="font-semibold text-primary">Chính sách bảo mật dữ liệu</Text>.
+            </Text>
+          </TapItem>
+
+          <Button
+            onPress={handleLogin}
+            disabled={isSubmitting || !acceptTerms}
+            className="h-16 rounded-3xl"
+          >
             <Text className="text-base font-semibold text-primary-foreground">
               {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
             </Text>
