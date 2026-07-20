@@ -378,7 +378,7 @@ export default function ProfileTabScreen() {
         </Text>
         <View className="flex-row items-center gap-2">
           <IconButton icon="notifications-outline" onPress={() => router.push('/(tabs)/notifications' as Href)} />
-          <IconButton icon="settings-outline" onPress={() => router.push('/(tabs)/change-password' as Href)} />
+          <IconButton icon="settings-outline" onPress={() => router.push('/(tabs)/settings' as Href)} />
         </View>
       </View>
 

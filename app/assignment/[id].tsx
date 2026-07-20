@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -15,16 +15,29 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
 import { Toast, useToast } from '@/components/common/Toast';
+import { AssignmentActionButton } from '@/components/assignment/AssignmentActionButton';
+import { BeforeImagesNextStepCard } from '@/components/assignment/BeforeImagesNextStepCard';
+import { TimerCard } from '@/components/assignment/TimerCard';
+import { ReportCommentsSection } from '@/components/report/ReportCommentsSection';
+import { ReportSatisfactionCard } from '@/components/report/ReportSatisfactionCard';
+import { useReportComments } from '@/hooks/useReportComments';
+import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
+import { reportDetailService } from '@/services/reportDetail.service';
 import { useFieldWorkerTaskStore } from '@/stores/fieldWorkerTask.store';
 import { colors } from '@/theme/colors';
 import { getApiErrorMessage } from '@/utils/api-error-message';
+import {
+  resolveDeclineDeadline,
+  resolveProgressRequiredBy,
+} from '@/utils/countdown';
 import { firstRouteParam } from '@/utils/field-worker-task';
 import type { TaskDetail } from '@/types/cleanup-assignment.types';
+import type { ReportSatisfaction } from '@/types/report-detail.types';
 
 // ─── Configs ──────────────────────────────────────────────────────────────────
 
@@ -40,6 +53,7 @@ const ASSIGNMENT_STATUS_CONFIG: Record<string, { label: string; color: string; b
   InProgress: { label: 'Đang xử lý', color: '#065F46', bg: '#D1FAE5' },
   Completed:  { label: 'Hoàn thành', color: '#374151', bg: '#F3F4F6' },
   Declined:   { label: 'Từ chối',    color: '#991B1B', bg: '#FEE2E2' },
+  Escalated:  { label: 'Đã chuyển cấp', color: '#6D28D9', bg: '#EDE9FE' },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -87,28 +101,40 @@ interface TimelineStepProps {
   label: string;
   time: string | null;
   done: boolean;
+  active?: boolean;
   isLast?: boolean;
 }
 
-function TimelineStep({ label, time, done, isLast = false }: TimelineStepProps) {
+function TimelineStep({ label, time, done, active = false, isLast = false }: TimelineStepProps) {
+  const dotColor = done ? colors.primary : active ? colors.warning : colors.border;
+  const labelColor = active ? '#92400E' : done ? colors.textPrimary : colors.textSecondary;
+
   return (
     <View className="flex-row items-start">
       <View className="mr-3 items-center" style={{ width: 20 }}>
         <View
           className="h-4 w-4 items-center justify-center rounded-full"
-          style={{ backgroundColor: done ? colors.primary : colors.border }}
+          style={{ backgroundColor: dotColor }}
         >
-          {done && <Ionicons name="checkmark" size={10} color="#fff" />}
+          {done ? <Ionicons name="checkmark" size={10} color="#fff" /> : null}
         </View>
         {!isLast && (
           <View className="mt-0.5 w-px flex-1" style={{ backgroundColor: colors.border, minHeight: 24 }} />
         )}
       </View>
       <View className="flex-1 pb-4">
-        <Text className="text-sm font-semibold" style={{ color: done ? colors.textPrimary : colors.textSecondary }}>
+        <Text
+          className="text-sm"
+          style={{ color: labelColor, fontWeight: active ? '700' : '600' }}
+        >
           {label}
         </Text>
-        {time && <Text className="text-xs text-textSecondary">{time}</Text>}
+        {time ? <Text className="text-xs text-textSecondary">{time}</Text> : null}
+        {active && !done ? (
+          <Text className="mt-0.5 text-xs font-medium" style={{ color: colors.warning }}>
+            Bước tiếp theo
+          </Text>
+        ) : null}
       </View>
     </View>
   );
@@ -139,21 +165,39 @@ interface AnimatedButtonProps {
   disabled?: boolean;
   style?: object;
   className?: string;
-  children: React.ReactNode;
+  /** false = không chiếm flex:1 (CTA full-width đơn) */
+  grow?: boolean;
+  children: ReactNode;
 }
 
-function AnimatedButton({ onPress, disabled, style, className, children }: AnimatedButtonProps) {
+const FOOTER_BUTTON_HEIGHT = 52;
+
+function AnimatedButton({
+  onPress,
+  disabled,
+  style,
+  className,
+  grow = true,
+  children,
+}: AnimatedButtonProps) {
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
-    <Animated.View style={[animStyle, { flex: 1 }]}>
+    <Animated.View style={[animStyle, grow ? { flex: 1 } : { width: '100%' }]}>
       <Pressable
         onPress={onPress}
         disabled={disabled}
         onPressIn={() => { scale.value = withSpring(0.96); }}
         onPressOut={() => { scale.value = withSpring(1); }}
         className={className}
-        style={style}
+        style={[
+          {
+            height: FOOTER_BUTTON_HEIGHT,
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
+          style,
+        ]}
       >
         {children}
       </Pressable>
@@ -173,10 +217,34 @@ export default function AssignmentDetailScreen() {
   const insets  = useSafeAreaInsets();
 
   const [task, setTask]           = useState<TaskDetail | null>(null);
+  const [satisfaction, setSatisfaction] = useState<ReportSatisfaction | null>(null);
   const [isLoading, setLoading]   = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   const { toastState, show: showToast, hide: hideToast } = useToast();
+  const {
+    isLeader,
+    isLoading: isAccessLoading,
+    errorMessage: accessError,
+  } = useTeamAccess();
+
+  const showFeedbackBlock =
+    task != null &&
+    (task.assignmentStatus === 'Completed' ||
+      task.reportStatus === 'Resolved' ||
+      task.reportStatus === 'Closed' ||
+      task.reportStatus === 'ClosedNoViolation');
+
+  const {
+    threads,
+    isLoading: isCommentsLoading,
+    isSubmitting: isCommentSubmitting,
+    likingCommentId,
+    errorMessage: commentsError,
+    refetch: refetchComments,
+    addComment,
+    toggleLike,
+  } = useReportComments(task?.reportId, Boolean(showFeedbackBlock && task?.reportId));
 
   const loadDetail = useCallback(async () => {
     const reportId = reportIdParam;
@@ -186,10 +254,29 @@ export default function AssignmentDetailScreen() {
     setError(null);
     try {
       const res = await cleanupAssignmentService.getMyTaskDetail(reportId);
-      setTask(res.data.data);
+      const nextTask = res.data.data;
+      setTask(nextTask);
       useFieldWorkerTaskStore.getState().clearPendingItem(reportId, assignmentIdParam);
+
+      const shouldLoadSatisfaction =
+        nextTask.assignmentStatus === 'Completed' ||
+        nextTask.reportStatus === 'Resolved' ||
+        nextTask.reportStatus === 'Closed' ||
+        nextTask.reportStatus === 'ClosedNoViolation';
+
+      if (shouldLoadSatisfaction) {
+        try {
+          const reportRes = await reportDetailService.getById(reportId);
+          setSatisfaction(reportRes.data.data.satisfaction ?? null);
+        } catch {
+          setSatisfaction(null);
+        }
+      } else {
+        setSatisfaction(null);
+      }
     } catch (err) {
       setError(getApiErrorMessage(err, 'Không thể tải chi tiết nhiệm vụ.'));
+      setSatisfaction(null);
     } finally {
       setLoading(false);
     }
@@ -207,16 +294,38 @@ export default function AssignmentDetailScreen() {
     setAccepting(true);
     try {
       await cleanupAssignmentService.accept(reportId);
+      const detailResponse = await cleanupAssignmentService.getMyTaskDetail(reportId);
+      const refreshedTask = detailResponse.data.data;
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      showToast('Đã nhận nhiệm vụ thành công!');
-      await loadDetail();
+      if (!refreshedTask.hasBeforeImages) {
+        router.replace({
+          pathname: '/assignment/before-images',
+          params: {
+            reportId,
+            reportCode: refreshedTask.reportCode,
+          },
+        } as never);
+        return;
+      }
+      setTask(refreshedTask);
     } catch {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       showToast('Không thể nhận nhiệm vụ. Thử lại.', 'error');
     } finally {
       setAccepting(false);
     }
-  }, [task, reportIdParam, accepting, loadDetail, showToast]);
+  }, [task, reportIdParam, accepting, showToast]);
+
+  const handleOpenBeforeImages = useCallback(() => {
+    if (!task) return;
+    router.push({
+      pathname: '/assignment/before-images',
+      params: {
+        reportId: task.reportId,
+        reportCode: task.reportCode,
+      },
+    } as never);
+  }, [task]);
 
   const handleOpenProgress = useCallback(() => {
     if (!task) return;
@@ -251,13 +360,37 @@ export default function AssignmentDetailScreen() {
     } as never);
   }, [task]);
 
+  const handleOpenEscalate = useCallback(() => {
+    if (!task) return;
+    router.push({
+      pathname: '/assignment/escalate',
+      params: {
+        reportId: task.reportId,
+        reportCode: task.reportCode,
+      },
+    } as never);
+  }, [task]);
+
   const severity     = SEVERITY_CONFIG[task?.severity ?? 'Medium'] ?? SEVERITY_CONFIG.Medium;
   const assignStatus = task
     ? (ASSIGNMENT_STATUS_CONFIG[task.assignmentStatus] ?? ASSIGNMENT_STATUS_CONFIG.Assigned)
     : null;
   const sla = task?.slaResolveDueAt ? formatSlaRemaining(task.slaResolveDueAt) : null;
   const firstImage = task?.reportImages?.[0]?.url ?? null;
-
+  const hasBeforeImages = task?.hasBeforeImages === true;
+  const awaitingBeforeImages =
+    task?.assignmentStatus === 'InProgress' && !hasBeforeImages;
+  const declineDeadline = task
+    ? resolveDeclineDeadline(task.declineDeadlineAt, task.assignedAt)
+    : null;
+  const progressDue = task
+    ? resolveProgressRequiredBy(
+        task.progressRequiredByAt,
+        task.progressUpdatedAt,
+        task.startedAt,
+        task.assignedAt,
+      )
+    : null;
   return (
     <View className="flex-1 bg-background">
       {/* Back + SLA overlay */}
@@ -273,7 +406,7 @@ export default function AssignmentDetailScreen() {
           <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
         </Pressable>
 
-        {task && (
+        {task ? (
           <View
             className="flex-row items-center gap-1.5 rounded-full bg-white px-3 py-1.5"
             style={{ elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6 }}
@@ -293,12 +426,13 @@ export default function AssignmentDetailScreen() {
               </View>
             ) : null}
           </View>
-        )}
+        ) : null}
       </View>
 
       <ScrollView
+        className="flex-1"
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        contentContainerStyle={{ paddingBottom: 24 }}
       >
         {isLoading ? (
           <DetailSkeleton />
@@ -346,6 +480,12 @@ export default function AssignmentDetailScreen() {
                 <Text className="flex-1 text-sm text-textSecondary">{task.address}</Text>
               </View>
 
+              {awaitingBeforeImages ? (
+                <BeforeImagesNextStepCard
+                  onPressPrimary={handleOpenBeforeImages}
+                />
+              ) : null}
+
               <View className="mb-4 h-px bg-border" />
 
               {/* Description */}
@@ -366,8 +506,28 @@ export default function AssignmentDetailScreen() {
                 </View>
               ) : null}
 
-              {/* Progress bar (InProgress) */}
-              {task.assignmentStatus === 'InProgress' && (
+              {/* Waste tags */}
+              {task.wasteTags && task.wasteTags.length > 0 ? (
+                <View className="mb-4">
+                  <SectionTitle label="Loại rác" />
+                  <View className="flex-row flex-wrap gap-2">
+                    {task.wasteTags.map((tag) => (
+                      <View
+                        key={tag.code}
+                        className="rounded-full px-3 py-1"
+                        style={{ backgroundColor: '#ECFDF5' }}
+                      >
+                        <Text className="text-xs font-semibold" style={{ color: '#065F46' }}>
+                          {tag.nameVi}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
+              {/* Progress — chỉ hiện khi đã có before (tránh 0% gây hiểu nhầm) */}
+              {task.assignmentStatus === 'InProgress' && hasBeforeImages ? (
                 <View className="mb-4">
                   <View className="mb-1 flex-row items-center justify-between">
                     <SectionTitle label="Tiến độ" />
@@ -393,7 +553,41 @@ export default function AssignmentDetailScreen() {
                     </Text>
                   ) : null}
                 </View>
-              )}
+              ) : null}
+
+              {/* Countdown timers */}
+              <View className="mb-4 gap-3">
+                <SectionTitle label="Thời gian" />
+                <View className="flex-row gap-3">
+                  <TimerCard
+                    icon="timer-outline"
+                    title="SLA xử lý"
+                    subtitle={task.slaResolveDueAt ? formatDateTime(task.slaResolveDueAt) : undefined}
+                    deadlineIso={task.slaResolveDueAt}
+                    tone="warning"
+                    emptyLabel="Không có"
+                  />
+                  {task.assignmentStatus === 'Assigned' ? (
+                    <TimerCard
+                      icon="hourglass-outline"
+                      title="Hạn từ chối"
+                      subtitle="Còn thời gian để từ chối"
+                      deadlineIso={declineDeadline}
+                      tone="danger"
+                      emptyLabel="—"
+                    />
+                  ) : task.assignmentStatus === 'InProgress' && hasBeforeImages ? (
+                    <TimerCard
+                      icon="refresh-outline"
+                      title="Cập nhật tiến độ"
+                      subtitle="Nên cập nhật mỗi 24 giờ"
+                      deadlineIso={progressDue}
+                      tone="primary"
+                      emptyLabel="—"
+                    />
+                  ) : null}
+                </View>
+              </View>
 
               <View className="mb-4 h-px bg-border" />
 
@@ -408,7 +602,23 @@ export default function AssignmentDetailScreen() {
                 <TimelineStep
                   label="Chấp nhận / Check-in"
                   time={task.startedAt ? formatTime(task.startedAt) : null}
-                  done={!!task.startedAt}
+                  done={!!task.startedAt || task.assignmentStatus === 'InProgress'}
+                />
+                <TimelineStep
+                  label="Ảnh hiện trạng trước dọn"
+                  time={hasBeforeImages ? 'Đã gửi' : null}
+                  done={hasBeforeImages}
+                  active={awaitingBeforeImages}
+                />
+                <TimelineStep
+                  label="Xử lý hiện trường"
+                  time={
+                    task.progressUpdatedAt
+                      ? `Cập nhật ${formatDateTime(task.progressUpdatedAt)}`
+                      : 'Cập nhật tiến độ là tùy chọn'
+                  }
+                  done={task.assignmentStatus === 'Completed'}
+                  active={task.assignmentStatus === 'InProgress' && hasBeforeImages}
                 />
                 <TimelineStep
                   label="Hoàn thành"
@@ -433,6 +643,40 @@ export default function AssignmentDetailScreen() {
                   <Text className="text-sm text-textSecondary">{formatDateTime(task.slaResolveDueAt)}</Text>
                 </View>
               )}
+
+              {showFeedbackBlock ? (
+                <View className="mb-2 mt-2">
+                  <View className="mb-4 h-px bg-border" />
+                  {satisfaction ? (
+                    <ReportSatisfactionCard satisfaction={satisfaction} />
+                  ) : (
+                    <View className="mb-4 rounded-2xl bg-surface px-4 py-3">
+                      <Text className="text-sm text-textSecondary">
+                        Người báo cáo chưa gửi đánh giá chất lượng xử lý.
+                      </Text>
+                    </View>
+                  )}
+                  <ReportCommentsSection
+                    threads={threads}
+                    isLoading={isCommentsLoading}
+                    isSubmitting={isCommentSubmitting}
+                    likingCommentId={likingCommentId}
+                    errorMessage={commentsError}
+                    composerLabel="Phản hồi đánh giá"
+                    composerPlaceholder="Cảm ơn / phản hồi người báo cáo…"
+                    emptyLabel="Chưa có phản hồi. Gửi lời cảm ơn hoặc giải thích khi có đánh giá."
+                    onSubmit={async (content, parentCommentId) => {
+                      const ok = await addComment(content, parentCommentId);
+                      if (ok) {
+                        showToast('Đã gửi phản hồi.', 'success');
+                      }
+                      return ok;
+                    }}
+                    onToggleLike={toggleLike}
+                    onRetry={() => void refetchComments()}
+                  />
+                </View>
+              ) : null}
             </View>
           </>
         ) : null}
@@ -440,11 +684,30 @@ export default function AssignmentDetailScreen() {
 
       {/* Bottom action bar */}
       {!isLoading && !error && task && (
-        <View
+        <SafeAreaView
+          edges={['bottom']}
           className="border-t border-border bg-white px-4 pt-3"
-          style={{ paddingBottom: insets.bottom + 12 }}
+          style={{
+            shadowColor: '#000',
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: -2 },
+            elevation: 8,
+          }}
         >
-          {task.assignmentStatus === 'Assigned' ? (
+          {isAccessLoading ? (
+            <View className="h-12 flex-row items-center justify-center gap-2">
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text className="text-sm text-textSecondary">Đang kiểm tra quyền thao tác</Text>
+            </View>
+          ) : !isLeader ? (
+            <View className="min-h-12 flex-row items-center justify-center gap-2 rounded-xl bg-surface px-4 py-3">
+              <Ionicons name="eye-outline" size={18} color={colors.textSecondary} />
+              <Text className="flex-1 text-center text-sm text-textSecondary">
+                {accessError ?? 'Bạn đang xem nhiệm vụ. Chỉ trưởng nhóm được cập nhật trạng thái.'}
+              </Text>
+            </View>
+          ) : task.assignmentStatus === 'Assigned' ? (
             <View className="flex-row gap-3">
               {task.canDecline && (
                 <AnimatedButton
@@ -455,10 +718,11 @@ export default function AssignmentDetailScreen() {
                         reportId: task.reportId,
                         reportCode: task.reportCode,
                         assignedAt: task.assignedAt,
+                        declineDeadlineAt: task.declineDeadlineAt ?? '',
                       },
                     } as never)
                   }
-                  className="h-12 items-center justify-center rounded-xl border-2 border-error"
+                  className="rounded-xl border-2 border-error"
                 >
                   <View className="flex-row items-center gap-1.5">
                     <Ionicons name="close" size={18} color={colors.error} />
@@ -469,7 +733,7 @@ export default function AssignmentDetailScreen() {
               <AnimatedButton
                 onPress={handleAccept}
                 disabled={accepting}
-                className="h-12 items-center justify-center rounded-xl"
+                className="rounded-xl"
                 style={{ backgroundColor: colors.primary }}
               >
                 {accepting ? (
@@ -483,31 +747,59 @@ export default function AssignmentDetailScreen() {
               </AnimatedButton>
             </View>
           ) : task.assignmentStatus === 'InProgress' ? (
-            <View className="flex-row gap-3">
-              {task.canUpdateProgress && (
+            awaitingBeforeImages ? (
+              <View className="gap-2">
+                <Text className="text-center text-xs text-textSecondary">
+                  Đã nhận nhiệm vụ · Cần ảnh hiện trạng để tiếp tục
+                </Text>
                 <AnimatedButton
-                  onPress={handleOpenProgress}
-                  className="h-12 items-center justify-center rounded-xl border border-primary"
-                >
-                  <View className="flex-row items-center gap-1.5">
-                    <Ionicons name="camera-outline" size={18} color={colors.primary} />
-                    <Text className="font-semibold text-primary">Cập nhật</Text>
-                  </View>
-                </AnimatedButton>
-              )}
-              {task.canResolve && (
-                <AnimatedButton
-                  onPress={handleOpenComplete}
-                  className="h-12 items-center justify-center rounded-xl"
+                  onPress={handleOpenBeforeImages}
+                  grow={false}
+                  className="rounded-xl"
                   style={{ backgroundColor: colors.primary }}
                 >
                   <View className="flex-row items-center gap-1.5">
-                    <Ionicons name="checkmark-done" size={18} color="#fff" />
-                    <Text className="font-bold text-white">Hoàn thành</Text>
+                    <Ionicons name="camera" size={18} color="#fff" />
+                    <Text className="font-bold text-white">Chụp ảnh hiện trạng ngay</Text>
                   </View>
                 </AnimatedButton>
-              )}
-            </View>
+              </View>
+            ) : (
+              <View className="gap-2.5">
+                <View className="flex-row items-stretch gap-3">
+                  {task.canUpdateProgress ? (
+                    <View style={{ flex: 1 }}>
+                      <AssignmentActionButton
+                        label="Cập nhật"
+                        icon="create-outline"
+                        variant="secondary"
+                        onPress={handleOpenProgress}
+                      />
+                    </View>
+                  ) : null}
+                  {task.canResolve ? (
+                    <View style={{ flex: 1 }}>
+                      <AssignmentActionButton
+                        label="Hoàn thành"
+                        icon="checkmark-done"
+                        variant="primary"
+                        onPress={handleOpenComplete}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+                <Pressable
+                  onPress={handleOpenEscalate}
+                  className="flex-row items-center justify-center gap-1.5 py-1"
+                  hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+                >
+                  <Ionicons name="arrow-up-circle-outline" size={16} color={colors.textSecondary} />
+                  <Text className="text-xs font-semibold text-textSecondary">
+                    Vượt khả năng xử lý? Chuyển cấp
+                  </Text>
+                </Pressable>
+              </View>
+            )
           ) : task.assignmentStatus === 'Completed' ? (
             <View className="h-12 flex-row items-center justify-center gap-2 rounded-xl" style={{ backgroundColor: '#ECFDF5' }}>
               <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
@@ -518,8 +810,13 @@ export default function AssignmentDetailScreen() {
               <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
               <Text className="font-semibold text-textSecondary">Đã từ chối</Text>
             </View>
+          ) : task.assignmentStatus === 'Escalated' ? (
+            <View className="h-12 flex-row items-center justify-center gap-2 rounded-xl bg-surface">
+              <Ionicons name="arrow-up-circle-outline" size={20} color={colors.textSecondary} />
+              <Text className="font-semibold text-textSecondary">Đã chuyển cấp xử lý</Text>
+            </View>
           ) : null}
-        </View>
+        </SafeAreaView>
       )}
 
       <Toast

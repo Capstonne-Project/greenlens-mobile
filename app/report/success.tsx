@@ -5,7 +5,7 @@ import { useCreateReportDraftStore } from '@/stores/createReportDraft.store';
 import { formatDate } from '@/utils/formatters';
 import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { View } from 'react-native';
 
 export default function ReportSuccessScreen() {
@@ -19,10 +19,14 @@ export default function ReportSuccessScreen() {
     }
   }, [submittedReportCode]);
 
-  const handleGoHome = () => {
-    reset();
-    router.replace('/(tabs)/index' as Href);
-  };
+  const leaveSuccess = useCallback(
+    (destination: '/(tabs)/index' | '/(tabs)/reports') => {
+      reset();
+      // replace → không back lại stack create/form
+      router.replace(destination as Href);
+    },
+    [reset],
+  );
 
   return (
     <SafeScreen className="justify-center bg-surface px-6">
@@ -46,9 +50,16 @@ export default function ReportSuccessScreen() {
         ) : null}
       </View>
 
-      <View className="mt-8">
-        <Button className="h-12 rounded-2xl" onPress={handleGoHome}>
-          <Text className="font-semibold text-primary-foreground">Về trang chủ</Text>
+      <View className="mt-8 gap-3">
+        <Button className="h-12 rounded-2xl" onPress={() => leaveSuccess('/(tabs)/reports')}>
+          <Text className="font-semibold text-primary-foreground">Xem danh sách báo cáo</Text>
+        </Button>
+        <Button
+          variant="outline"
+          className="h-12 rounded-2xl"
+          onPress={() => leaveSuccess('/(tabs)/index')}
+        >
+          <Text className="font-semibold text-textPrimary">Về trang chủ</Text>
         </Button>
       </View>
     </SafeScreen>

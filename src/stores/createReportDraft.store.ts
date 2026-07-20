@@ -41,7 +41,7 @@ interface CreateReportDraftState {
   removeTag: (tag: string) => void;
   toggleWasteTag: (tagId: string) => void;
   setIsAnonymous: (isAnonymous: boolean) => void;
-  setSubmissionResult: (code: string, slaVerifyDueAt: string) => void;
+  setSubmissionResult: (code: string, slaVerifyDueAt: string | null) => void;
   setUseAi: (useAi: boolean) => void;
   setAiResult: (tempImageId: string, aiResult: AiAnalyzeResult, suggestedCategory?: AiSuggestedCategory | null) => void;
   clearAiResult: () => void;

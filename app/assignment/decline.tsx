@@ -14,15 +14,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Toast, useToast } from '@/components/common/Toast';
 import { Text } from '@/components/ui/text';
+import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { firstRouteParam } from '@/utils/field-worker-task';
-import { useAuthStore } from '@/stores/auth.store';
 import { colors } from '@/theme/colors';
 import type { DeclineAssignmentDto } from '@/types/cleanup-assignment.types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const DECLINE_WINDOW_SEC = 2 * 60 * 60; // 2 giờ
+const DECLINE_WINDOW_SEC = 24 * 60 * 60; // 24 giờ (khớp BE BR-CLN-007)
 
 const DECLINE_REASONS = [
   'Ngoài khu vực phụ trách',
@@ -135,16 +135,21 @@ export default function DeclineScreen() {
   const params = useLocalSearchParams<{
     reportId?: string | string[];
     assignedAt: string | string[];
+    declineDeadlineAt?: string | string[];
   }>();
   const reportId = firstRouteParam(params.reportId);
   const assignedAt = firstRouteParam(params.assignedAt);
+  const declineDeadlineAt = firstRouteParam(params.declineDeadlineAt);
   const insets = useSafeAreaInsets();
-  const teamId = useAuthStore((s) => s.user?.teamId ?? '');
+  const { teamId, isLeader, isLoading: isAccessLoading } = useTeamAccess();
 
-  // Compute initial seconds from deadline = assignedAt + 2h
+  // Ưu tiên deadline BE trả về; fallback assignedAt + 24h cho dữ liệu cũ.
   const initialSeconds = (() => {
-    if (!assignedAt) return DECLINE_WINDOW_SEC;
-    const deadline = new Date(assignedAt).getTime() + DECLINE_WINDOW_SEC * 1000;
+    const deadline = declineDeadlineAt
+      ? new Date(declineDeadlineAt).getTime()
+      : assignedAt
+        ? new Date(assignedAt).getTime() + DECLINE_WINDOW_SEC * 1000
+        : Date.now() + DECLINE_WINDOW_SEC * 1000;
     return Math.floor((deadline - Date.now()) / 1000);
   })();
 
@@ -162,7 +167,13 @@ export default function DeclineScreen() {
 
   const isOther      = selectedReason === 'Lý do khác';
   const noteValid    = !isOther || note.trim().length >= 20;
-  const canSubmit    = !expired && !submitting && noteValid;
+  const canSubmit =
+    isLeader &&
+    !!teamId &&
+    !isAccessLoading &&
+    !expired &&
+    !submitting &&
+    noteValid;
 
   const handleSubmit = useCallback(async () => {
     if (!reportId || !teamId || !canSubmit) return;
@@ -221,7 +232,7 @@ export default function DeclineScreen() {
           <View className="mt-2 flex-row items-center gap-1.5">
             <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
             <Text className="text-[13px] text-textSecondary">
-              Giao lúc {assignedTimeLabel} · cửa sổ 2 giờ
+              Giao lúc {assignedTimeLabel} · cửa sổ 24 giờ
             </Text>
           </View>
 
@@ -306,7 +317,7 @@ export default function DeclineScreen() {
               style={{ marginTop: 1 }}
             />
             <Text className="flex-1 text-[12px] leading-[18px] text-textSecondary">
-              Sau khi hết cửa sổ 2 giờ, task sẽ{' '}
+              Sau khi hết cửa sổ 24 giờ, task sẽ{' '}
               <Text className="font-semibold text-textSecondary">không thể từ chối</Text>
               {' '}và bạn phải xử lý hoặc escalate.
             </Text>

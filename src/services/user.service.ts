@@ -25,6 +25,9 @@ export const userService = {
   updateProfile: (fullName: string) =>
     api.put<ApiEnvelope<UpdateProfileResult>>('/users/profile', { fullName }),
 
+  /** POST /users/me/consent — Accept Data Consent (Bearer). Idempotent. */
+  acceptConsent: () => api.post<ApiEnvelope<null>>('/users/me/consent'),
+
   uploadAvatar: ({ uri, mimeType, fileName }: UploadAvatarInput) => {
     const formData = new FormData();
     formData.append('file', { uri, name: fileName, type: mimeType } as unknown as Blob);

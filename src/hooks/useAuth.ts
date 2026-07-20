@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '@/stores/auth.store';
 import { authService } from '@/services/auth.service';
+import { userService } from '@/services/user.service';
 import type {
   ChangePasswordDto,
   ForgotPasswordDto,
@@ -13,6 +14,15 @@ import type {
 import type { LoginDto, RegisterDto, User } from '@/types/user.types';
 import { normalizeMobileUser, type UserFromApi } from '@/utils/mobile-user';
 
+/** Gọi sau khi có Bearer — idempotent, không chặn login nếu fail tạm thời */
+async function recordDataConsent(): Promise<void> {
+  try {
+    await userService.acceptConsent();
+  } catch {
+    // Consent bắt buộc trước khi gửi báo cáo; có thể retry sau khi vào app
+  }
+}
+
 export function useAuth() {
   const { user, isAuthenticated, isLoading, setAuth, clearAuth, setLoading } = useAuthStore();
 
@@ -22,6 +32,7 @@ export function useAuth() {
       const { accessToken, refreshToken, user: rawUser } = envelope.data;
       const nextUser = normalizeMobileUser(rawUser as UserFromApi);
       await setAuth(nextUser, { accessToken, refreshToken });
+      await recordDataConsent();
       return nextUser;
     },
     [setAuth],
@@ -39,6 +50,7 @@ export function useAuth() {
       const { accessToken, refreshToken, user: rawUser } = envelope.data;
       const nextUser = normalizeMobileUser(rawUser as UserFromApi);
       await setAuth(nextUser, { accessToken, refreshToken });
+      await recordDataConsent();
       return nextUser;
     },
     [setAuth],

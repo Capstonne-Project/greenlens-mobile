@@ -51,6 +51,10 @@ api.interceptors.request.use(async (config) => {
     } else {
       delete config.headers['Content-Type'];
     }
+    // Upload ảnh/video lên R2 thường > 15s — tăng timeout riêng cho multipart
+    if (config.timeout == null || config.timeout < 60_000) {
+      config.timeout = 60_000;
+    }
   }
 
   return config;
@@ -103,6 +107,7 @@ api.interceptors.response.use(
     if (__DEV__) {
       console.log('[api] error', status, originalRequest?.method, originalRequest?.url);
       console.log('[api] error body', JSON.stringify(error.response?.data));
+      console.log('[api] error code', error.code, error.message);
     }
 
     if (status !== 401 || !originalRequest) {
