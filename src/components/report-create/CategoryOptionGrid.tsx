@@ -8,6 +8,7 @@ import { resolvePollutionCategoryIcon } from '@/utils/pollution-category-icon';
 interface CategoryOptionGridProps {
   categories: CatalogPollutionCategory[];
   selectedId: string | null;
+  suggestedId?: string | null;
   isLoading?: boolean;
   errorMessage?: string | null;
   onSelect: (categoryId: string) => void;
@@ -17,6 +18,7 @@ interface CategoryOptionGridProps {
 export function CategoryOptionGrid({
   categories,
   selectedId,
+  suggestedId = null,
   isLoading = false,
   errorMessage = null,
   onSelect,
@@ -28,7 +30,7 @@ export function CategoryOptionGrid({
 
   if (errorMessage) {
     return (
-      <View className="gap-3">
+      <View className="gap-2">
         <Text className="text-sm text-error">{errorMessage}</Text>
         {onRetry ? (
           <TapScale onPress={onRetry}>
@@ -44,31 +46,39 @@ export function CategoryOptionGrid({
   }
 
   return (
-    <View className="flex-row flex-wrap justify-between">
+    <View className="flex-row flex-wrap" style={{ gap: 8 }}>
       {categories.map((category) => {
         const isSelected = selectedId === category.id;
+        const isSuggested = suggestedId === category.id;
         const iconName = resolvePollutionCategoryIcon(category.code, category.icon);
 
         return (
-          <View key={category.id} className="mb-3 w-[48%]">
+          <View key={category.id} style={{ width: '48.5%' }}>
             <TapScale onPress={() => onSelect(category.id)}>
               <View
-                className={`rounded-2xl border px-3 py-3 ${
-                  isSelected ? 'border-primary bg-primary/10' : 'border-border bg-surface'
+                className={`flex-row items-center gap-2 rounded-xl border px-2.5 py-2 ${
+                  isSelected ? 'border-primary bg-primary/10' : 'border-border bg-white'
                 }`}
               >
-                <View
-                  className={`mb-2 h-10 w-10 items-center justify-center rounded-xl ${
-                    isSelected ? 'bg-primary' : 'bg-white'
-                  }`}
-                >
-                  <Ionicons
-                    name={iconName}
-                    size={20}
-                    color={isSelected ? colors.white : colors.primary}
-                  />
+                <Ionicons
+                  name={iconName}
+                  size={18}
+                  color={isSelected ? colors.primary : colors.textSecondary}
+                />
+                <View className="min-w-0 flex-1">
+                  <Text className="text-[13px] font-semibold text-textPrimary" numberOfLines={2}>
+                    {category.nameVi}
+                  </Text>
+                  {isSuggested ? (
+                    <View className="mt-0.5 flex-row items-center gap-0.5">
+                      <Ionicons name="sparkles" size={10} color={colors.primary} />
+                      <Text className="text-[10px] font-medium text-primary">AI</Text>
+                    </View>
+                  ) : null}
                 </View>
-                <Text className="text-sm font-semibold text-textPrimary">{category.nameVi}</Text>
+                {isSelected ? (
+                  <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+                ) : null}
               </View>
             </TapScale>
           </View>
