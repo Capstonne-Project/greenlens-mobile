@@ -25,9 +25,7 @@ export function ReportGalleryShelf({ items, onOpenLibrary, onRemoveItem }: Repor
       <TapScale onPress={onOpenLibrary}>
         <View className="flex-row items-center justify-between rounded-3xl border border-border bg-white px-4 py-4">
           <View className="flex-row items-center gap-3">
-            <View className="h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
-              <Ionicons name="images-outline" size={22} color={colors.primary} />
-            </View>
+            <Ionicons name="images-outline" size={22} color={colors.primary} />
             <Text className="text-base font-semibold text-textPrimary">Chọn ảnh</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textDisabled} />
