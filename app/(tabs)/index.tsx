@@ -1,45 +1,26 @@
 import { CategoryFilterChips, type CategoryFilterId } from '@/components/map/CategoryFilterChips';
-
 import { DraggableReportsSheet, REPORTS_SHEET_PEEK_HEIGHT, type SheetSnapPoint } from '@/components/map/DraggableReportsSheet';
-
 import { CitizenHomeHeader } from '@/components/map/CitizenHomeHeader';
-
 import { CitizenMapPinMarker } from '@/components/map/CitizenMapPinMarker';
-
 import { CitizenMapToolbar } from '@/components/map/CitizenMapToolbar';
-
 import {
-
   CITIZEN_MAP_LAYERS,
-
   DEFAULT_CITIZEN_MAP_LAYER_ID,
-
   getCitizenMapLayerById,
-
   type CitizenMapLayerId,
-
 } from '@/constants/map-layers';
-
 import { HCM_INITIAL_REGION } from '@/constants/map-region';
-
 import type { CitizenMapPin } from '@/data/citizen-map-mock';
-
 import { usePollutionCategories } from '@/hooks/usePollutionCategories';
-
 import { useUserMapLocation } from '@/hooks/useUserMapLocation';
-
 import { useViewportMapReports } from '@/hooks/useViewportMapReports';
-
 import { useAuthStore } from '@/stores/auth.store';
-
+import { TapScale } from '@/components/layout/TapScale';
+import { colors } from '@/theme/colors';
 import { useRouter, type Href } from 'expo-router';
-
 import { useCallback, useEffect, useRef, useState } from 'react';
-
 import { ActivityIndicator, Alert, Platform, Text, View } from 'react-native';
-
 import MapView from 'react-native-maps';
-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
@@ -68,12 +49,6 @@ export default function CitizenHomeScreen() {
   const [followUserLocation, setFollowUserLocation] = useState(false);
 
   const [sheetSnap, setSheetSnap] = useState<SheetSnapPoint>('mid');
-
-  // Callout của react-native-maps không theo kịp camera pitch/orbit 3D — ẩn Callout
-  // trong lúc cinematic đang xoay, chỉ hiện lại sau khi animation kết thúc.
-  const [isCinematicPlaying, setIsCinematicPlaying] = useState(false);
-
-
 
   const {
 
@@ -118,7 +93,6 @@ export default function CitizenHomeScreen() {
       orbitTimerRef.current = null;
     }
     isCinematicRef.current = false;
-    setIsCinematicPlaying(false);
   }, []);
 
   useEffect(() => clearCameraAnimations, [clearCameraAnimations]);
@@ -126,6 +100,12 @@ export default function CitizenHomeScreen() {
   const onMapPress = useCallback(() => {
     setSelected(null);
     setFollowUserLocation(false);
+    clearCameraAnimations();
+    mapRef.current?.animateCamera({ pitch: 0, heading: 0 }, { duration: 350 });
+  }, [clearCameraAnimations]);
+
+  const onClearFocus = useCallback(() => {
+    setSelected(null);
     clearCameraAnimations();
     mapRef.current?.animateCamera({ pitch: 0, heading: 0 }, { duration: 350 });
   }, [clearCameraAnimations]);
@@ -149,7 +129,6 @@ export default function CitizenHomeScreen() {
       }
 
       isCinematicRef.current = true;
-      setIsCinematicPlaying(true);
 
       const zoomDelta = 0.004;
       const zoomDuration = 750;
@@ -184,7 +163,6 @@ export default function CitizenHomeScreen() {
           orbitTimerRef.current = setTimeout(() => {
             orbitTimerRef.current = null;
             isCinematicRef.current = false;
-            setIsCinematicPlaying(false);
             onRegionChangeComplete(region);
           }, orbitDuration);
         }, pitchDuration + pitchToOrbitGap);
@@ -365,28 +343,14 @@ export default function CitizenHomeScreen() {
       >
 
         {pins.map((pin) => (
-
           <CitizenMapPinMarker
-
             key={pin.id}
-
             pin={pin}
-
             selected={selected?.id === pin.id}
-
-            showCallout={selected?.id === pin.id && !isCinematicPlaying}
-
             onPress={onMarkerPress}
-
-            onOpenDetail={onOpenReportDetail}
-
           />
-
         ))}
-
       </MapView>
-
-
 
       {(isLoading || isLocating) && (
 
@@ -435,20 +399,26 @@ export default function CitizenHomeScreen() {
 
 
       <View className="pointer-events-box-none absolute left-0 right-0 top-0 px-4" style={{ paddingTop: insets.top + 8 }}>
-
-        <CitizenHomeHeader
-
-          onMenuPress={() => Alert.alert('Menu', 'Menu bên sẽ được bổ sung sau.')}
-
-          onProfilePress={() => router.push('/(tabs)/profile' as Href)}
-
-        />
-
-        <CategoryFilterChips selected={filter} categories={categories} onChange={setFilter} />
-
+        {selected ? (
+          <View className="items-start">
+            <TapScale onPress={onClearFocus}>
+              <View
+                className="rounded-full px-3.5 py-2.5 shadow-sm shadow-black/15"
+                style={{ backgroundColor: colors.error }}
+              >
+                <Text className="text-sm font-semibold text-white">Xóa focus</Text>
+              </View>
+            </TapScale>
+          </View>
+        ) : (
+          <>
+            <CitizenHomeHeader onProfilePress={() => router.push('/(tabs)/profile' as Href)} />
+            <View className="mt-3">
+              <CategoryFilterChips selected={filter} categories={categories} onChange={setFilter} />
+            </View>
+          </>
+        )}
       </View>
-
-
 
       {sheetSnap !== 'full' ? (
         <CitizenMapToolbar
@@ -464,6 +434,7 @@ export default function CitizenHomeScreen() {
 
       <DraggableReportsSheet
         pins={pins}
+        focusedPin={selected}
         reportCount={summary?.reportCount ?? pins.length}
         isLoading={isLoading}
         onOpenDetail={onOpenReportDetail}
