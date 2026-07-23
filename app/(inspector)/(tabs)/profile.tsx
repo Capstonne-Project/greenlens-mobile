@@ -31,6 +31,14 @@ export default function InspectorProfileScreen() {
       </View>
 
       <Pressable
+        onPress={() => router.push('/(inspector)/(tabs)/notifications' as Href)}
+        className="mx-4 mb-3 flex-row items-center gap-3 rounded-2xl bg-white px-4 py-4"
+      >
+        <Ionicons name="notifications-outline" size={22} color={colors.textSecondary} />
+        <Text className="text-base font-semibold text-textPrimary">Thông báo</Text>
+      </Pressable>
+
+      <Pressable
         onPress={() => void logout().then(() => router.replace('/(auth)/login' as Href))}
         className="mx-4 flex-row items-center gap-3 rounded-2xl bg-white px-4 py-4"
       >
