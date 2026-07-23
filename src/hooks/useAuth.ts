@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '@/stores/auth.store';
+import { useNotificationStore } from '@/stores/notification.store';
 import { authService } from '@/services/auth.service';
 import { userService } from '@/services/user.service';
 import type {
@@ -13,6 +14,25 @@ import type {
 } from '@/types/auth.types';
 import type { LoginDto, RegisterDto, User } from '@/types/user.types';
 import { normalizeMobileUser, type UserFromApi } from '@/utils/mobile-user';
+
+/** Lazy — tránh kéo expo-notifications vào mọi screen import useAuth (Metro resolve error). */
+async function registerPushTokenSafe(): Promise<void> {
+  try {
+    const { registerDevicePushToken } = await import('@/utils/push-notifications');
+    await registerDevicePushToken();
+  } catch {
+    // Push optional on web / Expo Go without native module
+  }
+}
+
+async function clearPushTokenSafe(): Promise<void> {
+  try {
+    const { clearDevicePushToken } = await import('@/utils/push-notifications');
+    await clearDevicePushToken();
+  } catch {
+    // ignore
+  }
+}
 
 /** Gọi sau khi có Bearer — idempotent, không chặn login nếu fail tạm thời */
 async function recordDataConsent(): Promise<void> {
@@ -33,6 +53,7 @@ export function useAuth() {
       const nextUser = normalizeMobileUser(rawUser as UserFromApi);
       await setAuth(nextUser, { accessToken, refreshToken });
       await recordDataConsent();
+      void registerPushTokenSafe();
       return nextUser;
     },
     [setAuth],
@@ -51,12 +72,15 @@ export function useAuth() {
       const nextUser = normalizeMobileUser(rawUser as UserFromApi);
       await setAuth(nextUser, { accessToken, refreshToken });
       await recordDataConsent();
+      void registerPushTokenSafe();
       return nextUser;
     },
     [setAuth],
   );
 
   const logout = useCallback(async () => {
+    await clearPushTokenSafe();
+    useNotificationStore.getState().clearUnread();
     await clearAuth();
   }, [clearAuth]);
 
