@@ -1,15 +1,21 @@
 import { SafeScreen } from "@/components/layout/SafeScreen";
 import { TapScale } from "@/components/layout/TapScale";
 import { AiAnalysisBanner } from "@/components/report-create/AiAnalysisBanner";
+import { AiImageScanOverlay } from "@/components/report-create/AiImageScanOverlay";
+import { CategoryOptionGrid } from "@/components/report-create/CategoryOptionGrid";
+import { ReportFormHeader } from "@/components/report-create/ReportFormHeader";
+import {
+  ReportFormSection,
+  type ReportFormSectionId,
+} from "@/components/report-create/ReportFormSection";
+import { ReportFormSubmitBar } from "@/components/report-create/ReportFormSubmitBar";
 import { ReportLocationPanel } from "@/components/report-create/ReportLocationPanel";
 import { ReportCapturePanel } from "@/components/report-create/ReportCapturePanel";
-import { ReportReviewSummary } from "@/components/report-create/ReportReviewSummary";
+import { SeverityPillGroup } from "@/components/report-create/SeverityPillGroup";
 import { SubmitProgressOverlay, type SubmitStep, type SubmitStepStatus } from "@/components/report-create/SubmitProgressOverlay";
 import { ReportGalleryShelf } from "@/components/report-create/ReportGalleryShelf";
 import { ReportTagField } from "@/components/report-create/ReportTagField";
 import { WasteTagPicker } from "@/components/report-create/WasteTagPicker";
-import { WizardFooter } from "@/components/report-create/wizard/WizardFooter";
-import { WizardHeader } from "@/components/report-create/wizard/WizardHeader";
 import { Text } from "@/components/ui/text";
 import { useCatalogAddress } from "@/hooks/useCatalogAddress";
 import { catalogService } from "@/services/catalog.service";
@@ -23,7 +29,14 @@ import { useCreateReportDraftStore } from "@/stores/createReportDraft.store";
 import { colors } from "@/theme/colors";
 import type { PollutionSeverity, ReportLocationDraft } from "@/types/pollution-report.types";
 import { MAX_WASTE_TAG_SELECTION } from "@/types/waste-tag.types";
-import { resolveCaptureLocation } from "@/utils/capture-location";
+import {
+  buildLocationDraftFromCoords,
+  resolveCaptureLocation,
+} from "@/utils/capture-location";
+import {
+  parseLocationFromPickerAsset,
+  parseLocationFromPickerAssets,
+} from "@/utils/exif-location";
 import { enrichLocationWithGoong } from "@/utils/goong-admin-match";
 import { validatePinAgainstBoundary } from "@/utils/validate-pin-boundary";
 import {
@@ -47,9 +60,6 @@ import { Alert, Linking, Modal, ScrollView, Switch, TextInput, TouchableOpacity,
 import MapView, { type LatLng, type Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-type WizardStep = 1 | 2 | 3 | 4 | 5;
-const TOTAL_STEPS = 5;
-
 type SubmitPhase = "idle" | "validate" | "upload" | "submit" | "done";
 
 const SUBMIT_PHASE_ORDER: SubmitPhase[] = ["validate", "upload", "submit"];
@@ -65,97 +75,9 @@ const SEVERITY_META: Record<PollutionSeverity, { label: string; accent: string }
   Critical: { label: "Khẩn cấp", accent: colors.severityCritical },
 };
 
-function toStepTitle(step: WizardStep): { title: string; subtitle: string } {
-  switch (step) {
-    case 1:
-      return { title: "Hình ảnh", subtitle: "Chụp hoặc chọn ảnh minh chứng" };
-    case 2:
-      return { title: "Phân loại", subtitle: "Loại ô nhiễm và mức độ nghiêm trọng" };
-    case 3:
-      return { title: "Vị trí", subtitle: "Xác nhận nơi ghi nhận sự cố" };
-    case 4:
-      return { title: "Mô tả", subtitle: "Mô tả, loại rác và chế độ ẩn danh" };
-    case 5:
-      return { title: "Xem lại", subtitle: "Kiểm tra trước khi gửi" };
-  }
-}
-
-function clampStep(step: number): WizardStep {
-  if (step <= 1) return 1;
-  if (step >= 5) return 5;
-  return step as WizardStep;
-}
-
-function Section({
-  title,
-  description,
-  grouped = false,
-  children,
-}: {
-  title: string;
-  description?: string;
-  grouped?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <View>
-      <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">{title}</Text>
-      {description ? <Text className="mt-1 px-1 text-sm text-textSecondary">{description}</Text> : null}
-      {grouped ? (
-        <View className="mt-3 overflow-hidden rounded-2xl bg-white">{children}</View>
-      ) : (
-        <View className="mt-3">{children}</View>
-      )}
-    </View>
-  );
-}
-
-function FieldBlock({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <View className="gap-3">
-      <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">{label}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Row({
-  title,
-  subtitle,
-  left,
-  right,
-  onPress,
-  showDivider = true,
-}: {
-  title: string;
-  subtitle?: string;
-  left?: React.ReactNode;
-  right?: React.ReactNode;
-  onPress?: () => void;
-  showDivider?: boolean;
-}) {
-  const content = (
-    <View className="flex-row items-center gap-3 px-4 py-3.5">
-      {left ? <View className="h-10 w-10 items-center justify-center">{left}</View> : null}
-      <View className="flex-1">
-        <Text className="text-[15px] font-semibold text-textPrimary">{title}</Text>
-        {subtitle ? <Text className="mt-0.5 text-sm text-textSecondary">{subtitle}</Text> : null}
-      </View>
-      {right ? <View className="items-center justify-center">{right}</View> : null}
-    </View>
-  );
-
-  return (
-    <View>
-      {onPress ? <TapScale onPress={onPress}>{content}</TapScale> : content}
-      {showDivider ? <View className="h-px bg-border" /> : null}
-    </View>
-  );
-}
-
 export default function ReportCreateWizardScreen() {
   const insets = useSafeAreaInsets();
-  const [step, setStep] = useState<WizardStep>(1);
+  const [expandedSection, setExpandedSection] = useState<ReportFormSectionId | null>("images");
   const [isPicking, setIsPicking] = useState(false);
   const [submitPhase, setSubmitPhase] = useState<SubmitPhase>("idle");
   const [submitProgress, setSubmitProgress] = useState(0);
@@ -242,7 +164,13 @@ export default function ReportCreateWizardScreen() {
     isLoading: isLoadingCategories,
     errorMessage: categoryErrorMessage,
     refetch: refetchCategories,
-  } = usePollutionCategories(step === 2 || step === 5);
+  } = usePollutionCategories(
+    expandedSection === "category" || Boolean(categoryId) || Boolean(aiResult),
+  );
+
+  const toggleSection = useCallback((id: ReportFormSectionId) => {
+    setExpandedSection((current) => (current === id ? null : id));
+  }, []);
 
   const marker: LatLng | null = location
     ? { latitude: location.latitude, longitude: location.longitude }
@@ -253,9 +181,11 @@ export default function ReportCreateWizardScreen() {
   const provinceCode = location?.provinceCode ?? null;
   const wardCode = location?.wardCode ?? null;
 
+  const isLocationOpen = expandedSection === "location";
+
   // Animate map theo ranh giới / pin
   useReportLocationMapCamera({
-    enabled: step === 3,
+    enabled: isLocationOpen,
     mapRef,
     marker,
     provinceCode,
@@ -267,14 +197,14 @@ export default function ReportCreateWizardScreen() {
   const enrichedRef = useRef<string | null>(null); // track coords đã enrich
 
   useEffect(() => {
-    if (step !== 3 || !location?.provinceCode) return;
+    if (!isLocationOpen || !location?.provinceCode) return;
     const province = provinces.find((item) => item.code === location.provinceCode);
     void loadProvinceBoundary(province?.boundaryUrl ?? null);
     void refetchWards(location.provinceCode);
-  }, [loadProvinceBoundary, location?.provinceCode, provinces, refetchWards, step]);
+  }, [isLocationOpen, loadProvinceBoundary, location?.provinceCode, provinces, refetchWards]);
 
   useEffect(() => {
-    if (step !== 3) return;
+    if (!isLocationOpen) return;
     if (!location?.wardCode) {
       void loadWardBoundary(null, null);
       return;
@@ -282,11 +212,11 @@ export default function ReportCreateWizardScreen() {
     if (!wards.length) return;
     const ward = wards.find((item) => item.code === location.wardCode);
     void loadWardBoundary(ward?.boundaryUrl ?? null, location.wardCode);
-  }, [loadWardBoundary, location?.wardCode, step, wards]);
+  }, [isLocationOpen, loadWardBoundary, location?.wardCode, wards]);
 
-  // Enrich location bằng Goong khi vào step 3 — chỉ chạy 1 lần per coords
+  // Enrich location bằng Goong khi mở section vị trí — chỉ chạy 1 lần per coords
   useEffect(() => {
-    if (step !== 3 || !provinces.length) return;
+    if (!isLocationOpen || !provinces.length) return;
     const loc = useCreateReportDraftStore.getState().location;
     if (!loc) return;
 
@@ -307,7 +237,7 @@ export default function ReportCreateWizardScreen() {
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, provinces.length]);
+  }, [isLocationOpen, provinces.length]);
 
   const handleClose = useCallback(() => {
     reset();
@@ -333,38 +263,65 @@ export default function ReportCreateWizardScreen() {
       : null;
   const descriptionLength = description.trim().length;
 
-  const canGoNext = useMemo(() => {
-    if (step === 1) return images.length > 0;
-    if (step === 2) return Boolean(categoryId && severity);
-    if (step === 3) return Boolean(location);
-    if (step === 4) return !descriptionError;
-    if (step === 5) return Boolean(images.length && location && categoryId && severity);
-    return false;
-  }, [categoryId, descriptionError, images.length, location, severity, step]);
+  const imagesComplete = images.length > 0;
+  const categoryComplete = Boolean(categoryId && severity);
+  const locationComplete = Boolean(location);
+  const descriptionComplete = !descriptionError && description.trim().length >= REPORT_DESCRIPTION_MIN_LENGTH;
 
-  const canGoBack = step > 1;
+  const imagesSubtitle = imagesComplete
+    ? `${images.length} ảnh đã thêm`
+    : "Chụp hoặc chọn ảnh minh chứng";
+  const categorySubtitle = categoryComplete
+    ? [
+        pollutionCategories.find((c) => c.id === categoryId)?.nameVi,
+        severity ? SEVERITY_META[severity].label : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "Chọn loại ô nhiễm và mức độ";
+  const locationSubtitle = location
+    ? location.address || "Đã chọn vị trí trên bản đồ"
+    : "Chọn địa chỉ sự cố";
+  const descriptionSubtitle = descriptionComplete
+    ? `${description.trim().length} ký tự`
+    : "Nhập mô tả hiện trường";
+  const wasteSubtitle =
+    wasteTagIds.length > 0 || tags.length > 0
+      ? `${wasteTagIds.length} loại rác${tags.length > 0 ? ` · ${tags.length} tag` : ""}`
+      : "Chọn loại rác (tuỳ chọn)";
+  const privacySubtitle = isAnonymous
+    ? "Gửi ẩn danh — không gắn tài khoản"
+    : "Gắn tài khoản với báo cáo";
 
-  const goNext = useCallback(async () => {
-    if (step < 5) {
-      if (step === 4 && descriptionError) {
-        setSubmitAttempted(true);
-        return;
-      }
-      if (step === 3) {
-        await refreshLocation();
-      }
-      setStep((s) => clampStep(s + 1));
+  const openIncompleteSection = useCallback(() => {
+    if (!imagesComplete) {
+      setExpandedSection("images");
+      return;
+    }
+    if (!categoryComplete) {
+      setExpandedSection("category");
+      return;
+    }
+    if (!locationComplete) {
+      setExpandedSection("location");
+      return;
+    }
+    if (!descriptionComplete) {
+      setSubmitAttempted(true);
+      setExpandedSection("description");
+    }
+  }, [categoryComplete, descriptionComplete, imagesComplete, locationComplete]);
+
+  const handleSubmit = useCallback(async () => {
+    setSubmitAttempted(true);
+
+    if (!imagesComplete || !categoryComplete || !locationComplete || descriptionError) {
+      openIncompleteSection();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     setSubmitPhase("validate");
-    setSubmitAttempted(true);
-    if (descriptionError) {
-      setStep(4);
-      setSubmitPhase("idle");
-      setSubmitProgress(0);
-      return;
-    }
     setUploadDone(0);
     setSubmitProgress(0.06);
     await delay(420);
@@ -400,7 +357,7 @@ export default function ReportCreateWizardScreen() {
       setSubmitPhase("idle");
       setSubmitProgress(0);
       if (submitResult.reason === "validation") {
-        setStep(4);
+        setExpandedSection("description");
         return;
       }
       if (submitResult.reason === "timeout" || submitResult.reason === "network") {
@@ -418,7 +375,15 @@ export default function ReportCreateWizardScreen() {
     setSubmitPhase("done");
     await delay(520);
     router.replace("/report/success" as Href);
-  }, [descriptionError, refreshLocation, step, submitReport, uploadAllImages]);
+  }, [
+    categoryComplete,
+    descriptionError,
+    imagesComplete,
+    locationComplete,
+    openIncompleteSection,
+    submitReport,
+    uploadAllImages,
+  ]);
 
   const submitSteps = useMemo<SubmitStep[]>(() => {
     const phaseIndex = SUBMIT_PHASE_ORDER.indexOf(submitPhase);
@@ -436,11 +401,6 @@ export default function ReportCreateWizardScreen() {
       { key: "submit", label: "Gửi đến Officer", status: statusFor("submit") },
     ];
   }, [images.length, submitPhase, uploadDone]);
-
-  const goBack = useCallback(() => {
-    if (step === 1) return;
-    setStep((s) => clampStep(s - 1));
-  }, [step]);
 
   const handlePickCamera = useCallback(async () => {
     setIsPicking(true);
@@ -460,19 +420,30 @@ export default function ReportCreateWizardScreen() {
       if (result.canceled || !result.assets[0]) return;
 
       const asset = result.assets[0];
-      const captured = await resolveCaptureLocation();
+
+      // Đọc GPS từ EXIF trước khi compress (nén JPEG sẽ strip metadata).
+      const exifCoords = parseLocationFromPickerAsset(asset);
+      const captured = exifCoords
+        ? await buildLocationDraftFromCoords(exifCoords)
+        : await resolveCaptureLocation();
+
       if (!captured) {
-        Alert.alert("Thiếu vị trí", "Vui lòng cho phép vị trí để tiếp tục.");
+        Alert.alert(
+          "Thiếu vị trí",
+          "Ảnh không có GPS trong EXIF. Vui lòng cho phép vị trí thiết bị để tiếp tục.",
+        );
         return;
       }
 
-      const resolved = provinces.length > 0 ? await enrichLocationWithGoong(captured, provinces) : captured;
+      const resolved =
+        provinces.length > 0 ? await enrichLocationWithGoong(captured, provinces) : captured;
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSource("camera");
       setLocation(resolved);
       let compressed;
       try {
+        // compressImage encode JPEG mới → EXIF bị xóa trước khi upload R2.
         compressed = await compressImage(asset.uri, {
           ...UPLOAD_COMPRESS_PRESET,
           baseName: "report",
@@ -486,14 +457,14 @@ export default function ReportCreateWizardScreen() {
       const mimeType = compressed.mimeType;
       setImages([{ localUri: compressed.uri, mimeType, fileName: compressed.fileName, uploadStatus: "pending" }]);
 
-      // Step 1: always upload (R2 → BE proxy fallback). AI classify only if toggle on.
+      // Step 1: upload Mobile → R2 (presign + PUT). AI classify only if toggle on.
       const outcome = await prepareImage(compressed.uri, mimeType, compressed.fileName, {
         runAi: useAi,
       });
       if (outcome === "error") {
         Alert.alert(
           "Không tải được ảnh",
-          "Kiểm tra mạng rồi thử lại. Ảnh phải lên được server trước khi gửi báo cáo.",
+          "Upload lên kho ảnh (R2) thất bại hoặc quá chậm. Kiểm tra mạng rồi thử lại.",
         );
       } else if (outcome === "rejected") {
         Alert.alert("Ảnh không phù hợp", "Ảnh này bị hệ thống AI đánh dấu là không liên quan. Vui lòng chọn ảnh khác.");
@@ -727,14 +698,28 @@ export default function ReportCreateWizardScreen() {
         allowsMultipleSelection: true,
         selectionLimit: 5,
         quality: 1,
+        exif: true,
       });
       if (result.canceled || !result.assets.length) return;
 
       setSource("library");
+
+      // Parse GPS từ ảnh gốc trước khi compress strip EXIF.
+      const exifCoords = parseLocationFromPickerAssets(result.assets);
+      if (exifCoords) {
+        const fromExif = await buildLocationDraftFromCoords(exifCoords);
+        const resolved =
+          provinces.length > 0
+            ? await enrichLocationWithGoong(fromExif, provinces)
+            : fromExif;
+        setLocation(resolved);
+      }
+
       let drafted;
       try {
         drafted = await Promise.all(
           result.assets.map(async (asset) => {
+            // compressImage encode JPEG mới → EXIF bị xóa trước khi upload R2.
             const compressed = await compressImage(asset.uri, {
               ...UPLOAD_COMPRESS_PRESET,
               baseName: "report",
@@ -754,7 +739,9 @@ export default function ReportCreateWizardScreen() {
         return;
       }
       setImages(drafted);
-      await ensureLocationSeed();
+      if (!exifCoords) {
+        await ensureLocationSeed();
+      }
 
       // Step 1: upload all now (extras || first+optional AI in parallel).
       const [first, ...rest] = drafted;
@@ -769,7 +756,7 @@ export default function ReportCreateWizardScreen() {
       if (firstOutcome === "error" || restResults.some((ok) => !ok)) {
         Alert.alert(
           "Không tải được ảnh",
-          "Một số ảnh chưa lên được server. Kiểm tra mạng rồi chọn lại.",
+          "Upload lên kho ảnh (R2) thất bại hoặc quá chậm. Kiểm tra mạng (Wi‑Fi/4G) rồi chọn lại ảnh.",
         );
       } else if (firstOutcome === "rejected") {
         Alert.alert("Ảnh không phù hợp", "Ảnh này bị hệ thống AI đánh dấu là không liên quan. Vui lòng chọn ảnh khác.");
@@ -780,7 +767,7 @@ export default function ReportCreateWizardScreen() {
     } finally {
       setIsPicking(false);
     }
-  }, [prepareImage, uploadDraftImage, ensureLocationSeed, setImages, setSource, useAi]);
+  }, [prepareImage, uploadDraftImage, ensureLocationSeed, provinces, setImages, setLocation, setSource, useAi]);
 
   const handleProvinceSelect = useCallback(
     async (code: string | null) => {
@@ -872,19 +859,6 @@ export default function ReportCreateWizardScreen() {
     [toggleWasteTag],
   );
 
-  const selectedWasteTags = useMemo(
-    () => wasteTags.filter((tag) => wasteTagIds.includes(tag.id)),
-    [wasteTagIds, wasteTags],
-  );
-
-  const { title, subtitle } = toStepTitle(step);
-  const selectedCategory = categoryId
-    ? (pollutionCategories.find((category) => category.id === categoryId) ?? null)
-    : null;
-  const selectedProvince = provinceCode ? provinces.find((item) => item.code === provinceCode) : undefined;
-  const selectedWard = wardCode ? wards.find((item) => item.code === wardCode) : undefined;
-  const severityMeta = severity ? SEVERITY_META[severity] : null;
-
   const submitOverlayTitle = submitPhase === "done" ? "Hoàn tất!" : "Đang gửi báo cáo...";
   const submitOverlaySubtitle =
     images.length > 0 ? `${uploadDone}/${images.length} ảnh đã tải lên` : undefined;
@@ -898,7 +872,7 @@ export default function ReportCreateWizardScreen() {
         subtitle={submitOverlaySubtitle}
         steps={submitSteps}
       />
-      <WizardHeader title={title} subtitle={subtitle} step={step} totalSteps={TOTAL_STEPS} onClose={handleClose} />
+      <ReportFormHeader title="Tạo báo cáo" onBack={handleClose} />
 
       <ScrollView
         className="flex-1"
@@ -907,19 +881,26 @@ export default function ReportCreateWizardScreen() {
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 14,
-          paddingBottom: Math.max(insets.bottom, 16) + 92,
+          paddingBottom: Math.max(insets.bottom, 16) + 100,
+          gap: 12,
         }}
       >
-        {step === 1 ? (
-          <View className="gap-8">
-            {/* AI toggle */}
-            <View className="flex-row items-center justify-between rounded-2xl bg-white px-4 py-3.5">
+        <ReportFormSection
+          icon="images-outline"
+          title="Hình ảnh"
+          subtitle={imagesSubtitle}
+          expanded={expandedSection === "images"}
+          completed={imagesComplete}
+          onToggle={() => toggleSection("images")}
+        >
+          <View className="gap-5">
+            <View className="flex-row items-center justify-between rounded-2xl bg-surface px-3 py-3">
               <View className="flex-row items-center gap-2.5 flex-1 pr-4">
                 <Ionicons name="sparkles" size={20} color={useAi ? colors.primary : colors.textDisabled} />
                 <View className="flex-1">
                   <Text className="text-[15px] font-semibold text-textPrimary">Phân tích bằng AI</Text>
                   <Text className="mt-0.5 text-sm text-textSecondary">
-                    {useAi ? "AI sẽ tự động nhận diện loại và mức độ ô nhiễm" : "Tự điền thông tin ở bước phân loại"}
+                    {useAi ? "AI sẽ tự động nhận diện loại và mức độ ô nhiễm" : "Tự điền ở mục Phân loại"}
                   </Text>
                 </View>
               </View>
@@ -937,7 +918,7 @@ export default function ReportCreateWizardScreen() {
             <ReportCapturePanel disabled={isPicking || isAnalyzing} onCapturePress={() => void handlePickCamera()} />
 
             {isAnalyzing ? (
-              <View className="flex-row items-center gap-2 rounded-2xl bg-white px-4 py-3.5">
+              <View className="flex-row items-center gap-2 rounded-2xl bg-surface px-4 py-3.5">
                 <Ionicons name={useAi ? "sparkles" : "cloud-upload-outline"} size={16} color={colors.primary} />
                 <Text className="text-sm text-textSecondary">
                   {useAi ? "Đang tải ảnh và phân tích AI..." : "Đang tải ảnh lên server..."}
@@ -960,9 +941,54 @@ export default function ReportCreateWizardScreen() {
               }}
             />
           </View>
-        ) : null}
+        </ReportFormSection>
 
-        {step === 3 ? (
+        <ReportFormSection
+          icon="grid-outline"
+          title="Phân loại"
+          subtitle={categorySubtitle}
+          expanded={expandedSection === "category"}
+          completed={categoryComplete}
+          onToggle={() => toggleSection("category")}
+        >
+          <View className="gap-3">
+            {aiResult ? <AiAnalysisBanner aiResult={aiResult} compact /> : null}
+
+            <View className="gap-1.5">
+              <Text className="text-[11px] font-semibold uppercase tracking-[1px] text-textSecondary">
+                Loại ô nhiễm
+              </Text>
+              <CategoryOptionGrid
+                categories={pollutionCategories}
+                selectedId={categoryId}
+                suggestedId={aiSuggestedCategory?.id ?? null}
+                isLoading={isLoadingCategories}
+                errorMessage={categoryErrorMessage}
+                onSelect={setCategoryId}
+                onRetry={() => void refetchCategories()}
+              />
+            </View>
+
+            <View className="gap-1.5">
+              <Text className="text-[11px] font-semibold uppercase tracking-[1px] text-textSecondary">
+                Mức độ
+              </Text>
+              <SeverityPillGroup
+                value={severity}
+                suggestedValue={aiSuggestedSeverity}
+                onChange={setSeverity}
+              />
+            </View>
+          </View>
+        </ReportFormSection>
+        <ReportFormSection
+          icon="location-outline"
+          title="Vị trí"
+          subtitle={locationSubtitle}
+          expanded={expandedSection === "location"}
+          completed={locationComplete}
+          onToggle={() => toggleSection("location")}
+        >
           <ReportLocationPanel
             mapRef={mapRef}
             initialRegion={mapRegion}
@@ -986,155 +1012,71 @@ export default function ReportCreateWizardScreen() {
             onLocatePress={() => void handleLocatePress()}
             onPermissionPress={() => void handlePermissionPress()}
           />
-        ) : null}
+        </ReportFormSection>
 
-        {step === 2 ? (
-          <View className="gap-8">
-            {aiResult ? (
-              <AiAnalysisBanner aiResult={aiResult} />
-            ) : null}
-
-            <Section title="Loại ô nhiễm" grouped>
-              {isLoadingCategories ? (
-                <View className="px-4 py-4">
-                  <Text className="text-sm text-textSecondary">Đang tải loại ô nhiễm...</Text>
-                </View>
-              ) : null}
-              {!isLoadingCategories && categoryErrorMessage ? (
-                <View className="gap-3 px-4 py-4">
-                  <Text className="text-sm text-error">{categoryErrorMessage}</Text>
-                  <TapScale onPress={() => void refetchCategories()}>
-                    <Text className="text-sm font-semibold text-primary">Thử lại</Text>
-                  </TapScale>
-                </View>
-              ) : null}
-              {!isLoadingCategories && !categoryErrorMessage && !pollutionCategories.length ? (
-                <View className="px-4 py-4">
-                  <Text className="text-sm text-textSecondary">Chưa có loại ô nhiễm khả dụng.</Text>
-                </View>
-              ) : null}
-              {!isLoadingCategories && !categoryErrorMessage
-                ? pollutionCategories.map((category, index) => {
-                    const isSelected = categoryId === category.id;
-                    const isAiSuggested = aiSuggestedCategory?.id === category.id;
-                    const isLast = index === pollutionCategories.length - 1;
-                    const iconName = resolvePollutionCategoryIcon(category.code, category.icon);
-
-                    return (
-                      <Row
-                        key={category.id}
-                        title={category.nameVi}
-                        subtitle={isAiSuggested ? "AI đề xuất" : undefined}
-                        left={
-                          <View
-                            className={`h-10 w-10 items-center justify-center rounded-2xl ${
-                              isSelected ? "bg-primary" : "bg-primary/10"
-                            }`}
-                          >
-                            <Ionicons name={iconName} size={20} color={isSelected ? colors.white : colors.primary} />
-                          </View>
-                        }
-                        right={
-                          isSelected ? (
-                            <View className="flex-row items-center gap-1.5">
-                              {isAiSuggested ? (
-                                <Ionicons name="sparkles" size={14} color={colors.primary} />
-                              ) : null}
-                              <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-                            </View>
-                          ) : (
-                            <Ionicons name="chevron-forward" size={18} color={colors.textDisabled} />
-                          )
-                        }
-                        onPress={() => setCategoryId(category.id)}
-                        showDivider={!isLast}
-                      />
-                    );
-                  })
-                : null}
-            </Section>
-
-            <Section title="Mức độ nghiêm trọng" grouped>
-              {(Object.keys(SEVERITY_META) as PollutionSeverity[]).map((value, index, arr) => {
-                const meta = SEVERITY_META[value];
-                const isSelected = severity === value;
-                const isAiSuggested = aiSuggestedSeverity === value;
-                const isLast = index === arr.length - 1;
-                return (
-                  <Row
-                    key={value}
-                    title={meta.label}
-                    subtitle={isAiSuggested ? "AI đề xuất" : undefined}
-                    left={
-                      <View className="h-10 w-10 items-center justify-center rounded-2xl bg-surface">
-                        <View className="h-3 w-3 rounded-full" style={{ backgroundColor: meta.accent }} />
-                      </View>
-                    }
-                    right={
-                      isSelected ? (
-                        <View className="flex-row items-center gap-1.5">
-                          {isAiSuggested ? <Ionicons name="sparkles" size={14} color={colors.primary} /> : null}
-                          <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
-                        </View>
-                      ) : isAiSuggested ? (
-                        <Ionicons name="sparkles" size={16} color={colors.primary} />
-                      ) : null
-                    }
-                    onPress={() => setSeverity(value)}
-                    showDivider={!isLast}
-                  />
-                );
-              })}
-            </Section>
-          </View>
-        ) : null}
-
-        {step === 4 ? (
-          <View className="gap-10">
-            <FieldBlock label="Mô tả">
-              <TextInput
-                value={description}
-                onChangeText={(value) => {
-                  clearFieldError("description");
-                  setDescription(value);
-                }}
-                placeholder="Hiện trường, tác động, mức độ cấp bách"
-                placeholderTextColor={colors.textDisabled}
-                multiline
-                numberOfLines={6}
-                maxLength={REPORT_DESCRIPTION_MAX_LENGTH}
-                textAlignVertical="top"
-                className="min-h-[148px] rounded-2xl border bg-white px-4 py-3.5 text-[16px] leading-6 text-textPrimary"
+        <ReportFormSection
+          icon="document-text-outline"
+          title="Mô tả"
+          subtitle={descriptionSubtitle}
+          expanded={expandedSection === "description"}
+          completed={descriptionComplete}
+          onToggle={() => toggleSection("description")}
+        >
+          <View className="gap-3">
+            <TextInput
+              value={description}
+              onChangeText={(value) => {
+                clearFieldError("description");
+                setDescription(value);
+              }}
+              placeholder="Hiện trường, tác động, mức độ cấp bách"
+              placeholderTextColor={colors.textDisabled}
+              multiline
+              numberOfLines={6}
+              maxLength={REPORT_DESCRIPTION_MAX_LENGTH}
+              textAlignVertical="top"
+              className="min-h-[148px] rounded-2xl border bg-surface px-4 py-3.5 text-[16px] leading-6 text-textPrimary"
+              style={{
+                borderColor: visibleDescriptionError ? colors.error : colors.border,
+              }}
+            />
+            <View className="flex-row items-start justify-between gap-3 px-1">
+              <Text
+                className="flex-1 text-xs leading-5"
+                style={{ color: visibleDescriptionError ? colors.error : colors.textSecondary }}
+              >
+                {visibleDescriptionError ??
+                  `Nhập từ ${REPORT_DESCRIPTION_MIN_LENGTH}-${REPORT_DESCRIPTION_MAX_LENGTH} ký tự.`}
+              </Text>
+              <Text
+                className="text-xs font-semibold"
                 style={{
-                  borderColor: visibleDescriptionError ? colors.error : colors.border,
+                  color:
+                    descriptionLength < REPORT_DESCRIPTION_MIN_LENGTH ||
+                    descriptionLength > REPORT_DESCRIPTION_MAX_LENGTH
+                      ? colors.error
+                      : colors.textSecondary,
                 }}
-              />
-              <View className="flex-row items-start justify-between gap-3 px-1">
-                <Text
-                  className="flex-1 text-xs leading-5"
-                  style={{ color: visibleDescriptionError ? colors.error : colors.textSecondary }}
-                >
-                  {visibleDescriptionError ??
-                    `Nhập từ ${REPORT_DESCRIPTION_MIN_LENGTH}-${REPORT_DESCRIPTION_MAX_LENGTH} ký tự.`}
-                </Text>
-                <Text
-                  className="text-xs font-semibold"
-                  style={{
-                    color:
-                      descriptionLength < REPORT_DESCRIPTION_MIN_LENGTH ||
-                      descriptionLength > REPORT_DESCRIPTION_MAX_LENGTH
-                        ? colors.error
-                        : colors.textSecondary,
-                  }}
-                >
-                  {descriptionLength}/{REPORT_DESCRIPTION_MAX_LENGTH}
-                </Text>
-              </View>
-            </FieldBlock>
+              >
+                {descriptionLength}/{REPORT_DESCRIPTION_MAX_LENGTH}
+              </Text>
+            </View>
+          </View>
+        </ReportFormSection>
 
-            <FieldBlock label="Loại rác thải">
-              <Text className="mb-3 px-1 text-sm text-textSecondary">
-                Tùy chọn — chọn tối đa {MAX_WASTE_TAG_SELECTION} loại phù hợp với hiện trường
+        <ReportFormSection
+          icon="pricetags-outline"
+          title="Loại rác & Tag"
+          subtitle={wasteSubtitle}
+          expanded={expandedSection === "waste"}
+          completed={wasteTagIds.length > 0 || tags.length > 0}
+          optional
+          onToggle={() => toggleSection("waste")}
+        >
+          <View className="gap-6">
+            <View>
+              <Text className="mb-3 text-sm text-textSecondary">
+                Chọn tối đa {MAX_WASTE_TAG_SELECTION} loại phù hợp với hiện trường
               </Text>
               <WasteTagPicker
                 tags={wasteTags}
@@ -1145,9 +1087,9 @@ export default function ReportCreateWizardScreen() {
                 onToggle={handleToggleWasteTag}
                 onRetry={() => void refetchWasteTags()}
               />
-            </FieldBlock>
-
-            <FieldBlock label="Tag">
+            </View>
+            <View>
+              <Text className="mb-3 text-sm font-semibold text-textPrimary">Tag tự do</Text>
               <ReportTagField
                 tags={tags}
                 value={tagDraft}
@@ -1155,76 +1097,44 @@ export default function ReportCreateWizardScreen() {
                 onAdd={handleAddTag}
                 onRemove={removeTag}
               />
-            </FieldBlock>
-
-            <View className="flex-row items-center justify-between px-1">
-              <View className="flex-1 pr-4">
-                <Text className="text-[15px] font-semibold text-textPrimary">Gửi ẩn danh</Text>
-                <Text className="mt-0.5 text-sm text-textSecondary">Tắt để gắn tài khoản với báo cáo.</Text>
-              </View>
-              <Switch
-                value={isAnonymous}
-                onValueChange={setIsAnonymous}
-                trackColor={{ false: colors.border, true: colors.primaryLight }}
-                thumbColor={isAnonymous ? colors.primary : colors.white}
-              />
             </View>
           </View>
-        ) : null}
+        </ReportFormSection>
 
-        {step === 5 ? (
-          <ReportReviewSummary
-            images={images}
-            address={location?.address}
-            provinceName={selectedProvince?.name}
-            wardName={selectedWard?.name}
-            latitude={location?.latitude}
-            longitude={location?.longitude}
-            categoryName={selectedCategory?.nameVi}
-            capturedAt={location?.capturedAt}
-            severityLabel={severityMeta?.label}
-            severityAccent={severityMeta?.accent}
-            description={description}
-            tags={tags}
-            wasteTags={selectedWasteTags}
-            isAnonymous={isAnonymous}
-          />
-        ) : null}
+        <ReportFormSection
+          icon="person-outline"
+          title="Chế độ gửi"
+          subtitle={privacySubtitle}
+          expanded={expandedSection === "privacy"}
+          completed
+          onToggle={() => toggleSection("privacy")}
+        >
+          <View className="flex-row items-center justify-between rounded-2xl bg-surface px-3 py-3">
+            <View className="flex-1 pr-4">
+              <Text className="text-[15px] font-semibold text-textPrimary">Gửi ẩn danh</Text>
+              <Text className="mt-0.5 text-sm text-textSecondary">Tắt để gắn tài khoản với báo cáo.</Text>
+            </View>
+            <Switch
+              value={isAnonymous}
+              onValueChange={setIsAnonymous}
+              trackColor={{ false: colors.border, true: colors.primaryLight }}
+              thumbColor={isAnonymous ? colors.primary : colors.white}
+            />
+          </View>
+        </ReportFormSection>
       </ScrollView>
 
-      <WizardFooter
-        nextLabel={step === 5 ? "Gửi báo cáo" : "Tiếp tục"}
-        canGoBack={canGoBack}
-        canGoNext={canGoNext}
+      <ReportFormSubmitBar
         isBusy={isPicking || isAnalyzing || isUploading || isSubmitting}
-        onBack={goBack}
-        onNext={() => void goNext()}
+        onSubmit={() => void handleSubmit()}
       />
 
-      {/* Upload / AI prepare dialog */}
-      <Modal visible={isAnalyzing} transparent animationType="fade">
-        <View className="flex-1 items-center justify-center bg-black/50 px-8">
-          <View className="w-full items-center gap-4 rounded-3xl bg-white px-6 py-8">
-            <View className="h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Ionicons
-                name={useAi ? "sparkles" : "cloud-upload-outline"}
-                size={28}
-                color={colors.primary}
-              />
-            </View>
-            <View className="items-center gap-1.5">
-              <Text className="text-lg font-bold text-textPrimary">
-                {useAi ? "AI đang phân tích" : "Đang tải ảnh lên"}
-              </Text>
-              <Text className="text-center text-sm text-textSecondary">
-                {useAi
-                  ? "Hệ thống đang tải ảnh và nhận diện loại ô nhiễm / mức độ..."
-                  : "Ảnh được tải sớm để bước gửi báo cáo nhanh và ổn định hơn."}
-              </Text>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Upload / AI prepare — scan overlay trên ảnh đang xử lý */}
+      <AiImageScanOverlay
+        visible={isAnalyzing}
+        imageUri={images[0]?.localUri}
+        mode={useAi ? "ai" : "upload"}
+      />
 
       {/* AI Result dialog */}
       <Modal
@@ -1289,20 +1199,14 @@ export default function ReportCreateWizardScreen() {
                   className={`flex-row items-center gap-3 rounded-2xl border px-4 py-3.5 ${
                     dialogCategoryId === aiSuggestedCategory.id
                       ? "border-primary bg-primary/5"
-                      : "border-border bg-surface"
+                      : "border-border bg-white"
                   }`}
                 >
-                  <View
-                    className={`h-10 w-10 items-center justify-center rounded-xl ${
-                      dialogCategoryId === aiSuggestedCategory.id ? "bg-primary" : "bg-primary/10"
-                    }`}
-                  >
-                    <Ionicons
-                      name={resolvePollutionCategoryIcon(aiSuggestedCategory.code, null)}
-                      size={20}
-                      color={dialogCategoryId === aiSuggestedCategory.id ? colors.white : colors.primary}
-                    />
-                  </View>
+                  <Ionicons
+                    name={resolvePollutionCategoryIcon(aiSuggestedCategory.code, null)}
+                    size={22}
+                    color={dialogCategoryId === aiSuggestedCategory.id ? colors.primary : colors.textSecondary}
+                  />
                   <View className="flex-1">
                     <Text className="text-[15px] font-semibold text-textPrimary">{aiSuggestedCategory.nameVi}</Text>
                     <View className="mt-0.5 flex-row items-center gap-1">
@@ -1369,12 +1273,12 @@ export default function ReportCreateWizardScreen() {
                   if (dialogSeverity) setSeverity(dialogSeverity);
                   setShowAiResult(false);
                   setPendingAiOutcome(null);
-                  setStep(2);
+                  setExpandedSection("category");
                 }}
                 className={`items-center rounded-2xl py-3.5 ${dialogCategoryId ? "bg-primary" : "bg-border"}`}
               >
                 <Text className={`text-base font-bold ${dialogCategoryId ? "text-white" : "text-textDisabled"}`}>
-                  {dialogCategoryId ? "Áp dụng và tiếp tục" : "Chọn loại ô nhiễm để áp dụng"}
+                  {dialogCategoryId ? "Áp dụng" : "Chọn loại ô nhiễm để áp dụng"}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity

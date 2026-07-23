@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Dimensions, FlatList as RNFlatList, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -21,6 +21,8 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const PEEK_HEIGHT = 132;
 const MID_HEIGHT = Math.round(SCREEN_HEIGHT * 0.46);
 const FULL_HEIGHT = Math.round(SCREEN_HEIGHT * 0.88);
+/** Khi focus 1 pin: thấp hơn mid để không che chấm đỏ trên map */
+const FOCUS_HEIGHT = Math.round(SCREEN_HEIGHT * 0.32);
 
 export type SheetSnapPoint = 'peek' | 'mid' | 'full';
 
@@ -34,6 +36,8 @@ interface DraggableReportsSheetProps {
   pins: CitizenMapPin[];
   reportCount: number;
   isLoading: boolean;
+  /** Pin đang focus từ marker — sheet chỉ hiện card này và nhảy lên mid */
+  focusedPin?: CitizenMapPin | null;
   onOpenDetail: (pin: CitizenMapPin) => void;
   onSnapChange?: (snap: SheetSnapPoint) => void;
   bottomInset?: number;
@@ -60,6 +64,7 @@ export function DraggableReportsSheet({
   pins,
   reportCount,
   isLoading,
+  focusedPin = null,
   onOpenDetail,
   onSnapChange,
   bottomInset = 0,
@@ -70,6 +75,11 @@ export function DraggableReportsSheet({
   const scrollY = useSharedValue(0);
   const isSheetDragging = useSharedValue(false);
 
+  const displayPins = useMemo(
+    () => (focusedPin ? [focusedPin] : pins),
+    [focusedPin, pins],
+  );
+
   const snapTo = useCallback(
     (point: SheetSnapPoint) => {
       sheetHeight.value = withSpring(SNAP_HEIGHTS[point], { damping: 20, stiffness: 220 });
@@ -78,6 +88,20 @@ export function DraggableReportsSheet({
     },
     [sheetHeight, onSnapChange],
   );
+
+  const snapToFocus = useCallback(() => {
+    // Spring chậm hơn — sheet trồi lên từ từ, dừng ở mức thấp
+    sheetHeight.value = withSpring(FOCUS_HEIGHT, { damping: 28, stiffness: 120, mass: 1.1 });
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onSnapChange?.('mid');
+  }, [sheetHeight, onSnapChange]);
+
+  // Bấm marker → sheet trồi lên từ từ (thấp) hiện đúng card report
+  useEffect(() => {
+    if (focusedPin) {
+      snapToFocus();
+    }
+  }, [focusedPin?.id, snapToFocus]);
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -156,14 +180,18 @@ export function DraggableReportsSheet({
         <View className="items-center pb-3 pt-2">
           <View className="mb-2 h-1.5 w-10 rounded-full bg-border" />
           <Text className="text-sm font-semibold text-textSecondary">
-            {isLoading ? 'Đang tải…' : `${reportCount.toLocaleString('vi-VN')} báo cáo trong khu vực`}
+            {isLoading
+              ? 'Đang tải…'
+              : focusedPin
+                ? 'Đang focus 1 báo cáo'
+                : `${reportCount.toLocaleString('vi-VN')} báo cáo trong khu vực`}
           </Text>
         </View>
       </GestureDetector>
 
-      {isLoading && pins.length === 0 ? (
+      {isLoading && displayPins.length === 0 ? (
         <ListSkeleton />
-      ) : pins.length === 0 ? (
+      ) : displayPins.length === 0 ? (
         <View className="items-center px-6 py-16">
           <Text className="text-center text-sm text-textSecondary">
             Không có báo cáo nào trong khu vực đang xem. Thử kéo bản đồ sang khu vực khác.
@@ -172,7 +200,7 @@ export function DraggableReportsSheet({
       ) : (
         <GestureDetector gesture={composedGesture}>
           <AnimatedFlatList
-            data={pins}
+            data={displayPins}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => <MapReportListCard pin={item} onPress={() => onOpenDetail(item)} />}
             contentContainerStyle={{ paddingTop: 4, paddingBottom: bottomInset + 24 }}

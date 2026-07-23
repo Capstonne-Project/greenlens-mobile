@@ -6,21 +6,23 @@ import { View } from 'react-native';
 
 interface AiAnalysisBannerProps {
   aiResult: AiAnalyzeResult;
+  /** Compact one-row chip for accordion sections. */
+  compact?: boolean;
 }
 
 const DECISION_META: Record<AiDecision, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
   ACCEPTABLE_REPORT_IMAGE: {
-    label: 'Ảnh hợp lệ',
+    label: 'Hợp lệ',
     color: colors.success,
     icon: 'checkmark-circle',
   },
   NEED_MANUAL_REVIEW: {
-    label: 'Cần xem xét thêm',
+    label: 'Cần xem xét',
     color: colors.warning,
     icon: 'alert-circle',
   },
   IRRELEVANT_OR_SUSPECTED_ABUSIVE: {
-    label: 'Ảnh không phù hợp',
+    label: 'Không phù hợp',
     color: colors.error,
     icon: 'close-circle',
   },
@@ -28,25 +30,36 @@ const DECISION_META: Record<AiDecision, { label: string; color: string; icon: ke
 
 const SEVERITY_LABEL: Record<string, string> = {
   LOW: 'Thấp',
-  MEDIUM: 'Trung bình',
+  MEDIUM: 'TB',
   HIGH: 'Cao',
-  CRITICAL: 'Khẩn cấp',
+  CRITICAL: 'Khẩn',
 };
 
-const SEVERITY_COLOR: Record<string, string> = {
-  LOW: colors.severityLow,
-  MEDIUM: colors.severityMedium,
-  HIGH: colors.severityHigh,
-  CRITICAL: colors.severityCritical,
-};
-
-export function AiAnalysisBanner({ aiResult }: AiAnalysisBannerProps) {
+export function AiAnalysisBanner({ aiResult, compact = false }: AiAnalysisBannerProps) {
   const meta = DECISION_META[aiResult.decision];
   const { classify } = aiResult;
+  const confidencePct = Math.round(classify.confidence * 100);
+  const severityLabel = SEVERITY_LABEL[classify.severity] ?? classify.severity;
+
+  if (compact) {
+    return (
+      <View className="flex-row items-center gap-2 rounded-xl bg-primary/5 px-3 py-2">
+        <Ionicons name="sparkles" size={14} color={colors.primary} />
+        <Text className="flex-1 text-[12px] text-textSecondary" numberOfLines={1}>
+          AI · {confidencePct}% · {severityLabel}
+        </Text>
+        <View className="flex-row items-center gap-1">
+          <Ionicons name={meta.icon} size={14} color={meta.color} />
+          <Text className="text-[12px] font-semibold" style={{ color: meta.color }}>
+            {meta.label}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <View className="overflow-hidden rounded-2xl bg-white">
-      {/* Header */}
+    <View className="overflow-hidden rounded-2xl border border-border bg-white">
       <View className="flex-row items-center gap-3 px-4 py-3" style={{ borderBottomWidth: 1, borderBottomColor: colors.border }}>
         <Ionicons name="sparkles" size={18} color={colors.primary} />
         <Text className="flex-1 text-sm font-semibold text-textPrimary">Phân tích AI</Text>
@@ -58,31 +71,15 @@ export function AiAnalysisBanner({ aiResult }: AiAnalysisBannerProps) {
         </View>
       </View>
 
-      {/* Stats */}
-      <View className="flex-row px-4 py-3 gap-4">
-        {/* Confidence */}
+      <View className="flex-row gap-4 px-4 py-3">
         <View className="flex-1">
           <Text className="text-xs text-textSecondary">Độ tin cậy</Text>
-          <Text className="mt-0.5 text-base font-bold text-textPrimary">
-            {Math.round(classify.confidence * 100)}%
-          </Text>
+          <Text className="mt-0.5 text-base font-bold text-textPrimary">{confidencePct}%</Text>
         </View>
-
-        {/* Severity */}
         <View className="flex-1">
           <Text className="text-xs text-textSecondary">Mức độ gợi ý</Text>
-          <View className="mt-1 flex-row items-center gap-1.5">
-            <View
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: SEVERITY_COLOR[classify.severity] ?? colors.border }}
-            />
-            <Text className="text-sm font-semibold text-textPrimary">
-              {SEVERITY_LABEL[classify.severity] ?? classify.severity}
-            </Text>
-          </View>
+          <Text className="mt-0.5 text-sm font-semibold text-textPrimary">{severityLabel}</Text>
         </View>
-
-        {/* Coverage */}
         <View className="flex-1">
           <Text className="text-xs text-textSecondary">Vùng phủ</Text>
           <Text className="mt-0.5 text-base font-bold text-textPrimary">
@@ -91,7 +88,6 @@ export function AiAnalysisBanner({ aiResult }: AiAnalysisBannerProps) {
         </View>
       </View>
 
-      {/* Reason */}
       {aiResult.reason ? (
         <View className="px-4 pb-3">
           <Text className="text-xs text-textSecondary">{aiResult.reason}</Text>

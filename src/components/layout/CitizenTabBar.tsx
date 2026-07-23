@@ -1,9 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+
+import { notificationService } from '@/services/notification.service';
+import { useAuthStore } from '@/stores/auth.store';
+import { useNotificationStore } from '@/stores/notification.store';
 import { colors } from '@/theme/colors';
 
 const LEFT_TABS = ['index', 'reports'] as const;
@@ -51,12 +56,14 @@ interface TabSlotProps extends BottomTabBarProps {
 function TabSlot({ routeName, state, descriptors, navigation }: TabSlotProps) {
   const route = state.routes.find((r) => r.name === routeName);
   const meta = TAB_META[routeName];
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
   if (!route) return <View className="w-[52px]" />;
 
   const routeIndex = state.routes.findIndex((r) => r.key === route.key);
   const isFocused = state.index === routeIndex;
   const { options } = descriptors[route.key];
   const label = (options.title as string) ?? meta.label;
+  const showBadge = routeName === 'notifications' && unreadCount > 0;
 
   const onPress = () => {
     const event = navigation.emit({
@@ -76,11 +83,23 @@ function TabSlot({ routeName, state, descriptors, navigation }: TabSlotProps) {
       onPress={onPress}
       className="min-w-[52px] items-center gap-0.5 py-1"
     >
-      <Ionicons
-        name={isFocused ? meta.activeIcon : meta.icon}
-        size={24}
-        color={isFocused ? colors.primary : colors.textSecondary}
-      />
+      <View className="relative">
+        <Ionicons
+          name={isFocused ? meta.activeIcon : meta.icon}
+          size={24}
+          color={isFocused ? colors.primary : colors.textSecondary}
+        />
+        {showBadge ? (
+          <View
+            className="absolute -left-2.5 -top-1.5 min-w-[16px] items-center justify-center rounded-full border-2 border-white bg-error px-1"
+            style={{ height: 16 }}
+          >
+            <Text className="text-[9px] font-bold leading-[10px] text-white">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </Text>
+          </View>
+        ) : null}
+      </View>
       <Text
         className="text-[11px] font-medium"
         style={{ color: isFocused ? colors.primary : colors.textSecondary }}
@@ -94,7 +113,26 @@ function TabSlot({ routeName, state, descriptors, navigation }: TabSlotProps) {
 
 export function CitizenTabBar({ navigation, ...props }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const activeRouteName = props.state.routes[props.state.index]?.name;
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await notificationService.getMyNotifications({ page: 1, pageSize: 1 });
+        if (!cancelled) {
+          useNotificationStore.getState().setUnreadCount(res.data.data.unreadCount ?? 0);
+        }
+      } catch {
+        // Badge sync is best-effort
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
 
   if (activeRouteName === 'create') {
     return null;

@@ -38,7 +38,13 @@ function isSessionExpiredError(error: unknown): boolean {
 function classifyUploadError(error: unknown): SubmitFailureReason {
   if (isSessionExpiredError(error)) return 'session-expired';
   if (error instanceof Error) {
-    if (error.name === 'AbortError' || error.message.includes('TIMEOUT')) return 'timeout';
+    if (
+      error.name === 'AbortError' ||
+      error.message === 'R2_PUT_TIMEOUT' ||
+      error.message.includes('TIMEOUT')
+    ) {
+      return 'timeout';
+    }
     if (
       error instanceof TypeError ||
       error.message.startsWith('R2_PUT_FAILED_') ||
