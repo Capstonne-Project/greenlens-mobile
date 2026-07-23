@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import type { ReportLocationDraft } from '@/types/pollution-report.types';
+import type { ExifGpsCoords } from '@/utils/exif-location';
 
 function buildAddressLine(parts: (string | null | undefined)[]): string | undefined {
   const value = parts
@@ -8,6 +9,39 @@ function buildAddressLine(parts: (string | null | undefined)[]): string | undefi
     .join(', ');
 
   return value || undefined;
+}
+
+async function reverseGeocodeAddress(
+  latitude: number,
+  longitude: number,
+): Promise<string | undefined> {
+  try {
+    const places = await Location.reverseGeocodeAsync({ latitude, longitude });
+    const place = places[0];
+    if (!place) return undefined;
+    return buildAddressLine([
+      place.streetNumber,
+      place.street,
+      place.district,
+      place.city ?? place.subregion,
+      place.region,
+    ]);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Tạo draft vị trí từ tọa độ ảnh (EXIF) + reverse geocode nhẹ nếu được. */
+export async function buildLocationDraftFromCoords(
+  coords: ExifGpsCoords,
+): Promise<ReportLocationDraft> {
+  const address = await reverseGeocodeAddress(coords.latitude, coords.longitude);
+  return {
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    address,
+    capturedAt: new Date().toISOString(),
+  };
 }
 
 export async function resolveCaptureLocation(): Promise<ReportLocationDraft | null> {
@@ -20,31 +54,8 @@ export async function resolveCaptureLocation(): Promise<ReportLocationDraft | nu
     accuracy: Location.Accuracy.Balanced,
   });
 
-  const capturedAt = new Date().toISOString();
-  const latitude = position.coords.latitude;
-  const longitude = position.coords.longitude;
-
-  let address: string | undefined;
-  try {
-    const places = await Location.reverseGeocodeAsync({ latitude, longitude });
-    const place = places[0];
-    if (place) {
-      address = buildAddressLine([
-        place.streetNumber,
-        place.street,
-        place.district,
-        place.city ?? place.subregion,
-        place.region,
-      ]);
-    }
-  } catch {
-    address = undefined;
-  }
-
-  return {
-    latitude,
-    longitude,
-    address,
-    capturedAt,
-  };
+  return buildLocationDraftFromCoords({
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+  });
 }

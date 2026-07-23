@@ -1,5 +1,6 @@
 import { PortalHost } from "@rn-primitives/portal";
 import { useAuth } from "@/hooks/useAuth";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -8,6 +9,7 @@ import "../global.css";
 
 export default function RootLayout() {
   const { restoreSession } = useAuth();
+  usePushNotifications();
 
   useEffect(() => {
     void restoreSession();

@@ -4,7 +4,6 @@ import { TapScale } from '@/components/layout/TapScale';
 import { useAuthStore } from '@/stores/auth.store';
 
 interface CitizenHomeHeaderProps {
-  onMenuPress?: () => void;
   onProfilePress?: () => void;
 }
 
@@ -15,18 +14,12 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export function CitizenHomeHeader({ onMenuPress, onProfilePress }: CitizenHomeHeaderProps) {
+export function CitizenHomeHeader({ onProfilePress }: CitizenHomeHeaderProps) {
   const user = useAuthStore((s) => s.user);
 
   return (
     <View className="gap-3">
       <View className="flex-row items-center gap-3">
-        <TapScale onPress={onMenuPress ?? (() => {})}>
-          <View className="h-11 w-11 items-center justify-center rounded-full border border-border bg-white">
-            <Ionicons name="menu-outline" size={24} color="#334155" />
-          </View>
-        </TapScale>
-
         <View className="h-11 flex-1 flex-row items-center gap-2 rounded-full border border-border bg-white px-3">
           <Ionicons name="search-outline" size={18} color="#94A3B8" />
           <TextInput

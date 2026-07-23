@@ -9,6 +9,7 @@ export default function InspectorTabsLayout() {
       screenOptions={{ headerShown: false }}
     >
       <Tabs.Screen name="queue" options={{ title: 'Hồ sơ' }} />
+      <Tabs.Screen name="notifications" options={{ title: 'Thông báo' }} />
       <Tabs.Screen name="profile" options={{ title: 'Cá nhân' }} />
     </Tabs>
   );
