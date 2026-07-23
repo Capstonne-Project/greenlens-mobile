@@ -1,6 +1,7 @@
 import { SafeScreen } from "@/components/layout/SafeScreen";
 import { TapScale } from "@/components/layout/TapScale";
 import { AiAnalysisBanner } from "@/components/report-create/AiAnalysisBanner";
+import { AiImageScanOverlay } from "@/components/report-create/AiImageScanOverlay";
 import { CategoryOptionGrid } from "@/components/report-create/CategoryOptionGrid";
 import { ReportFormHeader } from "@/components/report-create/ReportFormHeader";
 import {
@@ -28,7 +29,14 @@ import { useCreateReportDraftStore } from "@/stores/createReportDraft.store";
 import { colors } from "@/theme/colors";
 import type { PollutionSeverity, ReportLocationDraft } from "@/types/pollution-report.types";
 import { MAX_WASTE_TAG_SELECTION } from "@/types/waste-tag.types";
-import { resolveCaptureLocation } from "@/utils/capture-location";
+import {
+  buildLocationDraftFromCoords,
+  resolveCaptureLocation,
+} from "@/utils/capture-location";
+import {
+  parseLocationFromPickerAsset,
+  parseLocationFromPickerAssets,
+} from "@/utils/exif-location";
 import { enrichLocationWithGoong } from "@/utils/goong-admin-match";
 import { validatePinAgainstBoundary } from "@/utils/validate-pin-boundary";
 import {
@@ -412,19 +420,30 @@ export default function ReportCreateWizardScreen() {
       if (result.canceled || !result.assets[0]) return;
 
       const asset = result.assets[0];
-      const captured = await resolveCaptureLocation();
+
+      // Đọc GPS từ EXIF trước khi compress (nén JPEG sẽ strip metadata).
+      const exifCoords = parseLocationFromPickerAsset(asset);
+      const captured = exifCoords
+        ? await buildLocationDraftFromCoords(exifCoords)
+        : await resolveCaptureLocation();
+
       if (!captured) {
-        Alert.alert("Thiếu vị trí", "Vui lòng cho phép vị trí để tiếp tục.");
+        Alert.alert(
+          "Thiếu vị trí",
+          "Ảnh không có GPS trong EXIF. Vui lòng cho phép vị trí thiết bị để tiếp tục.",
+        );
         return;
       }
 
-      const resolved = provinces.length > 0 ? await enrichLocationWithGoong(captured, provinces) : captured;
+      const resolved =
+        provinces.length > 0 ? await enrichLocationWithGoong(captured, provinces) : captured;
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSource("camera");
       setLocation(resolved);
       let compressed;
       try {
+        // compressImage encode JPEG mới → EXIF bị xóa trước khi upload R2.
         compressed = await compressImage(asset.uri, {
           ...UPLOAD_COMPRESS_PRESET,
           baseName: "report",
@@ -438,14 +457,14 @@ export default function ReportCreateWizardScreen() {
       const mimeType = compressed.mimeType;
       setImages([{ localUri: compressed.uri, mimeType, fileName: compressed.fileName, uploadStatus: "pending" }]);
 
-      // Step 1: always upload (R2 → BE proxy fallback). AI classify only if toggle on.
+      // Step 1: upload Mobile → R2 (presign + PUT). AI classify only if toggle on.
       const outcome = await prepareImage(compressed.uri, mimeType, compressed.fileName, {
         runAi: useAi,
       });
       if (outcome === "error") {
         Alert.alert(
           "Không tải được ảnh",
-          "Kiểm tra mạng rồi thử lại. Ảnh phải lên được server trước khi gửi báo cáo.",
+          "Upload lên kho ảnh (R2) thất bại hoặc quá chậm. Kiểm tra mạng rồi thử lại.",
         );
       } else if (outcome === "rejected") {
         Alert.alert("Ảnh không phù hợp", "Ảnh này bị hệ thống AI đánh dấu là không liên quan. Vui lòng chọn ảnh khác.");
@@ -679,14 +698,28 @@ export default function ReportCreateWizardScreen() {
         allowsMultipleSelection: true,
         selectionLimit: 5,
         quality: 1,
+        exif: true,
       });
       if (result.canceled || !result.assets.length) return;
 
       setSource("library");
+
+      // Parse GPS từ ảnh gốc trước khi compress strip EXIF.
+      const exifCoords = parseLocationFromPickerAssets(result.assets);
+      if (exifCoords) {
+        const fromExif = await buildLocationDraftFromCoords(exifCoords);
+        const resolved =
+          provinces.length > 0
+            ? await enrichLocationWithGoong(fromExif, provinces)
+            : fromExif;
+        setLocation(resolved);
+      }
+
       let drafted;
       try {
         drafted = await Promise.all(
           result.assets.map(async (asset) => {
+            // compressImage encode JPEG mới → EXIF bị xóa trước khi upload R2.
             const compressed = await compressImage(asset.uri, {
               ...UPLOAD_COMPRESS_PRESET,
               baseName: "report",
@@ -706,7 +739,9 @@ export default function ReportCreateWizardScreen() {
         return;
       }
       setImages(drafted);
-      await ensureLocationSeed();
+      if (!exifCoords) {
+        await ensureLocationSeed();
+      }
 
       // Step 1: upload all now (extras || first+optional AI in parallel).
       const [first, ...rest] = drafted;
@@ -721,7 +756,7 @@ export default function ReportCreateWizardScreen() {
       if (firstOutcome === "error" || restResults.some((ok) => !ok)) {
         Alert.alert(
           "Không tải được ảnh",
-          "Một số ảnh chưa lên được server. Kiểm tra mạng rồi chọn lại.",
+          "Upload lên kho ảnh (R2) thất bại hoặc quá chậm. Kiểm tra mạng (Wi‑Fi/4G) rồi chọn lại ảnh.",
         );
       } else if (firstOutcome === "rejected") {
         Alert.alert("Ảnh không phù hợp", "Ảnh này bị hệ thống AI đánh dấu là không liên quan. Vui lòng chọn ảnh khác.");
@@ -732,7 +767,7 @@ export default function ReportCreateWizardScreen() {
     } finally {
       setIsPicking(false);
     }
-  }, [prepareImage, uploadDraftImage, ensureLocationSeed, setImages, setSource, useAi]);
+  }, [prepareImage, uploadDraftImage, ensureLocationSeed, provinces, setImages, setLocation, setSource, useAi]);
 
   const handleProvinceSelect = useCallback(
     async (code: string | null) => {
@@ -1094,30 +1129,12 @@ export default function ReportCreateWizardScreen() {
         onSubmit={() => void handleSubmit()}
       />
 
-      {/* Upload / AI prepare dialog */}
-      <Modal visible={isAnalyzing} transparent animationType="fade">
-        <View className="flex-1 items-center justify-center bg-black/50 px-8">
-          <View className="w-full items-center gap-4 rounded-3xl bg-white px-6 py-8">
-            <View className="h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-              <Ionicons
-                name={useAi ? "sparkles" : "cloud-upload-outline"}
-                size={28}
-                color={colors.primary}
-              />
-            </View>
-            <View className="items-center gap-1.5">
-              <Text className="text-lg font-bold text-textPrimary">
-                {useAi ? "AI đang phân tích" : "Đang tải ảnh lên"}
-              </Text>
-              <Text className="text-center text-sm text-textSecondary">
-                {useAi
-                  ? "Hệ thống đang tải ảnh và nhận diện loại ô nhiễm / mức độ..."
-                  : "Ảnh được tải sớm để bước gửi báo cáo nhanh và ổn định hơn."}
-              </Text>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Upload / AI prepare — scan overlay trên ảnh đang xử lý */}
+      <AiImageScanOverlay
+        visible={isAnalyzing}
+        imageUri={images[0]?.localUri}
+        mode={useAi ? "ai" : "upload"}
+      />
 
       {/* AI Result dialog */}
       <Modal
