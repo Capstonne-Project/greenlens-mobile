@@ -9,6 +9,8 @@ interface CitizenMapToolbarProps {
   onZoomIn?: () => void;
   layersActive?: boolean;
   locateActive?: boolean;
+  /** Khi false: chỉ stack icon (parent tự absolute). Mặc định absolute góc phải. */
+  floating?: boolean;
   bottomOffset?: number;
 }
 
@@ -19,10 +21,14 @@ export function CitizenMapToolbar({
   onZoomIn,
   layersActive = false,
   locateActive = false,
+  floating = true,
   bottomOffset = 220,
 }: CitizenMapToolbarProps) {
   return (
-    <View className="absolute right-3 z-10 gap-2" style={{ bottom: bottomOffset }}>
+    <View
+      className={floating ? 'absolute right-3 z-10 gap-2' : 'gap-2'}
+      style={floating ? { bottom: bottomOffset } : undefined}
+    >
       <ToolbarIcon icon="layers-outline" onPress={onLayers ?? (() => {})} active={layersActive} />
       <ToolbarIcon icon="locate-outline" onPress={onLocate ?? (() => {})} active={locateActive} />
       <ToolbarIcon icon="options-outline" onPress={onFilters ?? (() => {})} />
