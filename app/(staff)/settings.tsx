@@ -78,7 +78,11 @@ export default function StaffSettingsScreen() {
       {/* Settings rows */}
       <View className="mx-4 overflow-hidden rounded-2xl bg-white shadow-sm" style={{ elevation: 2 }}>
         <View className="divide-y divide-border">
-          <SettingRow icon="notifications-outline" label="Thông báo" onPress={() => {}} />
+          <SettingRow
+            icon="notifications-outline"
+            label="Thông báo"
+            onPress={() => router.push('/notifications' as never)}
+          />
           <View className="h-px bg-border" />
           <SettingRow icon="lock-closed-outline" label="Đổi mật khẩu" onPress={() => {}} />
           <View className="h-px bg-border" />

@@ -12,6 +12,7 @@ import { HCM_INITIAL_REGION } from '@/constants/map-region';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyAssignments } from '@/hooks/useMyAssignments';
 import { useStaffMapPins } from '@/hooks/useStaffMapPins';
+import { useNotificationStore } from '@/stores/notification.store';
 import { colors } from '@/theme/colors';
 import type { AssignmentStats } from '@/types/cleanup-assignment.types';
 
@@ -229,6 +230,7 @@ function SectionHeader({ title, actionLabel, onAction }: { title: string; action
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function StaffHomeScreen() {
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
   const { user } = useAuth();
   const insets   = useSafeAreaInsets();
 
@@ -296,6 +298,13 @@ export default function StaffHomeScreen() {
             style={{ backgroundColor: colors.surface }}
           >
             <Ionicons name="notifications-outline" size={21} color={colors.textPrimary} />
+            {unreadCount > 0 ? (
+              <View className="absolute -right-0.5 -top-0.5 min-w-[16px] items-center rounded-full bg-error px-1">
+                <Text className="text-[9px] font-bold text-white">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            ) : null}
           </Pressable>
 
           {/* Avatar */}
