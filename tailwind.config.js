@@ -44,7 +44,12 @@ module.exports = {
         /** Semantic text/surface — đồng bộ theme app */
         textPrimary: "#111827",
         textSecondary: "#6B7280",
+        textDisabled: "#D1D5DB",
         surface: "#F7F8FA",
+        error: "#EF4444",
+        warning: "#F59E0B",
+        success: "#10B981",
+        info: "#3B82F6",
       },
       borderRadius: {
         lg: "var(--radius)",
