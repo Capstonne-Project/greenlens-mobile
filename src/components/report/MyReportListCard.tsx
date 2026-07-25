@@ -3,6 +3,7 @@ import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
 import type { MyReportItem, MyReportSeverity } from '@/types/my-reports.types';
 import { formatRelativeTime } from '@/utils/formatters';
+import { isMergedDuplicateReport } from '@/utils/report-merge';
 import { getReportStatusMeta } from '@/utils/report-status';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -13,6 +14,8 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 interface MyReportListCardProps {
   item: MyReportItem;
   onPress: () => void;
+  /** Tap riêng vào link báo cáo gốc (Duplicate) */
+  onOpenPrimary?: () => void;
 }
 
 const SEVERITY_META: Record<MyReportSeverity, { label: string; textColor: string }> = {
@@ -42,19 +45,35 @@ function isClosed(status: string): boolean {
   return status === 'Closed' || status === 'ClosedNoViolation';
 }
 
-function isRejected(status: string): boolean {
-  return status === 'Rejected' || status === 'Duplicate';
+function isRejectedOnly(status: string): boolean {
+  return status === 'Rejected';
 }
 
 function statusTone(status: string): string {
   if (isNeedsConfirm(status)) return '#B45309';
   if (isActiveWork(status)) return colors.primaryDark;
   if (isClosed(status)) return colors.textSecondary;
-  if (isRejected(status)) return colors.error;
+  if (status === 'Duplicate') return colors.textSecondary;
+  if (isRejectedOnly(status)) return colors.error;
   return colors.textSecondary;
 }
 
 function timelineCopy(item: MyReportItem): { icon: keyof typeof Ionicons.glyphMap; text: string } {
+  if (isMergedDuplicateReport(item)) {
+    const code = item.mergedIntoPrimaryReportCode?.trim();
+    return {
+      icon: 'git-merge-outline',
+      text: code
+        ? `Đã gộp vào ${code} — theo dõi tiến độ tại báo cáo gốc`
+        : 'Đã gộp vào báo cáo gốc — chạm để theo dõi tiến độ',
+    };
+  }
+  if (item.status === 'Duplicate') {
+    return {
+      icon: 'git-merge-outline',
+      text: 'Báo cáo trùng lặp đã được gộp',
+    };
+  }
   if (isNeedsConfirm(item.status)) {
     return { icon: 'checkmark-circle-outline', text: 'Đội đã xử lý xong — chờ bạn xác nhận kết quả' };
   }
@@ -70,7 +89,7 @@ function timelineCopy(item: MyReportItem): { icon: keyof typeof Ionicons.glyphMa
   if (isClosed(item.status)) {
     return { icon: 'checkmark-done-outline', text: 'Báo cáo đã kết thúc' };
   }
-  if (isRejected(item.status)) {
+  if (isRejectedOnly(item.status)) {
     return { icon: 'close-circle-outline', text: 'Báo cáo không được tiếp nhận' };
   }
   return { icon: 'information-circle-outline', text: getReportStatusMeta(item.status).label };
@@ -114,21 +133,22 @@ function ActionBtn({ label, variant, onPress }: ActionBtnProps) {
   );
 }
 
-function MyReportListCardComponent({ item, onPress }: MyReportListCardProps) {
+function MyReportListCardComponent({ item, onPress, onOpenPrimary }: MyReportListCardProps) {
   const statusMeta = getReportStatusMeta(item.status);
   const severityMeta = SEVERITY_META[item.severity] ?? SEVERITY_META.Medium;
   const needsConfirm = isNeedsConfirm(item.status);
   const activeWork = isActiveWork(item.status);
+  const merged = isMergedDuplicateReport(item);
   const categoryKey = (item.categoryCode ?? 'other').toLowerCase();
   const iconName = CATEGORY_ICON[categoryKey] ?? 'leaf-outline';
   const timeline = timelineCopy(item);
   const tone = statusTone(item.status);
+  const primaryCode = item.mergedIntoPrimaryReportCode?.trim();
 
   return (
     <View className="mb-2.5 bg-white px-4 py-3.5">
       <TapScale onPress={onPress}>
         <View>
-          {/* Header — shop row style */}
           <View className="mb-2.5 flex-row items-center justify-between gap-3">
             <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
               <Ionicons name="leaf-outline" size={14} color={colors.textSecondary} />
@@ -146,7 +166,6 @@ function MyReportListCardComponent({ item, onPress }: MyReportListCardProps) {
             </Text>
           </View>
 
-          {/* Timeline update — TikTok style, muted EU */}
           <View className="mb-3 flex-row items-start gap-2 rounded-xl bg-surface px-3 py-2">
             <Ionicons name={timeline.icon} size={14} color={tone} style={{ marginTop: 1 }} />
             <View className="flex-1">
@@ -160,7 +179,6 @@ function MyReportListCardComponent({ item, onPress }: MyReportListCardProps) {
             </View>
           </View>
 
-          {/* Item row */}
           <View className="flex-row">
             {item.imageUrl ? (
               <Image
@@ -197,7 +215,6 @@ function MyReportListCardComponent({ item, onPress }: MyReportListCardProps) {
             </View>
           </View>
 
-          {/* Summary */}
           <View className="mt-3 flex-row items-center justify-end border-t border-border/60 pt-2.5">
             <Text className="text-[12px] text-textSecondary">Trạng thái: </Text>
             <Text className="text-[13px] font-semibold" style={{ color: tone }}>
@@ -207,7 +224,19 @@ function MyReportListCardComponent({ item, onPress }: MyReportListCardProps) {
         </View>
       </TapScale>
 
-      {/* Actions ngoài TapScale — tránh double press */}
+      {merged && primaryCode ? (
+        <Pressable
+          onPress={onOpenPrimary ?? onPress}
+          className="mt-3 flex-row items-center gap-1.5"
+          hitSlop={6}
+        >
+          <Ionicons name="arrow-forward-circle-outline" size={15} color={colors.primary} />
+          <Text className="flex-1 text-[12px] font-medium text-primary" numberOfLines={1}>
+            Theo dõi tiến độ tại {primaryCode}
+          </Text>
+        </Pressable>
+      ) : null}
+
       <View className="mt-3 flex-row items-center justify-end gap-2">
         {needsConfirm ? (
           <>
@@ -216,8 +245,16 @@ function MyReportListCardComponent({ item, onPress }: MyReportListCardProps) {
           </>
         ) : activeWork ? (
           <ActionBtn label="Theo dõi" variant="outline" onPress={onPress} />
-        ) : isRejected(item.status) ? (
+        ) : merged ? (
+          <ActionBtn
+            label="Theo dõi báo cáo gốc"
+            variant="outline"
+            onPress={onOpenPrimary ?? onPress}
+          />
+        ) : isRejectedOnly(item.status) ? (
           <ActionBtn label="Xem lý do" variant="ghost" onPress={onPress} />
+        ) : item.status === 'Duplicate' ? (
+          <ActionBtn label="Xem chi tiết" variant="ghost" onPress={onPress} />
         ) : (
           <ActionBtn label="Xem lại" variant="outline" onPress={onPress} />
         )}
