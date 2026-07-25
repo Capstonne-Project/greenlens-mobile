@@ -32,7 +32,7 @@ export function NotificationListItem({
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
-  const meta = getNotificationMeta(item.type);
+  const meta = getNotificationMeta(item.type, item);
   const timeLabel = formatNotificationTime(item.createdAt);
   const { title, message } = formatNotificationDisplay(item);
   const showThumb = meta.isReportLinked && !!item.thumbnailUrl;

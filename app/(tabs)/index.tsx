@@ -20,12 +20,22 @@ import { colors } from '@/theme/colors';
 import { useRouter, type Href } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Text, View } from 'react-native';
-import MapView from 'react-native-maps';
+import MapView, { type Camera, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 
 /** Trang chủ citizen — `react-native-maps` (MapKit / Google Maps), chạy được trên Expo Go. */
+
+/** Padding đáy khi focus — khớp sheet card, để pin nằm giữa vùng map còn trống */
+const FOCUS_MAP_BOTTOM_PADDING = 380;
+const FOCUS_CAMERA_ZOOM = 17;
+/** iOS MapKit — mét; Google Maps bỏ qua, dùng zoom */
+const FOCUS_CAMERA_ALTITUDE = 700;
+
+function latitudeDeltaToZoom(latitudeDelta: number): number {
+  return Math.max(2, Math.min(20, Math.log2(360 / Math.max(latitudeDelta, 1e-6))));
+}
 
 export default function CitizenHomeScreen() {
 
@@ -39,6 +49,10 @@ export default function CitizenHomeScreen() {
   const orbitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCinematicRef = useRef(false);
   const pressTokenRef = useRef(0);
+  /** Region/camera trước khi focus pin — restore khi xóa focus (map + list khớp nhau) */
+  const lastInteractiveRegionRef = useRef<Region>(HCM_INITIAL_REGION);
+  const preFocusRegionRef = useRef<Region | null>(null);
+  const preFocusCameraRef = useRef<Camera | null>(null);
 
   const [filter, setFilter] = useState<CategoryFilterId>('all');
 
@@ -70,7 +84,7 @@ export default function CitizenHomeScreen() {
 
 
 
-  const { pins, summary, isLoading, errorMessage, onRegionChangeComplete } =
+  const { pins, isLoading, errorMessage, onRegionChangeComplete } =
     useViewportMapReports(filter, {
       onCategoryNotFound: () => setFilter('all'),
     });
@@ -97,18 +111,48 @@ export default function CitizenHomeScreen() {
 
   useEffect(() => clearCameraAnimations, [clearCameraAnimations]);
 
+  const exitFocusCamera = useCallback(() => {
+    clearCameraAnimations();
+    const restoreRegion = preFocusRegionRef.current ?? lastInteractiveRegionRef.current;
+    const restoreCamera = preFocusCameraRef.current;
+    preFocusRegionRef.current = null;
+    preFocusCameraRef.current = null;
+
+    // Một lệnh camera đầy đủ (center + zoom + pitch/heading) — không gọi
+    // animateCamera({ pitch, heading }) riêng vì sẽ giữ zoom focus → map 1 pin / list 8.
+    if (restoreCamera?.center) {
+      mapRef.current?.animateCamera(
+        {
+          center: restoreCamera.center,
+          pitch: 0,
+          heading: 0,
+          zoom: restoreCamera.zoom ?? latitudeDeltaToZoom(restoreRegion.latitudeDelta),
+          altitude: restoreCamera.altitude,
+        },
+        { duration: 420 },
+      );
+    } else {
+      mapRef.current?.animateToRegion(restoreRegion, 420);
+    }
+    onRegionChangeComplete(restoreRegion);
+  }, [clearCameraAnimations, onRegionChangeComplete]);
+
   const onMapPress = useCallback(() => {
+    const hadFocus = selected != null;
     setSelected(null);
     setFollowUserLocation(false);
-    clearCameraAnimations();
-    mapRef.current?.animateCamera({ pitch: 0, heading: 0 }, { duration: 350 });
-  }, [clearCameraAnimations]);
+    if (hadFocus) {
+      exitFocusCamera();
+    } else {
+      clearCameraAnimations();
+      mapRef.current?.animateCamera({ pitch: 0, heading: 0 }, { duration: 350 });
+    }
+  }, [selected, exitFocusCamera, clearCameraAnimations]);
 
   const onClearFocus = useCallback(() => {
     setSelected(null);
-    clearCameraAnimations();
-    mapRef.current?.animateCamera({ pitch: 0, heading: 0 }, { duration: 350 });
-  }, [clearCameraAnimations]);
+    exitFocusCamera();
+  }, [exitFocusCamera]);
 
 
 
@@ -116,59 +160,73 @@ export default function CitizenHomeScreen() {
     async (pin: CitizenMapPin) => {
       setSelected(pin);
       setFollowUserLocation(false);
+      // Lưu region/camera trước cinematic — xóa focus restore đúng khung hình + list
+      if (!preFocusRegionRef.current) {
+        preFocusRegionRef.current = lastInteractiveRegionRef.current;
+      }
       clearCameraAnimations();
+      // Chặn refetch bbox trong lúc await/getCamera + animate zoom
+      isCinematicRef.current = true;
 
       const token = ++pressTokenRef.current;
+      const pinCenter = { latitude: pin.latitude, longitude: pin.longitude };
 
       // Khóa camera tại vị trí hiện tại ngay lập tức để hủy animation (pitch/orbit) đang
       // chạy dở trên native — tránh 2 animateCamera tranh chấp khi bấm marker liên tiếp.
       const currentCamera = await mapRef.current?.getCamera();
       if (token !== pressTokenRef.current) return; // đã có lần bấm marker mới hơn — bỏ qua
       if (currentCamera) {
+        if (!preFocusCameraRef.current) {
+          preFocusCameraRef.current = {
+            center: currentCamera.center ?? pinCenter,
+            pitch: 0,
+            heading: 0,
+            zoom: currentCamera.zoom,
+            altitude: currentCamera.altitude,
+          };
+        }
         mapRef.current?.animateCamera(currentCamera, { duration: 0 });
       }
 
-      isCinematicRef.current = true;
-
-      const zoomDelta = 0.004;
       const zoomDuration = 750;
       const zoomToPitchGap = 120;
       const pitchDuration = 600;
       const pitchToOrbitGap = 120;
+      const orbitDuration = 3200;
 
-      // Lệch tâm map xuống dưới marker — chừa khoảng trống phía trên cho Callout
-      // (đặc biệt cần khi camera pitch 3D làm marker bị đẩy lên gần mép trên).
-      const latitudeOffset = zoomDelta * 0.32;
+      // Luôn center đúng tọa độ pin — xoay quanh chấm, không lệch màn
+      // (mapPadding đáy đẩy “tâm nhìn” lên trên sheet)
+      const focusCamera = (heading: number, pitch: number) => ({
+        center: pinCenter,
+        pitch,
+        heading,
+        zoom: FOCUS_CAMERA_ZOOM,
+        altitude: FOCUS_CAMERA_ALTITUDE,
+      });
 
-      const region = {
-        latitude: pin.latitude - latitudeOffset,
-        longitude: pin.longitude,
-        latitudeDelta: zoomDelta,
-        longitudeDelta: zoomDelta,
-      };
-
-      mapRef.current?.animateToRegion(region, zoomDuration);
+      mapRef.current?.animateCamera(focusCamera(0, 0), { duration: zoomDuration });
 
       pitchTimerRef.current = setTimeout(() => {
         pitchTimerRef.current = null;
-        mapRef.current?.animateCamera({ pitch: 55 }, { duration: pitchDuration });
+        if (token !== pressTokenRef.current) return;
+        mapRef.current?.animateCamera(focusCamera(0, 55), { duration: pitchDuration });
 
         pitchTimerRef.current = setTimeout(() => {
           pitchTimerRef.current = null;
+          if (token !== pressTokenRef.current) return;
 
-          // Orbit 1/8 vòng quanh marker — 1 animateCamera duy nhất để native tự nội suy mượt.
-          const orbitDuration = 3200;
-          mapRef.current?.animateCamera({ heading: 45 }, { duration: orbitDuration });
+          // Orbit quanh pin: center cố định = chấm đỏ
+          mapRef.current?.animateCamera(focusCamera(45, 55), { duration: orbitDuration });
 
           orbitTimerRef.current = setTimeout(() => {
             orbitTimerRef.current = null;
+            // Không refetch bbox zoom sát — giữ pins khu vực trước focus
             isCinematicRef.current = false;
-            onRegionChangeComplete(region);
           }, orbitDuration);
         }, pitchDuration + pitchToOrbitGap);
       }, zoomDuration + zoomToPitchGap);
     },
-    [clearCameraAnimations, onRegionChangeComplete],
+    [clearCameraAnimations],
   );
 
   const onOpenReportDetail = useCallback(
@@ -322,6 +380,12 @@ export default function CitizenHomeScreen() {
 
         followsUserLocation={followUserLocation}
 
+        mapPadding={
+          selected
+            ? { top: 0, right: 0, bottom: FOCUS_MAP_BOTTOM_PADDING, left: 0 }
+            : { top: 0, right: 0, bottom: 0, left: 0 }
+        }
+
         onPress={onMapPress}
 
         onPanDrag={clearCameraAnimations}
@@ -336,6 +400,7 @@ export default function CitizenHomeScreen() {
 
           if (isCinematicRef.current) return;
 
+          lastInteractiveRegionRef.current = region;
           onRegionChangeComplete(region);
 
         }}
@@ -435,7 +500,7 @@ export default function CitizenHomeScreen() {
       <DraggableReportsSheet
         pins={pins}
         focusedPin={selected}
-        reportCount={summary?.reportCount ?? pins.length}
+        reportCount={pins.length}
         isLoading={isLoading}
         onOpenDetail={onOpenReportDetail}
         onSnapChange={setSheetSnap}

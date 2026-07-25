@@ -1,3 +1,4 @@
+import { MergedReportsSection } from '@/components/report/MergedReportsSection';
 import { ReportCommentsSection } from '@/components/report/ReportCommentsSection';
 import { ReportSatisfactionCard } from '@/components/report/ReportSatisfactionCard';
 import { Text } from '@/components/ui/text';
@@ -33,6 +34,10 @@ export interface ReportDetailBodyProps {
   errorMessage: string | null;
   onRate?: (dto: RateReportDto) => Promise<void>;
   enableComments?: boolean;
+  /** Báo cáo của user bị gộp vào primary đang xem */
+  fromMergedReportId?: string | null;
+  onOpenPrimaryReport?: (primaryReportId: string) => void;
+  onOpenMergedReport?: (reportId: string) => void;
   comments: {
     threads: CommentThread[];
     isLoading: boolean;
@@ -278,6 +283,9 @@ export function ReportDetailBody({
   errorMessage,
   onRate,
   enableComments = true,
+  fromMergedReportId,
+  onOpenPrimaryReport,
+  onOpenMergedReport,
   comments,
 }: ReportDetailBodyProps) {
   const severity = SEVERITY_CONFIG[detail.severity] ?? SEVERITY_CONFIG.Medium;
@@ -342,6 +350,13 @@ export function ReportDetailBody({
           </View>
         </View>
       ) : null}
+
+      <MergedReportsSection
+        detail={detail}
+        fromMergedReportId={fromMergedReportId}
+        onOpenPrimary={onOpenPrimaryReport}
+        onOpenMergedReport={onOpenMergedReport}
+      />
 
       {detail.assignments.length > 0 ? (
         <View className="mb-4">

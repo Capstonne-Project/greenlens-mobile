@@ -26,6 +26,10 @@ export interface MyReportItem {
    * hiển thị lưới ảnh thật trên trang Hồ sơ — hiện đang dùng placeholder theo category.
    */
   imageUrl?: string | null;
+  /** ID báo cáo gốc khi status = Duplicate; null nếu không bị gộp */
+  mergedIntoPrimaryReportId?: string | null;
+  /** Mã hiển thị báo cáo gốc (e.g. RPT-2026-0045) */
+  mergedIntoPrimaryReportCode?: string | null;
 }
 
 export interface ReportsPagination {
@@ -55,7 +59,7 @@ export const MY_REPORTS_FILTERS: { key: MyReportsFilterKey; label: string }[] = 
   { key: 'InProgress', label: 'Đang xử lý' },
   { key: 'NEEDS_CONFIRM', label: 'Cần xác nhận' },
   { key: 'DONE', label: 'Đã xong' },
-  { key: 'Rejected', label: 'Bị từ chối' },
+  { key: 'Rejected', label: 'Từ chối / Đã gộp' },
 ];
 
 export function filterMyReportsByKey(items: MyReportItem[], key: MyReportsFilterKey): MyReportItem[] {

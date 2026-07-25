@@ -1,6 +1,7 @@
 import type { Ionicons } from '@expo/vector-icons';
 
 import type { AppNotification, NotificationType } from '@/types/notification.types';
+import { isMergeNotificationCopy } from '@/utils/report-merge';
 import { getReportStatusMeta } from '@/utils/report-status';
 
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -98,9 +99,24 @@ const META_BY_TYPE: Record<string, NotificationMeta> = {
 
 const UUID_RE =
   /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi;
+/** Chỉ strip mã nội bộ kiểu GL-… — giữ RPT-… để user theo dõi báo cáo gốc */
 const REPORT_CODE_RE = /\bGL-[A-Z0-9-]{4,}\b/gi;
 
-export function getNotificationMeta(type: NotificationType | string): NotificationMeta {
+const MERGE_META: NotificationMeta = {
+  icon: 'git-merge-outline',
+  categoryLabel: 'Gộp báo cáo',
+  isReportLinked: true,
+};
+
+export function getNotificationMeta(
+  type: NotificationType | string,
+  item?: Pick<AppNotification, 'title' | 'message'> | null,
+): NotificationMeta {
+  if (item && (type === 'ReportStatusChanged' || type === 'DuplicateReviewNeeded')) {
+    if (isMergeNotificationCopy(item.title, item.message)) {
+      return MERGE_META;
+    }
+  }
   return META_BY_TYPE[type] ?? DEFAULT_META;
 }
 
@@ -128,13 +144,14 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Strip GUIDs / report codes; prefer pollution category name for report notifs. */
+/** Strip GUIDs / internal codes; prefer pollution category name for report notifs. */
 export function formatNotificationDisplay(item: AppNotification): {
   title: string;
   message: string;
 } {
   const category = item.categoryName?.trim();
-  const meta = getNotificationMeta(item.type);
+  const meta = getNotificationMeta(item.type, item);
+  const isMerge = isMergeNotificationCopy(item.title, item.message);
 
   let title = (item.title ?? '').trim();
   let message = (item.message ?? '').trim();
@@ -148,7 +165,17 @@ export function formatNotificationDisplay(item: AppNotification): {
       .replace(/\s{2,}/g, ' ')
       .trim();
 
-  if (category && meta.isReportLinked) {
+  if (isMerge) {
+    // Giữ title "Báo cáo được gộp" + mã RPT trong message; chỉ bỏ GUID
+    title = title || 'Báo cáo được gộp';
+    message = message
+      .replace(UUID_RE, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    if (category && message.length === 0) {
+      message = `Báo cáo ${category} đã được gộp. Chạm để xem báo cáo gốc.`;
+    }
+  } else if (category && meta.isReportLinked) {
     title = category;
     message = replaceIds(message, category)
       .replace(new RegExp(`^Báo cáo\\s+${escapeRegExp(category)}\\s*`, 'i'), '')

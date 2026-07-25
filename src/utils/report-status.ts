@@ -28,7 +28,7 @@ const STATUS_META: Record<string, ReportStatusMeta> = {
   Closed: { label: 'Đã đóng', textColor: '#374151', bgColor: '#F3F4F6' },
   ClosedNoViolation: { label: 'Đã đóng (không vi phạm)', textColor: '#374151', bgColor: '#F3F4F6' },
   Rejected: { label: 'Bị từ chối', textColor: '#991B1B', bgColor: '#FEE2E2' },
-  Duplicate: { label: 'Trùng báo cáo', textColor: '#6B7280', bgColor: '#F3F4F6' },
+  Duplicate: { label: 'Đã gộp', textColor: '#4B5563', bgColor: '#F3F4F6' },
 };
 
 const FALLBACK_META: ReportStatusMeta = {
@@ -92,8 +92,13 @@ export function getReportFooterActions(
     case 'ClosedNoViolation':
       return { showClose: false, showReopen: false, infoMessage: 'Báo cáo đã kết thúc' };
     case 'Rejected':
-    case 'Duplicate':
       return { showClose: false, showReopen: false };
+    case 'Duplicate':
+      return {
+        showClose: false,
+        showReopen: false,
+        infoMessage: 'Báo cáo đã gộp — theo dõi tiến độ tại báo cáo gốc',
+      };
     default:
       return { showClose: false, showReopen: false };
   }

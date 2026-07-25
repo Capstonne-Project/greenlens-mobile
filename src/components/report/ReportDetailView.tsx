@@ -55,6 +55,9 @@ interface ReportDetailViewProps {
   onRate?: (dto: RateReportDto) => Promise<void>;
   /** Bật block bình luận / phản hồi (citizen + đội ngũ) */
   enableComments?: boolean;
+  fromMergedReportId?: string | null;
+  onOpenPrimaryReport?: (primaryReportId: string) => void;
+  onOpenMergedReport?: (reportId: string) => void;
 }
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -262,6 +265,9 @@ export function ReportDetailView({
   onReopen,
   onRate,
   enableComments = true,
+  fromMergedReportId,
+  onOpenPrimaryReport,
+  onOpenMergedReport,
 }: ReportDetailViewProps) {
   const insets = useSafeAreaInsets();
   const [heroIndex, setHeroIndex] = useState(0);
@@ -273,7 +279,11 @@ export function ReportDetailView({
   const scrollY = useSharedValue(0);
   const isSheetDragging = useSharedValue(false);
 
-  const isOwner = source === 'tab' || (detail?.reporterId != null && detail.reporterId === currentUserId);
+  // Primary sau merge có thể không phải của user — ưu tiên so khớp reporterId.
+  const isOwner =
+    detail?.reporterId != null && currentUserId != null
+      ? detail.reporterId === currentUserId
+      : source === 'tab' && !fromMergedReportId;
   const footerActions = detail
     ? getReportFooterActions(detail.status, { isOwner, reopenedCount: detail.reopenedCount ?? 0 })
     : { showClose: false, showReopen: false };
@@ -306,6 +316,7 @@ export function ReportDetailView({
           'Dispatched',
           'Assigned',
           'InProgress',
+          'Duplicate',
         ].includes(detail.status)));
 
   const footerHeight = showFooterBar ? 64 + insets.bottom : insets.bottom + 8;
@@ -608,6 +619,9 @@ export function ReportDetailView({
               errorMessage={errorMessage}
               onRate={onRate}
               enableComments={enableComments}
+              fromMergedReportId={fromMergedReportId}
+              onOpenPrimaryReport={onOpenPrimaryReport}
+              onOpenMergedReport={onOpenMergedReport}
               comments={{
                 threads,
                 isLoading: isCommentsLoading,

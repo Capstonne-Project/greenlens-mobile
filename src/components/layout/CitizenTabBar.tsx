@@ -10,6 +10,7 @@ import { notificationService } from '@/services/notification.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { useNotificationStore } from '@/stores/notification.store';
 import { colors } from '@/theme/colors';
+import { resolveUnreadCount } from '@/utils/notification-unread';
 
 const LEFT_TABS = ['index', 'reports'] as const;
 const RIGHT_TABS = ['notifications', 'profile'] as const;
@@ -91,8 +92,8 @@ function TabSlot({ routeName, state, descriptors, navigation }: TabSlotProps) {
         />
         {showBadge ? (
           <View
-            className="absolute -left-2.5 -top-1.5 min-w-[16px] items-center justify-center rounded-full border-2 border-white bg-error px-1"
-            style={{ height: 16 }}
+            className="absolute -right-2.5 -top-1.5 min-w-[16px] items-center justify-center rounded-full border-2 border-white px-1"
+            style={{ height: 16, backgroundColor: colors.error }}
           >
             <Text className="text-[9px] font-bold leading-[10px] text-white">
               {unreadCount > 99 ? '99+' : unreadCount}
@@ -121,9 +122,12 @@ export function CitizenTabBar({ navigation, ...props }: BottomTabBarProps) {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await notificationService.getMyNotifications({ page: 1, pageSize: 1 });
+        const res = await notificationService.getMyNotifications({ page: 1, pageSize: 20 });
         if (!cancelled) {
-          useNotificationStore.getState().setUnreadCount(res.data.data.unreadCount ?? 0);
+          const data = res.data.data;
+          useNotificationStore
+            .getState()
+            .setUnreadCount(resolveUnreadCount(data, data.items ?? []));
         }
       } catch {
         // Badge sync is best-effort

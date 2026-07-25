@@ -44,6 +44,17 @@ export interface RateReportDto {
   comment?: string;
 }
 
+/** Ref tối thiểu để UI fetch thêm bằng id (flexible theo payload BE). */
+export interface MergedReportRef {
+  id: string;
+  code?: string | null;
+  categoryName?: string | null;
+  address?: string | null;
+  createdAt?: string | null;
+  imageUrl?: string | null;
+  status?: ReportWorkflowStatus | string | null;
+}
+
 export interface ReportDetail {
   id: string;
   code: string;
@@ -72,6 +83,12 @@ export interface ReportDetail {
   /** Có sẵn khi reporter đã đánh giá (Phần B2 handoff) */
   satisfaction?: ReportSatisfaction | null;
   hasCurrentUserRated?: boolean;
+
+  /** Khi báo cáo này bị gộp vào primary (Duplicate) */
+  mergedIntoPrimaryReportId?: string | null;
+  mergedIntoPrimaryReportCode?: string | null;
+  /** Optional — danh sách báo cáo đã gộp vào primary nếu BE trả */
+  mergedReports?: MergedReportRef[] | null;
 }
 
 export interface ReportHistoryItem {

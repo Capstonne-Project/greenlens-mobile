@@ -47,8 +47,8 @@ export function InspectorTabBar({ state, descriptors, navigation }: BottomTabBar
                 />
                 {showBadge ? (
                   <View
-                    className="absolute -left-2.5 -top-1.5 min-w-[16px] items-center justify-center rounded-full border-2 border-white bg-error px-1"
-                    style={{ height: 16 }}
+                    className="absolute -right-2.5 -top-1.5 min-w-[16px] items-center justify-center rounded-full border-2 border-white px-1"
+                    style={{ height: 16, backgroundColor: colors.error }}
                   >
                     <Text className="text-[9px] font-bold leading-[10px] text-white">
                       {unreadCount > 99 ? '99+' : unreadCount}

@@ -6,11 +6,14 @@ import { notificationService } from '@/services/notification.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { useNotificationStore } from '@/stores/notification.store';
 import { resolveNotificationHref } from '@/utils/resolve-notification-href';
+import { resolveUnreadCount } from '@/utils/notification-unread';
 
 async function syncUnreadCount(): Promise<void> {
   try {
-    const res = await notificationService.getMyNotifications({ page: 1, pageSize: 1 });
-    useNotificationStore.getState().setUnreadCount(res.data.data.unreadCount ?? 0);
+    const res = await notificationService.getMyNotifications({ page: 1, pageSize: 20 });
+    const data = res.data.data;
+    const items = data.items ?? [];
+    useNotificationStore.getState().setUnreadCount(resolveUnreadCount(data, items));
   } catch {
     // Badge sync is best-effort
   }
