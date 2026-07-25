@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useMemo } from 'react';
-import { Dimensions, FlatList as RNFlatList, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  Dimensions,
+  FlatList as RNFlatList,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -21,8 +27,8 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const PEEK_HEIGHT = 132;
 const MID_HEIGHT = Math.round(SCREEN_HEIGHT * 0.46);
 const FULL_HEIGHT = Math.round(SCREEN_HEIGHT * 0.88);
-/** Khi focus 1 pin: thấp hơn mid để không che chấm đỏ trên map */
-const FOCUS_HEIGHT = Math.round(SCREEN_HEIGHT * 0.32);
+/** Ước lượng ban đầu khi focus — onLayout sẽ chỉnh sát chiều cao card thật */
+const FOCUS_HEIGHT_ESTIMATE = 360;
 
 export type SheetSnapPoint = 'peek' | 'mid' | 'full';
 
@@ -36,7 +42,7 @@ interface DraggableReportsSheetProps {
   pins: CitizenMapPin[];
   reportCount: number;
   isLoading: boolean;
-  /** Pin đang focus từ marker — sheet chỉ hiện card này và nhảy lên mid */
+  /** Pin đang focus từ marker — sheet fit 1 card, ẩn dòng đếm khu vực */
   focusedPin?: CitizenMapPin | null;
   onOpenDetail: (pin: CitizenMapPin) => void;
   onSnapChange?: (snap: SheetSnapPoint) => void;
@@ -74,6 +80,8 @@ export function DraggableReportsSheet({
   /** Vị trí cuộn hiện tại của FlatList — pan chỉ được kéo sheet khi list đang ở đỉnh (<= 0) */
   const scrollY = useSharedValue(0);
   const isSheetDragging = useSharedValue(false);
+  const isFocusMode = useSharedValue(focusedPin ? 1 : 0);
+  const lastFocusHeightRef = useRef(0);
 
   const displayPins = useMemo(
     () => (focusedPin ? [focusedPin] : pins),
@@ -90,18 +98,43 @@ export function DraggableReportsSheet({
   );
 
   const snapToFocus = useCallback(() => {
-    // Spring chậm hơn — sheet trồi lên từ từ, dừng ở mức thấp
-    sheetHeight.value = withSpring(FOCUS_HEIGHT, { damping: 28, stiffness: 120, mass: 1.1 });
+    isFocusMode.value = 1;
+    lastFocusHeightRef.current = 0;
+    // Tạm theo estimate — onLayout sẽ spring sát chiều cao nội dung thật
+    sheetHeight.value = withSpring(FOCUS_HEIGHT_ESTIMATE, {
+      damping: 28,
+      stiffness: 120,
+      mass: 1.1,
+    });
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onSnapChange?.('mid');
-  }, [sheetHeight, onSnapChange]);
+    onSnapChange?.('peek');
+  }, [sheetHeight, onSnapChange, isFocusMode]);
 
-  // Bấm marker → sheet trồi lên từ từ (thấp) hiện đúng card report
+  const onFocusContentLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      if (!focusedPin) return;
+      const h = Math.ceil(event.nativeEvent.layout.height);
+      if (h < 120) return;
+      if (Math.abs(h - lastFocusHeightRef.current) < 2) return;
+      lastFocusHeightRef.current = h;
+      sheetHeight.value = withSpring(h, { damping: 26, stiffness: 180, mass: 1 });
+    },
+    [focusedPin, sheetHeight],
+  );
+
+  const prevFocusedIdRef = useRef<string | null>(null);
+
+  // Bấm marker → sheet fit card; xóa focus → mid + hiện lại dòng đếm
   useEffect(() => {
-    if (focusedPin) {
+    const id = focusedPin?.id ?? null;
+    if (id) {
       snapToFocus();
+    } else if (prevFocusedIdRef.current) {
+      isFocusMode.value = 0;
+      snapTo('mid');
     }
-  }, [focusedPin?.id, snapToFocus]);
+    prevFocusedIdRef.current = id;
+  }, [focusedPin?.id, snapToFocus, snapTo, isFocusMode]);
 
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
@@ -168,7 +201,8 @@ export function DraggableReportsSheet({
   );
 
   const animatedSheetStyle = useAnimatedStyle(() => ({
-    height: sheetHeight.value + bottomInset,
+    // Focus: không cộng bottomInset — tránh khoảng trắng dưới card
+    height: sheetHeight.value + (isFocusMode.value ? 0 : bottomInset),
   }));
 
   return (
@@ -176,39 +210,61 @@ export function DraggableReportsSheet({
       style={animatedSheetStyle}
       className="absolute bottom-0 left-0 right-0 z-10 overflow-hidden rounded-t-3xl border border-border bg-white shadow-lg shadow-black/10"
     >
-      <GestureDetector gesture={panGesture}>
-        <View className="items-center pb-3 pt-2">
-          <View className="mb-2 h-1.5 w-10 rounded-full bg-border" />
-          <Text className="text-sm font-semibold text-textSecondary">
-            {isLoading
-              ? 'Đang tải…'
-              : focusedPin
-                ? 'Đang focus 1 báo cáo'
-                : `${reportCount.toLocaleString('vi-VN')} báo cáo trong khu vực`}
-          </Text>
-        </View>
-      </GestureDetector>
-
-      {isLoading && displayPins.length === 0 ? (
-        <ListSkeleton />
-      ) : displayPins.length === 0 ? (
-        <View className="items-center px-6 py-16">
-          <Text className="text-center text-sm text-textSecondary">
-            Không có báo cáo nào trong khu vực đang xem. Thử kéo bản đồ sang khu vực khác.
-          </Text>
+      {focusedPin ? (
+        <View onLayout={onFocusContentLayout} collapsable={false}>
+          <GestureDetector gesture={panGesture}>
+            <View className="items-center pb-1 pt-2">
+              <View className="mb-1 h-1.5 w-10 rounded-full bg-border" />
+            </View>
+          </GestureDetector>
+          {/* -mb-4 hủy margin dưới của card để sheet khít sát mép dưới */}
+          <View className="-mb-4">
+            <MapReportListCard
+              pin={focusedPin}
+              onPress={() => onOpenDetail(focusedPin)}
+            />
+          </View>
         </View>
       ) : (
-        <GestureDetector gesture={composedGesture}>
-          <AnimatedFlatList
-            data={displayPins}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <MapReportListCard pin={item} onPress={() => onOpenDetail(item)} />}
-            contentContainerStyle={{ paddingTop: 4, paddingBottom: bottomInset + 24 }}
-            showsVerticalScrollIndicator={false}
-            onScroll={scrollHandler}
-            scrollEventThrottle={16}
-          />
-        </GestureDetector>
+        <>
+          <GestureDetector gesture={panGesture}>
+            <View className="items-center pb-3 pt-2">
+              <View className="mb-2 h-1.5 w-10 rounded-full bg-border" />
+              <Text className="text-sm font-semibold text-textSecondary">
+                {isLoading
+                  ? 'Đang tải…'
+                  : `${reportCount.toLocaleString('vi-VN')} báo cáo trong khu vực`}
+              </Text>
+            </View>
+          </GestureDetector>
+
+          {isLoading && displayPins.length === 0 ? (
+            <ListSkeleton />
+          ) : displayPins.length === 0 ? (
+            <View className="items-center px-6 py-16">
+              <Text className="text-center text-sm text-textSecondary">
+                Không có báo cáo nào trong khu vực đang xem. Thử kéo bản đồ sang khu vực khác.
+              </Text>
+            </View>
+          ) : (
+            <GestureDetector gesture={composedGesture}>
+              <AnimatedFlatList
+                data={displayPins}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <MapReportListCard pin={item} onPress={() => onOpenDetail(item)} />
+                )}
+                contentContainerStyle={{
+                  paddingTop: 4,
+                  paddingBottom: bottomInset + 24,
+                }}
+                showsVerticalScrollIndicator={false}
+                onScroll={scrollHandler}
+                scrollEventThrottle={16}
+              />
+            </GestureDetector>
+          )}
+        </>
       )}
     </Animated.View>
   );
