@@ -50,11 +50,13 @@ function resolveCitizenHref(type: string, ref: string | null): Href | null {
       }
       return '/(tabs)' as Href;
 
+    // ReportStatusChanged (merge): BE gửi referenceId = primary report id
     case 'ReportStatusChanged':
     case 'NewComment':
     case 'ReportAutoClosed':
     case 'PenaltyIssued':
     case 'SlaBreachWarning':
+    case 'DuplicateReviewNeeded':
       if (ref) {
         return {
           pathname: '/report/[id]',
