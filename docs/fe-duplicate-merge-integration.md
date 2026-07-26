@@ -88,6 +88,25 @@ if (item.status == "Duplicate" && item.mergedIntoPrimaryReportId != null) {
 
 ---
 
+## 1b. `GET /v1/reports/{id}` — `mergedReports` + thumb sau merge
+
+Khi xem **primary**, BE trả danh sách báo cáo đã gộp kèm thumb (projection — vẫn có sau `ReassignToReport`):
+
+| Field | Type | Mô tả |
+|-------|------|--------|
+| `mergedReports` | `MergedReportRef[]` | Các báo cáo `Duplicate` đã gộp vào primary |
+| `mergedReports[].id` | `Guid` | ID báo cáo con |
+| `mergedReports[].code` | `string?` | Mã hiển thị |
+| `mergedReports[].imageUrl` | `string?` | Thumb CDN |
+| `mergedReports[].createdAt` | `datetime?` | Ngày tạo |
+| `mergedReports[].status` | `string?` | Thường `Duplicate` |
+
+`GET /v1/reports/my` luôn trả `imageUrl` kể cả khi `status = Duplicate`.
+
+Chi tiết request gốc: [`fe-be-request-merged-report-images.md`](./fe-be-request-merged-report-images.md).
+
+---
+
 ## 2. Thay đổi Notification
 
 ### Trước (cũ)
@@ -145,4 +164,5 @@ onNotificationTap(notification) {
 - [x] Xử lý UI khi `status == "Duplicate"` → hiện badge "Đã gộp" + link báo cáo gốc
 - [x] Cập nhật notification handler: `referenceId` giờ trỏ đến **primary report**
 - [x] Deep-link notification tap → `ReportDetailScreen(referenceId)`
-- [ ] Test: submit 2 báo cáo cùng vị trí → confirm duplicate → verify notification + my reports
+- [x] Consume `mergedReports[].imageUrl` + `my.imageUrl` (Duplicate) trên mobile
+- [ ] Test: submit 2 báo cáo cùng vị trí → confirm duplicate → verify notification + my reports + thumbs
