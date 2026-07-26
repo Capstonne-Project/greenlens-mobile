@@ -53,7 +53,7 @@ function statusTone(status: string): string {
   if (isNeedsConfirm(status)) return '#B45309';
   if (isActiveWork(status)) return colors.primaryDark;
   if (isClosed(status)) return colors.textSecondary;
-  if (status === 'Duplicate') return colors.textSecondary;
+  if (status === 'Duplicate') return colors.primaryDark;
   if (isRejectedOnly(status)) return colors.error;
   return colors.textSecondary;
 }
@@ -62,32 +62,32 @@ function timelineCopy(item: MyReportItem): { icon: keyof typeof Ionicons.glyphMa
   if (isMergedDuplicateReport(item)) {
     const code = item.mergedIntoPrimaryReportCode?.trim();
     return {
-      icon: 'git-merge-outline',
+      icon: 'link-outline',
       text: code
-        ? `Đã gộp vào ${code} — theo dõi tiến độ tại báo cáo gốc`
-        : 'Đã gộp vào báo cáo gốc — chạm để theo dõi tiến độ',
+        ? `Trùng với ${code} — theo dõi tiến độ ở báo cáo đó`
+        : 'Trùng với báo cáo khác — theo dõi tiến độ ở báo cáo đó',
     };
   }
   if (item.status === 'Duplicate') {
     return {
-      icon: 'git-merge-outline',
-      text: 'Báo cáo trùng lặp đã được gộp',
+      icon: 'link-outline',
+      text: 'Trùng với báo cáo khác và đã được gộp',
     };
   }
   if (isNeedsConfirm(item.status)) {
-    return { icon: 'checkmark-circle-outline', text: 'Đội đã xử lý xong — chờ bạn xác nhận kết quả' };
+    return { icon: 'checkmark-circle-outline', text: 'Đã hoàn thành — chờ bạn xác nhận' };
   }
   if (item.status === 'InProgress') {
-    return { icon: 'sync-outline', text: 'Đang được đội xử lý tại hiện trường' };
+    return { icon: 'sync-outline', text: 'Đang được xử lý' };
   }
   if (item.status === 'Verified' || item.status === 'Assigned' || item.status === 'Dispatched') {
-    return { icon: 'people-outline', text: 'Đã xác minh / phân công — chờ triển khai' };
+    return { icon: 'shield-checkmark-outline', text: 'Đã xác minh — chờ xử lý' };
   }
   if (item.status === 'Submitted') {
-    return { icon: 'time-outline', text: 'Đã gửi — đang chờ xác minh' };
+    return { icon: 'time-outline', text: 'Đã gửi — chờ xác minh' };
   }
   if (isClosed(item.status)) {
-    return { icon: 'checkmark-done-outline', text: 'Báo cáo đã kết thúc' };
+    return { icon: 'checkmark-done-outline', text: 'Đã hoàn thành' };
   }
   if (isRejectedOnly(item.status)) {
     return { icon: 'close-circle-outline', text: 'Báo cáo không được tiếp nhận' };
@@ -173,7 +173,7 @@ function MyReportListCardComponent({ item, onPress, onOpenPrimary }: MyReportLis
                 {formatRelativeTime(item.createdAt)}
                 {item.resolvedAt && needsConfirm ? ' · Đã xử lý' : ''}
               </Text>
-              <Text className="mt-0.5 text-[11px] leading-4 text-textSecondary" numberOfLines={2}>
+              <Text className="mt-0.5 text-[11px] leading-4 text-textSecondary" numberOfLines={3}>
                 {timeline.text}
               </Text>
             </View>
@@ -230,10 +230,10 @@ function MyReportListCardComponent({ item, onPress, onOpenPrimary }: MyReportLis
           className="mt-3 flex-row items-center gap-1.5"
           hitSlop={6}
         >
-          <Ionicons name="arrow-forward-circle-outline" size={15} color={colors.primary} />
-          <Text className="flex-1 text-[12px] font-medium text-primary" numberOfLines={1}>
-            Theo dõi tiến độ tại {primaryCode}
+          <Text className="text-[12px] font-medium text-primary" numberOfLines={1}>
+            Mở {primaryCode}
           </Text>
+          <Ionicons name="arrow-forward" size={13} color={colors.primary} />
         </Pressable>
       ) : null}
 
@@ -247,7 +247,7 @@ function MyReportListCardComponent({ item, onPress, onOpenPrimary }: MyReportLis
           <ActionBtn label="Theo dõi" variant="outline" onPress={onPress} />
         ) : merged ? (
           <ActionBtn
-            label="Theo dõi báo cáo gốc"
+            label={primaryCode ? `Mở ${primaryCode}` : 'Mở báo cáo gốc'}
             variant="outline"
             onPress={onOpenPrimary ?? onPress}
           />
