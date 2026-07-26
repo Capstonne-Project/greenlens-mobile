@@ -7,11 +7,14 @@ import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback } from 'react';
 
 export default function ReportDetailScreen() {
-  const { id, source, fromMergedReportId } = useLocalSearchParams<{
-    id: string;
-    source?: ReportDetailSource;
-    fromMergedReportId?: string;
-  }>();
+  const { id, source, fromMergedReportId, fromMergedReportImageUrl, seedImageUrl } =
+    useLocalSearchParams<{
+      id: string;
+      source?: ReportDetailSource;
+      fromMergedReportId?: string;
+      fromMergedReportImageUrl?: string;
+      seedImageUrl?: string;
+    }>();
   const currentUserId = useAuthStore((s) => s.user?.id);
 
   const detailSource: ReportDetailSource = source === 'map' ? 'map' : 'tab';
@@ -19,6 +22,14 @@ export default function ReportDetailScreen() {
     typeof fromMergedReportId === 'string' && fromMergedReportId.length > 0
       ? fromMergedReportId
       : null;
+  const mergedFromThumb =
+    typeof fromMergedReportImageUrl === 'string' && fromMergedReportImageUrl.trim().length > 0
+      ? fromMergedReportImageUrl.trim()
+      : null;
+  const heroSeedThumb =
+    typeof seedImageUrl === 'string' && seedImageUrl.trim().length > 0
+      ? seedImageUrl.trim()
+      : mergedFromThumb;
 
   const { detail, history, isLoading, isActionBusy, errorMessage, refetch, closeReport, reopenReport, rateReport } =
     useReportDetail(id, Boolean(id));
@@ -45,13 +56,26 @@ export default function ReportDetailScreen() {
   }, [detailSource]);
 
   const openReportById = useCallback(
-    (reportId: string, nextFromMergedId?: string | null) => {
+    (
+      reportId: string,
+      options?: {
+        fromMergedReportId?: string | null;
+        seedImageUrl?: string | null;
+        fromMergedReportImageUrl?: string | null;
+      },
+    ) => {
+      const seed = options?.seedImageUrl?.trim();
+      const fromThumb = options?.fromMergedReportImageUrl?.trim();
       router.push({
         pathname: '/report/[id]',
         params: {
           id: reportId,
           source: detailSource,
-          ...(nextFromMergedId ? { fromMergedReportId: nextFromMergedId } : {}),
+          ...(options?.fromMergedReportId
+            ? { fromMergedReportId: options.fromMergedReportId }
+            : {}),
+          ...(fromThumb ? { fromMergedReportImageUrl: fromThumb } : {}),
+          ...(seed ? { seedImageUrl: seed } : {}),
         },
       } as Href);
     },
@@ -68,13 +92,19 @@ export default function ReportDetailScreen() {
       source={detailSource}
       currentUserId={currentUserId}
       fromMergedReportId={resolvedMergedFromId}
+      fromMergedReportImageUrl={mergedFromThumb}
+      seedImageUrl={heroSeedThumb}
       onBack={handleBack}
       onRetry={() => void refetch()}
       onOpenPrimaryReport={(primaryReportId) => {
-        openReportById(primaryReportId, id);
+        openReportById(primaryReportId, {
+          fromMergedReportId: id,
+          // Giữ thumb báo cáo hiện tại (Duplicate) khi nhảy sang primary
+          fromMergedReportImageUrl: heroSeedThumb ?? detail?.imageUrl,
+        });
       }}
-      onOpenMergedReport={(reportId) => {
-        openReportById(reportId);
+      onOpenMergedReport={(reportId, imageUrl) => {
+        openReportById(reportId, { seedImageUrl: imageUrl });
       }}
       onClose={async () => {
         await closeReport();

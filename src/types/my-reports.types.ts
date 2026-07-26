@@ -21,9 +21,8 @@ export interface MyReportItem {
   wardCode?: string;
   reporterCount?: number;
   /**
-   * TODO(BE): `/reports/my` hiện chưa trả field ảnh đại diện của báo cáo.
-   * Cần BE bổ sung `imageUrl` (ảnh đầu tiên của report) vào response để
-   * hiển thị lưới ảnh thật trên trang Hồ sơ — hiện đang dùng placeholder theo category.
+   * Ảnh đại diện — BE trả trên `GET /v1/reports/my` (kể cả `status=Duplicate`
+   * sau khi media đã reassign sang primary).
    */
   imageUrl?: string | null;
   /** ID báo cáo gốc khi status = Duplicate; null nếu không bị gộp */

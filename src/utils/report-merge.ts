@@ -64,10 +64,32 @@ export function collectMergedReportIds(options: {
   return result;
 }
 
+/** URL ảnh hợp lệ đầu tiên (bỏ chuỗi rỗng). */
+export function firstNonEmptyUrl(
+  ...candidates: Array<string | null | undefined>
+): string | null {
+  for (const value of candidates) {
+    const url = value?.trim();
+    if (url) return url;
+  }
+  return null;
+}
+
+/** Ảnh đại diện từ detail — sau merge BE thường Reassign media sang primary nên Duplicate có thể rỗng. */
+export function pickReportThumbUrl(
+  media: Array<{ url?: string | null } | null | undefined> | null | undefined,
+): string | null {
+  for (const item of media ?? []) {
+    const url = item?.url?.trim();
+    if (url) return url;
+  }
+  return null;
+}
+
 export function toMergedReportRef(
   detail: Pick<
     ReportDetail,
-    'id' | 'code' | 'categoryName' | 'address' | 'createdAt' | 'status' | 'media'
+    'id' | 'code' | 'categoryName' | 'address' | 'createdAt' | 'status' | 'media' | 'imageUrl'
   >,
 ): MergedReportRef {
   return {
@@ -76,9 +98,15 @@ export function toMergedReportRef(
     categoryName: detail.categoryName,
     address: detail.address,
     createdAt: detail.createdAt,
-    imageUrl: detail.media?.[0]?.url ?? null,
+    // P1 top-level imageUrl trước; media có thể rỗng sau ReassignToReport
+    imageUrl: firstNonEmptyUrl(detail.imageUrl, pickReportThumbUrl(detail.media)),
     status: detail.status,
   };
+}
+
+/** Seed từ `mergedReports[]` đã đủ để hiện row — không cần GET detail thêm. */
+export function hasMergedReportSeed(ref: MergedReportRef | undefined): boolean {
+  return !!ref && isUuid(ref.id) && !!ref.code?.trim() && !!ref.imageUrl?.trim();
 }
 
 export function isMergeNotificationCopy(title?: string | null, message?: string | null): boolean {

@@ -44,7 +44,10 @@ export interface RateReportDto {
   comment?: string;
 }
 
-/** Ref tối thiểu để UI fetch thêm bằng id (flexible theo payload BE). */
+/**
+ * Ref báo cáo đã gộp — BE trả trên primary `GET /v1/reports/{id}.mergedReports[]`.
+ * `imageUrl` là thumb projection (vẫn có sau ReassignToReport).
+ */
 export interface MergedReportRef {
   id: string;
   code?: string | null;
@@ -80,6 +83,12 @@ export interface ReportDetail {
   slaVerifyDueAt?: string | null;
   slaResolveDueAt?: string | null;
 
+  /**
+   * Thumb đại diện (P1) — có thể còn trên Duplicate sau reassign media.
+   * Ưu tiên dùng khi `media[]` rỗng.
+   */
+  imageUrl?: string | null;
+
   /** Có sẵn khi reporter đã đánh giá (Phần B2 handoff) */
   satisfaction?: ReportSatisfaction | null;
   hasCurrentUserRated?: boolean;
@@ -87,7 +96,7 @@ export interface ReportDetail {
   /** Khi báo cáo này bị gộp vào primary (Duplicate) */
   mergedIntoPrimaryReportId?: string | null;
   mergedIntoPrimaryReportCode?: string | null;
-  /** Optional — danh sách báo cáo đã gộp vào primary nếu BE trả */
+  /** Báo cáo đã gộp vào primary — gồm `imageUrl` thumb sau merge */
   mergedReports?: MergedReportRef[] | null;
 }
 
