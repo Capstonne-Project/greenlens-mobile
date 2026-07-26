@@ -7,29 +7,87 @@ export interface ReportStatusMeta {
   highlight?: boolean;
 }
 
+/** Label citizen-facing — chỉ các mốc người dùng cần biết (không lộ LEO / đội / công ty). */
 const STATUS_META: Record<string, ReportStatusMeta> = {
-  Submitted: { label: 'Đã gửi — chờ xác minh', textColor: '#92400E', bgColor: '#FEF3C7' },
+  Submitted: { label: 'Chờ xác minh', textColor: '#92400E', bgColor: '#FEF3C7' },
   Verified: { label: 'Đã xác minh', textColor: '#065F46', bgColor: '#D1FAE5' },
-  Dispatched: { label: 'Đã điều phối', textColor: '#1E40AF', bgColor: '#DBEAFE' }, // legacy v2
-  Assigned: { label: 'Đã phân công', textColor: '#1E40AF', bgColor: '#DBEAFE' }, // legacy v2
+  Dispatched: { label: 'Đã xác minh', textColor: '#065F46', bgColor: '#D1FAE5' }, // legacy — gộp vào xác minh
+  Assigned: { label: 'Đã xác minh', textColor: '#065F46', bgColor: '#D1FAE5' }, // legacy — gộp vào xác minh
   InProgress: { label: 'Đang xử lý', textColor: '#1D4ED8', bgColor: '#DBEAFE' },
   Resolved: {
-    label: 'Đã xử lý — cần bạn xác nhận',
+    label: 'Hoàn thành — cần xác nhận',
     textColor: '#9A3412',
     bgColor: '#FFEDD5',
     highlight: true,
   },
   PenaltyIssued: {
-    label: 'Đã xử lý — cần bạn xác nhận', // legacy v2 — inspection sub-process, hiển thị như Resolved
+    label: 'Hoàn thành — cần xác nhận',
     textColor: '#9A3412',
     bgColor: '#FFEDD5',
     highlight: true,
   },
-  Closed: { label: 'Đã đóng', textColor: '#374151', bgColor: '#F3F4F6' },
-  ClosedNoViolation: { label: 'Đã đóng (không vi phạm)', textColor: '#374151', bgColor: '#F3F4F6' },
+  Closed: { label: 'Hoàn thành', textColor: '#374151', bgColor: '#F3F4F6' },
+  ClosedNoViolation: { label: 'Hoàn thành', textColor: '#374151', bgColor: '#F3F4F6' },
   Rejected: { label: 'Bị từ chối', textColor: '#991B1B', bgColor: '#FEE2E2' },
   Duplicate: { label: 'Đã gộp', textColor: '#4B5563', bgColor: '#F3F4F6' },
 };
+
+/** Các mốc tiến trình cơ bản trên màn chi tiết citizen */
+export type CitizenProgressPhase = 'submitted' | 'verified' | 'working' | 'done';
+
+export function getCitizenProgress(detail: {
+  status: string;
+  verifiedAt?: string | null;
+  startedAt?: string | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+}): Record<
+  CitizenProgressPhase,
+  { done: boolean; time: string | null; pendingLabel: string }
+> {
+  const status = detail.status;
+  const isRejected = status === 'Rejected';
+  const isDuplicate = status === 'Duplicate';
+
+  const verifiedDone =
+    !isRejected &&
+    (Boolean(detail.verifiedAt) ||
+      ['Verified', 'Dispatched', 'Assigned', 'InProgress', 'Resolved', 'PenaltyIssued', 'Closed', 'ClosedNoViolation'].includes(
+        status,
+      ));
+
+  const workingDone =
+    !isRejected &&
+    !isDuplicate &&
+    (Boolean(detail.startedAt) ||
+      status === 'InProgress' ||
+      ['Resolved', 'PenaltyIssued', 'Closed', 'ClosedNoViolation'].includes(status));
+
+  const doneDone =
+    !isRejected &&
+    (Boolean(detail.resolvedAt) ||
+      Boolean(detail.closedAt) ||
+      ['Resolved', 'PenaltyIssued', 'Closed', 'ClosedNoViolation'].includes(status));
+
+  return {
+    submitted: { done: true, time: null, pendingLabel: 'Đã gửi' },
+    verified: {
+      done: verifiedDone,
+      time: detail.verifiedAt ?? null,
+      pendingLabel: 'Chưa xác minh',
+    },
+    working: {
+      done: workingDone,
+      time: detail.startedAt ?? null,
+      pendingLabel: 'Chưa bắt đầu xử lý',
+    },
+    done: {
+      done: doneDone,
+      time: detail.resolvedAt ?? detail.closedAt ?? null,
+      pendingLabel: 'Chưa hoàn thành',
+    },
+  };
+}
 
 const FALLBACK_META: ReportStatusMeta = {
   label: 'Không rõ',
@@ -97,7 +155,7 @@ export function getReportFooterActions(
       return {
         showClose: false,
         showReopen: false,
-        infoMessage: 'Báo cáo đã gộp — theo dõi tiến độ tại báo cáo gốc',
+        infoMessage: 'Báo cáo đã gộp — theo dõi tiến độ ở báo cáo gốc',
       };
     default:
       return { showClose: false, showReopen: false };

@@ -256,13 +256,18 @@ export default function ReportsTabScreen() {
 
   const openDetail = useCallback((item: MyReportItem) => {
     const target = resolveMyReportDetailTarget(item);
+    const mergedThumb = item.imageUrl?.trim();
     router.push({
       pathname: '/report/[id]',
       params: {
         id: target.id,
         source: 'tab',
         ...(target.fromMergedReportId
-          ? { fromMergedReportId: target.fromMergedReportId }
+          ? {
+              fromMergedReportId: target.fromMergedReportId,
+              // List vẫn có thumb; GET detail báo cáo Duplicate sau merge thường mất media (BE reassign)
+              ...(mergedThumb ? { fromMergedReportImageUrl: mergedThumb } : {}),
+            }
           : {}),
       },
     } as Href);

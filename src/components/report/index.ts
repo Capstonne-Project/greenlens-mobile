@@ -7,4 +7,5 @@ export { ReportCard } from './ReportCard';
 export { ReportCommentsSection } from './ReportCommentsSection';
 export { ReportDetailBody } from './ReportDetailBody';
 export { ReportDetailView } from './ReportDetailView';
+export { ReportLocationMap } from './ReportLocationMap';
 export { ReportSatisfactionCard } from './ReportSatisfactionCard';

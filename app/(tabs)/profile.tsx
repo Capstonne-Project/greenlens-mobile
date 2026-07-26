@@ -373,13 +373,17 @@ export default function ProfileTabScreen() {
       return;
     }
     const target = resolveMyReportDetailTarget(itemOrId);
+    const mergedThumb = itemOrId.imageUrl?.trim();
     router.push({
       pathname: '/report/[id]',
       params: {
         id: target.id,
         source: 'tab',
         ...(target.fromMergedReportId
-          ? { fromMergedReportId: target.fromMergedReportId }
+          ? {
+              fromMergedReportId: target.fromMergedReportId,
+              ...(mergedThumb ? { fromMergedReportImageUrl: mergedThumb } : {}),
+            }
           : {}),
       },
     } as Href);

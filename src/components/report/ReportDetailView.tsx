@@ -56,8 +56,11 @@ interface ReportDetailViewProps {
   /** Bật block bình luận / phản hồi (citizen + đội ngũ) */
   enableComments?: boolean;
   fromMergedReportId?: string | null;
+  fromMergedReportImageUrl?: string | null;
+  /** Thumb seed khi mở report Duplicate (media đã reassign sang primary) */
+  seedImageUrl?: string | null;
   onOpenPrimaryReport?: (primaryReportId: string) => void;
-  onOpenMergedReport?: (reportId: string) => void;
+  onOpenMergedReport?: (reportId: string, imageUrl?: string | null) => void;
 }
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -266,6 +269,8 @@ export function ReportDetailView({
   onRate,
   enableComments = true,
   fromMergedReportId,
+  fromMergedReportImageUrl,
+  seedImageUrl,
   onOpenPrimaryReport,
   onOpenMergedReport,
 }: ReportDetailViewProps) {
@@ -321,10 +326,18 @@ export function ReportDetailView({
 
   const footerHeight = showFooterBar ? 64 + insets.bottom : insets.bottom + 8;
 
-  const citizenMedia = useMemo(
-    () => splitReportMedia(detail?.media).citizen,
-    [detail?.media],
-  );
+  const citizenMedia = useMemo(() => {
+    const fromMedia = splitReportMedia(detail?.media).citizen;
+    if (fromMedia.length > 0) return fromMedia;
+    // Duplicate sau reassign: media[] rỗng → dùng imageUrl BE (P1) hoặc thumb seed từ màn trước
+    const thumb =
+      detail?.imageUrl?.trim() ||
+      seedImageUrl?.trim() ||
+      fromMergedReportImageUrl?.trim() ||
+      '';
+    if (thumb) return [{ id: 'detail-imageUrl', url: thumb }];
+    return [];
+  }, [detail?.media, detail?.imageUrl, seedImageUrl, fromMergedReportImageUrl]);
 
   const snapTo = useCallback(
     (point: SheetSnap) => {
@@ -620,6 +633,7 @@ export function ReportDetailView({
               onRate={onRate}
               enableComments={enableComments}
               fromMergedReportId={fromMergedReportId}
+              fromMergedReportImageUrl={fromMergedReportImageUrl}
               onOpenPrimaryReport={onOpenPrimaryReport}
               onOpenMergedReport={onOpenMergedReport}
               comments={{
