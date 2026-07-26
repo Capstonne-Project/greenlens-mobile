@@ -23,6 +23,7 @@ import { colors } from '@/theme/colors';
 import type { MyReportItem } from '@/types/my-reports.types';
 import type { UserRole } from '@/types/user.types';
 import { formatDate } from '@/utils/formatters';
+import { resolveMyReportDetailTarget } from '@/utils/report-merge';
 import { getReportStatusMeta } from '@/utils/report-status';
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -239,7 +240,7 @@ function ReportPreviewModal({
 }: {
   item: MyReportItem | null;
   onClose: () => void;
-  onOpenDetail: (reportId: string) => void;
+  onOpenDetail: (item: MyReportItem) => void;
 }) {
   const insets = useSafeAreaInsets();
   const scale = useSharedValue(0.85);
@@ -274,7 +275,7 @@ function ReportPreviewModal({
       </Animated.View>
 
       <Animated.View className="w-full overflow-hidden rounded-2xl bg-white" style={[CARD_3D_SHADOW, cardStyle]}>
-        <Pressable onPress={() => onOpenDetail(item.id)}>
+        <Pressable onPress={() => onOpenDetail(item)}>
           <View className="flex-row items-center gap-2 border-b border-border px-4 py-3">
             <View
               className="h-8 w-8 items-center justify-center rounded-full"
@@ -331,7 +332,7 @@ function ReportPreviewModal({
             </View>
           </TapScale>
           <View className="w-px bg-border" />
-          <TapScale onPress={() => onOpenDetail(item.id)} className="flex-1">
+          <TapScale onPress={() => onOpenDetail(item)} className="flex-1">
             <View className="items-center py-3.5">
               <Text className="text-sm font-semibold text-primary">Xem chi tiết</Text>
             </View>
@@ -366,8 +367,26 @@ export default function ProfileTabScreen() {
   const roleLabel = user?.role ? ROLE_LABEL[user.role] : undefined;
   const resolvedCount = useMemo(() => items.filter((i) => i.resolvedAt).length, [items]);
 
-  const openDetail = (reportId: string) => {
-    router.push({ pathname: '/report/[id]', params: { id: reportId, source: 'tab' } } as Href);
+  const openDetail = (itemOrId: MyReportItem | string) => {
+    if (typeof itemOrId === 'string') {
+      router.push({ pathname: '/report/[id]', params: { id: itemOrId, source: 'tab' } } as Href);
+      return;
+    }
+    const target = resolveMyReportDetailTarget(itemOrId);
+    const mergedThumb = itemOrId.imageUrl?.trim();
+    router.push({
+      pathname: '/report/[id]',
+      params: {
+        id: target.id,
+        source: 'tab',
+        ...(target.fromMergedReportId
+          ? {
+              fromMergedReportId: target.fromMergedReportId,
+              ...(mergedThumb ? { fromMergedReportImageUrl: mergedThumb } : {}),
+            }
+          : {}),
+      },
+    } as Href);
   };
 
   return (
@@ -476,7 +495,7 @@ export default function ProfileTabScreen() {
                 </Text>
               </View>
             ) : (
-              items.map((item) => <ActivityCard key={item.id} item={item} onPress={() => openDetail(item.id)} />)
+              items.map((item) => <ActivityCard key={item.id} item={item} onPress={() => openDetail(item)} />)
             )}
           </View>
         )}
@@ -487,9 +506,9 @@ export default function ProfileTabScreen() {
       <ReportPreviewModal
         item={previewItem}
         onClose={() => setPreviewItem(null)}
-        onOpenDetail={(reportId) => {
+        onOpenDetail={(reportItem) => {
           setPreviewItem(null);
-          openDetail(reportId);
+          openDetail(reportItem);
         }}
       />
     </View>

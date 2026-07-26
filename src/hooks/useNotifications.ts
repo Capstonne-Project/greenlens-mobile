@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { notificationService } from '@/services/notification.service';
 import { useNotificationStore } from '@/stores/notification.store';
 import type { AppNotification } from '@/types/notification.types';
+import { resolveUnreadCount } from '@/utils/notification-unread';
 
 export type NotificationsReadFilter = 'all' | 'unread';
 
@@ -74,7 +75,9 @@ export function useNotifications(
         setItems((prev) => (mode === 'append' ? [...prev, ...nextItems] : nextItems));
         setPage(nextPage);
         setTotalCount(data.totalCount ?? nextItems.length);
-        setUnreadCount(data.unreadCount ?? 0);
+        setUnreadCount(
+          resolveUnreadCount(data, nextItems, { isUnreadOnly: isReadParam === false }),
+        );
       } catch {
         setErrorMessage('Không tải được thông báo. Vui lòng thử lại.');
       } finally {

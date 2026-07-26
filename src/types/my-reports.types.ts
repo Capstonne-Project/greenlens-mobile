@@ -21,11 +21,14 @@ export interface MyReportItem {
   wardCode?: string;
   reporterCount?: number;
   /**
-   * TODO(BE): `/reports/my` hiện chưa trả field ảnh đại diện của báo cáo.
-   * Cần BE bổ sung `imageUrl` (ảnh đầu tiên của report) vào response để
-   * hiển thị lưới ảnh thật trên trang Hồ sơ — hiện đang dùng placeholder theo category.
+   * Ảnh đại diện — BE trả trên `GET /v1/reports/my` (kể cả `status=Duplicate`
+   * sau khi media đã reassign sang primary).
    */
   imageUrl?: string | null;
+  /** ID báo cáo gốc khi status = Duplicate; null nếu không bị gộp */
+  mergedIntoPrimaryReportId?: string | null;
+  /** Mã hiển thị báo cáo gốc (e.g. RPT-2026-0045) */
+  mergedIntoPrimaryReportCode?: string | null;
 }
 
 export interface ReportsPagination {
@@ -55,7 +58,7 @@ export const MY_REPORTS_FILTERS: { key: MyReportsFilterKey; label: string }[] = 
   { key: 'InProgress', label: 'Đang xử lý' },
   { key: 'NEEDS_CONFIRM', label: 'Cần xác nhận' },
   { key: 'DONE', label: 'Đã xong' },
-  { key: 'Rejected', label: 'Bị từ chối' },
+  { key: 'Rejected', label: 'Từ chối / Đã gộp' },
 ];
 
 export function filterMyReportsByKey(items: MyReportItem[], key: MyReportsFilterKey): MyReportItem[] {

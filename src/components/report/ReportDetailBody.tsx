@@ -1,4 +1,6 @@
+import { MergedReportsSection } from '@/components/report/MergedReportsSection';
 import { ReportCommentsSection } from '@/components/report/ReportCommentsSection';
+import { ReportLocationMap } from '@/components/report/ReportLocationMap';
 import { ReportSatisfactionCard } from '@/components/report/ReportSatisfactionCard';
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
@@ -9,9 +11,9 @@ import type {
   ReportHistoryItem,
   ReportMediaItem,
 } from '@/types/report-detail.types';
-import { formatDate, formatRelativeTime } from '@/utils/formatters';
+import { formatDate } from '@/utils/formatters';
 import { splitReportMedia } from '@/utils/report-media';
-import { getReportStatusMeta } from '@/utils/report-status';
+import { getCitizenProgress } from '@/utils/report-status';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useMemo, useState } from 'react';
@@ -33,6 +35,11 @@ export interface ReportDetailBodyProps {
   errorMessage: string | null;
   onRate?: (dto: RateReportDto) => Promise<void>;
   enableComments?: boolean;
+  /** Báo cáo của user bị gộp vào primary đang xem */
+  fromMergedReportId?: string | null;
+  fromMergedReportImageUrl?: string | null;
+  onOpenPrimaryReport?: (primaryReportId: string) => void;
+  onOpenMergedReport?: (reportId: string, imageUrl?: string | null) => void;
   comments: {
     threads: CommentThread[];
     isLoading: boolean;
@@ -278,6 +285,10 @@ export function ReportDetailBody({
   errorMessage,
   onRate,
   enableComments = true,
+  fromMergedReportId,
+  fromMergedReportImageUrl,
+  onOpenPrimaryReport,
+  onOpenMergedReport,
   comments,
 }: ReportDetailBodyProps) {
   const severity = SEVERITY_CONFIG[detail.severity] ?? SEVERITY_CONFIG.Medium;
@@ -292,14 +303,9 @@ export function ReportDetailBody({
       : null;
 
   const mediaByType = useMemo(() => splitReportMedia(detail.media), [detail.media]);
-  const progressNotes = detail.assignments
-    .map((a) => a.progressNote?.trim())
-    .filter((note): note is string => Boolean(note));
-  const latestProgressNote = progressNotes.length > 0 ? progressNotes[progressNotes.length - 1] : null;
-  const latestProgressUpdated = detail.assignments
-    .map((a) => a.progressUpdatedAt)
-    .filter((value): value is string => Boolean(value))
-    .at(-1);
+  const progress = useMemo(() => getCitizenProgress(detail), [detail]);
+  const hideOpsProgress =
+    detail.status === 'Rejected' || detail.status === 'Duplicate';
 
   return (
     <View>
@@ -332,6 +338,12 @@ export function ReportDetailBody({
         </View>
       ) : null}
 
+      <ReportLocationMap
+        latitude={detail.latitude}
+        longitude={detail.longitude}
+        address={detail.address}
+      />
+
       {rejectedReason ? (
         <View className="mb-4">
           <SectionTitle label="Lý do từ chối" />
@@ -343,36 +355,13 @@ export function ReportDetailBody({
         </View>
       ) : null}
 
-      {detail.assignments.length > 0 ? (
-        <View className="mb-4">
-          <SectionTitle label="Tiến độ xử lý" />
-          {detail.assignments.map((assignment, index) => (
-            <View
-              key={assignment.id ?? `${assignment.teamId ?? assignment.teamName}-${index}`}
-              className="mb-3"
-            >
-              <View className="mb-1 flex-row items-center justify-between">
-                <Text className="text-sm font-semibold text-textPrimary">{assignment.teamName}</Text>
-                <Text className="text-sm font-bold" style={{ color: colors.primary }}>
-                  {assignment.progressPercent}%
-                </Text>
-              </View>
-              <View className="h-2 overflow-hidden rounded-full bg-surface">
-                <View
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${assignment.progressPercent}%` as `${number}%`,
-                    backgroundColor: colors.primary,
-                  }}
-                />
-              </View>
-              {assignment.progressNote ? (
-                <Text className="mt-1 text-xs text-textSecondary">{assignment.progressNote}</Text>
-              ) : null}
-            </View>
-          ))}
-        </View>
-      ) : null}
+      <MergedReportsSection
+        detail={detail}
+        fromMergedReportId={fromMergedReportId}
+        fromMergedReportImageUrl={fromMergedReportImageUrl}
+        onOpenPrimary={onOpenPrimaryReport}
+        onOpenMergedReport={onOpenMergedReport}
+      />
 
       {detail.wasteTags.length > 0 ? (
         <View className="mb-4">
@@ -393,89 +382,57 @@ export function ReportDetailBody({
         </View>
       ) : null}
 
-      <View className="mb-4 h-px bg-border" />
-
-      <View className="mb-4">
-        <SectionTitle label="Tiến trình" />
-        <TimelineStep label="Gửi báo cáo" time={formatDate(detail.createdAt)} done />
-        <TimelineStep
-          label="Xác minh"
-          time={detail.verifiedAt ? formatDate(detail.verifiedAt) : null}
-          done={Boolean(detail.verifiedAt)}
-        />
-        <TimelineStep
-          label="Ảnh hiện trạng (Before)"
-          time={detail.startedAt ? formatDate(detail.startedAt) : null}
-          done={mediaByType.before.length > 0 || Boolean(detail.startedAt)}
-          subtitle={
-            mediaByType.before.length > 0
-              ? `Team đã chụp ${mediaByType.before.length} ảnh trước khi dọn`
-              : detail.startedAt
-                ? 'Đang chờ team upload ảnh hiện trạng'
-                : null
-          }
-          media={mediaByType.before}
-        />
-        <TimelineStep
-          label="Cập nhật tiến độ"
-          time={
-            latestProgressUpdated
-              ? formatRelativeTime(latestProgressUpdated)
-              : mediaByType.progress.length > 0
-                ? 'Đã cập nhật'
-                : null
-          }
-          done={mediaByType.progress.length > 0 || (detail.assignments.some((a) => a.progressPercent > 0) && Boolean(detail.startedAt))}
-          subtitle={
-            latestProgressNote ??
-            (mediaByType.progress.length > 0
-              ? `${mediaByType.progress.length} ảnh tiến độ từ team`
-              : null)
-          }
-          media={mediaByType.progress}
-        />
-        <TimelineStep
-          label="Xử lý xong (After)"
-          time={detail.resolvedAt ? formatDate(detail.resolvedAt) : null}
-          done={Boolean(detail.resolvedAt) || mediaByType.after.length > 0}
-          subtitle={
-            mediaByType.after.length > 0
-              ? `${mediaByType.after.length} ảnh sau khi dọn`
-              : null
-          }
-          media={mediaByType.after}
-        />
-        <TimelineStep
-          label="Đóng báo cáo"
-          time={detail.closedAt ? formatDate(detail.closedAt) : null}
-          done={Boolean(detail.closedAt)}
-          isLast={history.length === 0}
-        />
-        {history.map((item, index) => {
-          const meta = getReportStatusMeta(item.toStatus);
-          return (
+      {!hideOpsProgress ? (
+        <>
+          <View className="mb-4 h-px bg-border" />
+          <View className="mb-4">
+            <SectionTitle label="Tiến trình" />
             <TimelineStep
-              key={`history-${item.toStatus}-${item.createdAt}-${index}`}
-              label={meta.label}
-              time={formatRelativeTime(item.createdAt)}
-              subtitle={
-                item.reason ? item.reason : item.changedByName ? `Bởi ${item.changedByName}` : null
-              }
-              done
-              isLast={index === history.length - 1}
+              label="Đã gửi"
+              time={formatDate(detail.createdAt)}
+              done={progress.submitted.done}
             />
-          );
-        })}
-      </View>
-
-      {detail.slaResolveDueAt ? (
-        <View className="mb-2">
-          <SectionTitle label="Hạn xử lý (SLA)" />
-          <Text className="text-sm text-textSecondary">{formatDate(detail.slaResolveDueAt)}</Text>
-        </View>
+            <TimelineStep
+              label={progress.verified.done ? 'Đã xác minh' : 'Xác minh'}
+              time={progress.verified.time ? formatDate(progress.verified.time) : null}
+              done={progress.verified.done}
+              subtitle={progress.verified.done ? null : progress.verified.pendingLabel}
+            />
+            <TimelineStep
+              label={progress.working.done ? 'Đang xử lý' : 'Xử lý'}
+              time={progress.working.time ? formatDate(progress.working.time) : null}
+              done={progress.working.done}
+              subtitle={
+                progress.working.done
+                  ? null
+                  : progress.verified.done
+                    ? progress.working.pendingLabel
+                    : null
+              }
+            />
+            <TimelineStep
+              label={progress.done.done ? 'Hoàn thành' : 'Hoàn thành'}
+              time={progress.done.time ? formatDate(progress.done.time) : null}
+              done={progress.done.done}
+              subtitle={
+                progress.done.done
+                  ? detail.status === 'Resolved' || detail.status === 'PenaltyIssued'
+                    ? 'Cần bạn xác nhận kết quả'
+                    : mediaByType.after.length > 0
+                      ? 'Ảnh kết quả sau khi xử lý'
+                      : null
+                  : progress.working.done
+                    ? progress.done.pendingLabel
+                    : null
+              }
+              media={progress.done.done ? mediaByType.after : []}
+              isLast
+            />
+          </View>
+        </>
       ) : null}
 
-      {detail.reopenedCount > 0 ? (
+      {detail.reopenedCount > 0 && !hideOpsProgress ? (
         <Text className="mb-4 text-xs text-textSecondary">Đã mở lại {detail.reopenedCount}/2 lần</Text>
       ) : null}
 

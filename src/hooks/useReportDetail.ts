@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { reportDetailService } from '@/services/reportDetail.service';
 import type {
+  MergedReportRef,
   RateReportDto,
   ReportAssignmentItem,
   ReportDetail,
@@ -9,6 +10,7 @@ import type {
   ReportMediaItem,
 } from '@/types/report-detail.types';
 import { getApiErrorMessage } from '@/utils/api-error-message';
+import { firstNonEmptyUrl, isUuid } from '@/utils/report-merge';
 
 interface UseReportDetailResult {
   detail: ReportDetail | null;
@@ -50,6 +52,34 @@ function normalizeMedia(raw: ReportMediaItem[] | undefined): ReportMediaItem[] {
   }));
 }
 
+/** BE có thể trả imageUrl / thumbnailUrl / ThumbnailUrl tùy DTO. */
+function pickMergedThumb(raw: MergedReportRef & Record<string, unknown>): string | null {
+  return firstNonEmptyUrl(
+    typeof raw.imageUrl === 'string' ? raw.imageUrl : null,
+    typeof raw.thumbnailUrl === 'string' ? raw.thumbnailUrl : null,
+    typeof raw.thumbUrl === 'string' ? raw.thumbUrl : null,
+    typeof raw.ThumbnailUrl === 'string' ? raw.ThumbnailUrl : null,
+    typeof raw.ImageUrl === 'string' ? raw.ImageUrl : null,
+  );
+}
+
+function normalizeMergedReports(
+  raw: MergedReportRef[] | null | undefined,
+): MergedReportRef[] | null {
+  if (!raw?.length) return raw ?? null;
+  return raw
+    .filter((ref) => isUuid(ref.id))
+    .map((ref) => {
+      const loose = ref as MergedReportRef & Record<string, unknown>;
+      return {
+        ...ref,
+        id: ref.id.trim(),
+        imageUrl: pickMergedThumb(loose),
+        code: ref.code?.trim() || null,
+      };
+    });
+}
+
 export function useReportDetail(reportId: string | undefined, enabled = true): UseReportDetailResult {
   const [detail, setDetail] = useState<ReportDetail | null>(null);
   const [history, setHistory] = useState<ReportHistoryItem[]>([]);
@@ -73,12 +103,19 @@ export function useReportDetail(reportId: string | undefined, enabled = true): U
 
       if (requestId !== requestIdRef.current) return;
 
-      const data = detailRes.data.data;
+      const data = detailRes.data.data as ReportDetail & {
+        MergedReports?: MergedReportRef[] | null;
+        ThumbnailUrl?: string | null;
+        ImageUrl?: string | null;
+      };
+      const mergedRaw = data.mergedReports ?? data.MergedReports ?? null;
       setDetail({
         ...data,
+        imageUrl: firstNonEmptyUrl(data.imageUrl, data.ThumbnailUrl, data.ImageUrl),
         media: normalizeMedia(data.media),
         assignments: normalizeAssignments(data.assignments),
         wasteTags: normalizeWasteTags(data.wasteTags),
+        mergedReports: normalizeMergedReports(mergedRaw),
         reopenedCount: data.reopenedCount ?? 0,
       });
       setHistory(historyRes.data.data.items ?? []);

@@ -13,6 +13,7 @@ import { useMyReports } from '@/hooks/useMyReports';
 import { colors } from '@/theme/colors';
 import type { MyReportItem, MyReportsFilterKey } from '@/types/my-reports.types';
 import { MY_REPORTS_FILTERS } from '@/types/my-reports.types';
+import { resolveMyReportDetailTarget } from '@/utils/report-merge';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -85,7 +86,8 @@ function matchesSearch(item: MyReportItem, query: string): boolean {
     item.code.toLowerCase().includes(q) ||
     item.categoryName.toLowerCase().includes(q) ||
     item.address.toLowerCase().includes(q) ||
-    item.status.toLowerCase().includes(q)
+    item.status.toLowerCase().includes(q) ||
+    (item.mergedIntoPrimaryReportCode?.toLowerCase().includes(q) ?? false)
   );
 }
 
@@ -95,7 +97,7 @@ interface ReportsFilterPageProps {
   pageHeight: number;
   isAuthenticated: boolean;
   searchQuery: string;
-  onOpenDetail: (reportId: string) => void;
+  onOpenDetail: (item: MyReportItem) => void;
   onSwitchTab: (key: MyReportsFilterKey) => void;
   onRegisterRefetch: (filterKey: MyReportsFilterKey, refetch: () => Promise<void>) => void;
   onTotalCountChange: (filterKey: MyReportsFilterKey, count: number, isLoading: boolean) => void;
@@ -130,7 +132,11 @@ const ReportsFilterPage = memo(function ReportsFilterPage({
 
   const renderItem = useCallback(
     ({ item }: { item: MyReportItem }) => (
-      <MyReportListCard item={item} onPress={() => onOpenDetail(item.id)} />
+      <MyReportListCard
+        item={item}
+        onPress={() => onOpenDetail(item)}
+        onOpenPrimary={() => onOpenDetail(item)}
+      />
     ),
     [onOpenDetail],
   );
@@ -248,8 +254,23 @@ export default function ReportsTabScreen() {
     setPagerHeight((prev) => (prev === nextHeight ? prev : nextHeight));
   }, []);
 
-  const openDetail = useCallback((reportId: string) => {
-    router.push({ pathname: '/report/[id]', params: { id: reportId, source: 'tab' } } as Href);
+  const openDetail = useCallback((item: MyReportItem) => {
+    const target = resolveMyReportDetailTarget(item);
+    const mergedThumb = item.imageUrl?.trim();
+    router.push({
+      pathname: '/report/[id]',
+      params: {
+        id: target.id,
+        source: 'tab',
+        ...(target.fromMergedReportId
+          ? {
+              fromMergedReportId: target.fromMergedReportId,
+              // List vẫn có thumb; GET detail báo cáo Duplicate sau merge thường mất media (BE reassign)
+              ...(mergedThumb ? { fromMergedReportImageUrl: mergedThumb } : {}),
+            }
+          : {}),
+      },
+    } as Href);
   }, []);
 
   const handleRegisterRefetch = useCallback((filterKey: MyReportsFilterKey, refetch: () => Promise<void>) => {

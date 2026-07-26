@@ -299,7 +299,10 @@ export default function StaffHomeScreen() {
           >
             <Ionicons name="notifications-outline" size={21} color={colors.textPrimary} />
             {unreadCount > 0 ? (
-              <View className="absolute -right-0.5 -top-0.5 min-w-[16px] items-center rounded-full bg-error px-1">
+              <View
+                className="absolute -right-0.5 -top-0.5 min-w-[16px] items-center rounded-full px-1"
+                style={{ backgroundColor: colors.error }}
+              >
                 <Text className="text-[9px] font-bold text-white">
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </Text>

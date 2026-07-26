@@ -55,6 +55,12 @@ interface ReportDetailViewProps {
   onRate?: (dto: RateReportDto) => Promise<void>;
   /** Bật block bình luận / phản hồi (citizen + đội ngũ) */
   enableComments?: boolean;
+  fromMergedReportId?: string | null;
+  fromMergedReportImageUrl?: string | null;
+  /** Thumb seed khi mở report Duplicate (media đã reassign sang primary) */
+  seedImageUrl?: string | null;
+  onOpenPrimaryReport?: (primaryReportId: string) => void;
+  onOpenMergedReport?: (reportId: string, imageUrl?: string | null) => void;
 }
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -262,6 +268,11 @@ export function ReportDetailView({
   onReopen,
   onRate,
   enableComments = true,
+  fromMergedReportId,
+  fromMergedReportImageUrl,
+  seedImageUrl,
+  onOpenPrimaryReport,
+  onOpenMergedReport,
 }: ReportDetailViewProps) {
   const insets = useSafeAreaInsets();
   const [heroIndex, setHeroIndex] = useState(0);
@@ -273,7 +284,11 @@ export function ReportDetailView({
   const scrollY = useSharedValue(0);
   const isSheetDragging = useSharedValue(false);
 
-  const isOwner = source === 'tab' || (detail?.reporterId != null && detail.reporterId === currentUserId);
+  // Primary sau merge có thể không phải của user — ưu tiên so khớp reporterId.
+  const isOwner =
+    detail?.reporterId != null && currentUserId != null
+      ? detail.reporterId === currentUserId
+      : source === 'tab' && !fromMergedReportId;
   const footerActions = detail
     ? getReportFooterActions(detail.status, { isOwner, reopenedCount: detail.reopenedCount ?? 0 })
     : { showClose: false, showReopen: false };
@@ -306,14 +321,23 @@ export function ReportDetailView({
           'Dispatched',
           'Assigned',
           'InProgress',
+          'Duplicate',
         ].includes(detail.status)));
 
   const footerHeight = showFooterBar ? 64 + insets.bottom : insets.bottom + 8;
 
-  const citizenMedia = useMemo(
-    () => splitReportMedia(detail?.media).citizen,
-    [detail?.media],
-  );
+  const citizenMedia = useMemo(() => {
+    const fromMedia = splitReportMedia(detail?.media).citizen;
+    if (fromMedia.length > 0) return fromMedia;
+    // Duplicate sau reassign: media[] rỗng → dùng imageUrl BE (P1) hoặc thumb seed từ màn trước
+    const thumb =
+      detail?.imageUrl?.trim() ||
+      seedImageUrl?.trim() ||
+      fromMergedReportImageUrl?.trim() ||
+      '';
+    if (thumb) return [{ id: 'detail-imageUrl', url: thumb }];
+    return [];
+  }, [detail?.media, detail?.imageUrl, seedImageUrl, fromMergedReportImageUrl]);
 
   const snapTo = useCallback(
     (point: SheetSnap) => {
@@ -608,6 +632,10 @@ export function ReportDetailView({
               errorMessage={errorMessage}
               onRate={onRate}
               enableComments={enableComments}
+              fromMergedReportId={fromMergedReportId}
+              fromMergedReportImageUrl={fromMergedReportImageUrl}
+              onOpenPrimaryReport={onOpenPrimaryReport}
+              onOpenMergedReport={onOpenMergedReport}
               comments={{
                 threads,
                 isLoading: isCommentsLoading,
