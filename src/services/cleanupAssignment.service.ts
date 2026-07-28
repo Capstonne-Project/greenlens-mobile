@@ -7,6 +7,7 @@ import type {
   MyAssignmentsParams,
   MyAssignmentsResponse,
   MyProgressResponse,
+  MyTaskProgressStats,
   ResolveAssignmentDto,
   TaskDetail,
   TeamProfile,
@@ -67,6 +68,10 @@ async function uploadDirectImages(
 export const cleanupAssignmentService = {
   getMyTasks: (params?: MyAssignmentsParams) =>
     api.get<ApiEnvelope<MyAssignmentsResponse>>('/teams/my-tasks', { params }),
+
+  /** GET /teams/my-tasks/progress-stats — số liệu tổng hợp cho dashboard "Tiến độ" (tính sẵn ở BE). */
+  getMyTaskProgressStats: () =>
+    api.get<ApiEnvelope<MyTaskProgressStats>>('/teams/my-tasks/progress-stats'),
 
   /** Path param LUÔN là reportId — fe-company-staff-api-guide §7.3 */
   getMyTaskDetail: async (reportId: string) => {
