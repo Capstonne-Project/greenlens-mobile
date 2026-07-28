@@ -17,11 +17,14 @@ import { TapScale } from '@/components/layout/TapScale';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyReports } from '@/hooks/useMyReports';
+import { communityCleanupService } from '@/services/communityCleanup.service';
 import { userService } from '@/services/user.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { colors } from '@/theme/colors';
+import type { CommunityCleanupListItem } from '@/types/community-cleanup.types';
 import type { MyReportItem } from '@/types/my-reports.types';
 import type { UserRole } from '@/types/user.types';
+import { getApiErrorMessage } from '@/utils/api-error-message';
 import { formatDate } from '@/utils/formatters';
 import { resolveMyReportDetailTarget } from '@/utils/report-merge';
 import { getReportStatusMeta } from '@/utils/report-status';
@@ -195,6 +198,66 @@ function ActivityCard({ item, onPress }: { item: MyReportItem; onPress: () => vo
   );
 }
 
+function CommunityEventCard({
+  item,
+  onPress,
+  onJoin,
+  isJoining,
+}: {
+  item: CommunityCleanupListItem;
+  onPress: () => void;
+  onJoin: () => void;
+  isJoining: boolean;
+}) {
+  const alreadyJoined = item.myParticipation?.status === 'Joined' || item.myParticipation?.status === 'CheckedIn';
+
+  return (
+    <TapScale onPress={onPress}>
+      <View className="mb-3 overflow-hidden rounded-xl bg-white" style={CARD_3D_SHADOW}>
+        <View className="flex-row items-center justify-between px-4 pt-3.5">
+          <Text className="text-xs text-textSecondary">{item.reportCode}</Text>
+          <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: '#D1FAE5' }}>
+            <Text className="text-[10px] font-semibold" style={{ color: '#065F46' }}>Đang mở đăng ký</Text>
+          </View>
+        </View>
+
+        <View className="flex-row items-center gap-3 px-4 pb-3 pt-3">
+          <View className="h-12 w-12 items-center justify-center rounded-lg" style={{ backgroundColor: `${colors.primary}1A` }}>
+            <Ionicons name="leaf-outline" size={22} color={colors.primary} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-[15px] font-bold text-textPrimary" numberOfLines={1}>
+              {item.title}
+            </Text>
+            <View className="mt-1 flex-row items-center gap-1">
+              <Ionicons name="people-outline" size={12} color={colors.textSecondary} />
+              <Text className="flex-1 text-xs text-textSecondary" numberOfLines={1}>
+                Còn {item.spotsLeft} chỗ / {item.maxParticipants}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View className="flex-row border-t border-border">
+          <TapScale onPress={onPress} className="flex-1">
+            <View className="items-center py-3">
+              <Text className="text-sm font-semibold text-textSecondary">Xem chi tiết</Text>
+            </View>
+          </TapScale>
+          <View className="w-px bg-border" />
+          <TapScale onPress={alreadyJoined || isJoining ? () => {} : onJoin} className="flex-1">
+            <View className="items-center py-3">
+              <Text className="text-sm font-semibold" style={{ color: alreadyJoined ? colors.textSecondary : colors.primary }}>
+                {isJoining ? 'Đang xử lý…' : alreadyJoined ? 'Đã tham gia' : 'Tham gia (Vote)'}
+              </Text>
+            </View>
+          </TapScale>
+        </View>
+      </View>
+    </TapScale>
+  );
+}
+
 function LinksSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   if (!visible) return null;
@@ -350,9 +413,47 @@ export default function ProfileTabScreen() {
   const { user } = useAuth();
   const setUser = useAuthStore((s) => s.setUser);
   const { items, isLoading } = useMyReports({ filterKey: 'ALL', pageSize: 12 });
-  const [tab, setTab] = useState<'grid' | 'activity'>('grid');
+  const [tab, setTab] = useState<'grid' | 'activity' | 'community'>('grid');
   const [linksOpen, setLinksOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState<MyReportItem | null>(null);
+
+  const [communityEvents, setCommunityEvents] = useState<CommunityCleanupListItem[]>([]);
+  const [isCommunityLoading, setCommunityLoading] = useState(false);
+  const [communityError, setCommunityError] = useState<string | null>(null);
+  const [joiningEventId, setJoiningEventId] = useState<string | null>(null);
+
+  const loadCommunityEvents = useCallback(async () => {
+    setCommunityLoading(true);
+    setCommunityError(null);
+    try {
+      const res = await communityCleanupService.getOpen({ page: 1, pageSize: 20 });
+      setCommunityEvents(res.data.data.items);
+    } catch (err) {
+      setCommunityError(getApiErrorMessage(err, 'Không thể tải chương trình dọn cộng đồng.'));
+    } finally {
+      setCommunityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'community') void loadCommunityEvents();
+  }, [tab, loadCommunityEvents]);
+
+  const handleJoinCommunityEvent = useCallback(
+    async (eventId: string) => {
+      if (joiningEventId) return;
+      setJoiningEventId(eventId);
+      try {
+        await communityCleanupService.join(eventId);
+        await loadCommunityEvents();
+      } catch (err) {
+        Alert.alert('Không thể tham gia', getApiErrorMessage(err, 'Vui lòng thử lại.'));
+      } finally {
+        setJoiningEventId(null);
+      }
+    },
+    [joiningEventId, loadCommunityEvents],
+  );
 
   /** Đồng bộ lại hồ sơ mới nhất từ server mỗi lần vào tab — theo docs/mobile-get-profile-api.md */
   useFocusEffect(
@@ -407,11 +508,11 @@ export default function ProfileTabScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-row items-center px-4 pt-4">
-          <View className="h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-primary bg-primaryLight">
+          <View className="h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-surface">
             {user?.avatarUrl ? (
               <Image source={{ uri: user.avatarUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
             ) : (
-              <Text className="text-3xl font-bold text-primary">{user?.fullName?.[0]?.toUpperCase() ?? 'H'}</Text>
+              <Text className="text-3xl font-bold text-textPrimary">{user?.fullName?.[0]?.toUpperCase() ?? 'H'}</Text>
             )}
           </View>
 
@@ -453,9 +554,57 @@ export default function ProfileTabScreen() {
           <Pressable onPress={() => setTab('activity')} className="flex-1 items-center border-b-2 py-3" style={{ borderColor: tab === 'activity' ? colors.textPrimary : 'transparent' }}>
             <Ionicons name="time-outline" size={22} color={tab === 'activity' ? colors.textPrimary : colors.textSecondary} />
           </Pressable>
+          <Pressable onPress={() => setTab('community')} className="flex-1 items-center border-b-2 py-3" style={{ borderColor: tab === 'community' ? colors.textPrimary : 'transparent' }}>
+            <Ionicons name="leaf-outline" size={22} color={tab === 'community' ? colors.textPrimary : colors.textSecondary} />
+          </Pressable>
         </View>
 
-        {tab === 'grid' ? (
+        {tab === 'community' ? (
+          <View className="px-4 pt-4">
+            <View className="mb-3 flex-row items-center justify-between">
+              <Text className="text-sm text-textSecondary">Chương trình dọn cộng đồng đang mở</Text>
+              <TapScale onPress={() => router.push('/community' as Href)}>
+                <Text className="text-sm font-semibold text-primary">Xem tất cả</Text>
+              </TapScale>
+            </View>
+            {isCommunityLoading ? (
+              Array.from({ length: 2 }).map((_, index) => (
+                <View key={`community-skeleton-${index}`} className="mb-3 rounded-xl bg-surface p-4">
+                  <View className="h-3 w-16 rounded bg-border" />
+                  <View className="mt-3 h-4 w-2/3 rounded bg-border" />
+                  <View className="mt-2 h-3 w-1/2 rounded bg-border" />
+                </View>
+              ))
+            ) : communityError ? (
+              <View className="items-center px-6 py-16">
+                <Ionicons name="alert-circle-outline" size={28} color={colors.error} />
+                <Text className="mt-3 text-center text-sm text-textSecondary">{communityError}</Text>
+                <TapScale onPress={() => void loadCommunityEvents()}>
+                  <View className="mt-3 rounded-xl px-5 py-2" style={{ backgroundColor: colors.primary }}>
+                    <Text className="text-sm font-semibold text-white">Thử lại</Text>
+                  </View>
+                </TapScale>
+              </View>
+            ) : communityEvents.length === 0 ? (
+              <View className="items-center px-6 py-16">
+                <Ionicons name="leaf-outline" size={28} color={colors.textSecondary} />
+                <Text className="mt-3 text-center text-sm text-textSecondary">
+                  Chưa có chương trình dọn cộng đồng nào gần bạn. Khi LEO mở chương trình, bạn sẽ thấy ở đây.
+                </Text>
+              </View>
+            ) : (
+              communityEvents.map((event) => (
+                <CommunityEventCard
+                  key={event.id}
+                  item={event}
+                  isJoining={joiningEventId === event.id}
+                  onPress={() => router.push({ pathname: '/community/[id]', params: { id: event.id } } as Href)}
+                  onJoin={() => void handleJoinCommunityEvent(event.id)}
+                />
+              ))
+            )}
+          </View>
+        ) : tab === 'grid' ? (
           <View className="flex-row flex-wrap">
             {isLoading ? (
               Array.from({ length: 9 }).map((_, index) => <ReportThumbSkeleton key={`thumb-skeleton-${index}`} />)
