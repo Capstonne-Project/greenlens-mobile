@@ -1,8 +1,9 @@
 import { router, type Href } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { Platform } from 'react-native';
+import { AppState, type AppStateStatus, Platform } from 'react-native';
 
 import { notificationService } from '@/services/notification.service';
+import { connectNotificationHub, disconnectNotificationHub } from '@/services/notification-hub.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { useNotificationStore } from '@/stores/notification.store';
 import { resolveNotificationHref } from '@/utils/resolve-notification-href';
@@ -54,6 +55,34 @@ export function usePushNotifications() {
 
     return () => {
       cancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  /**
+   * Realtime badge — SignalR hub (`/hubs/notifications`) bắn `ReceiveNotification` cho MỌI
+   * loại noti server tạo, kể cả loại không kèm push FCM (vd. StaffInvitationReceived).
+   * Chỉ dùng event làm tín hiệu để refetch qua REST — không đọc payload trực tiếp vì
+   * NotificationType serialize dạng số qua SignalR (khác REST dùng JsonStringEnumConverter).
+   */
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    connectNotificationHub(() => {
+      void syncUnreadCount();
+      useNotificationStore.getState().bumpRealtimeTick();
+    });
+
+    // Safety net cho lúc socket rớt/app bị OS suspend ở background
+    const onAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        void syncUnreadCount();
+      }
+    };
+    const appStateSub = AppState.addEventListener('change', onAppStateChange);
+
+    return () => {
+      appStateSub.remove();
+      void disconnectNotificationHub();
     };
   }, [isAuthenticated]);
 
