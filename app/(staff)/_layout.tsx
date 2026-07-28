@@ -14,7 +14,8 @@ export default function StaffLayout() {
       <Tabs.Screen name="map" options={{ title: 'Bản đồ' }} />
       <Tabs.Screen name="assignments" options={{ href: null, title: 'Nhiệm vụ' }} />
       <Tabs.Screen name="notifications" options={{ href: null, title: 'Thông báo' }} />
-      <Tabs.Screen name="members" options={{ title: 'Thành viên' }} />
+      <Tabs.Screen name="progress" options={{ title: 'Tiến độ' }} />
+      <Tabs.Screen name="members" options={{ href: null, title: 'Thành viên' }} />
       <Tabs.Screen name="settings" options={{ title: 'Cài đặt' }} />
     </Tabs>
   );
