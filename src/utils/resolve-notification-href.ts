@@ -41,6 +41,26 @@ function resolveCitizenHref(type: string, ref: string | null): Href | null {
     case 'LevelUp':
       return '/(tabs)/profile' as Href;
 
+    // Fullscreen accept/decline — referenceId = invitationId
+    case 'StaffInvitationReceived':
+      if (ref) {
+        return {
+          pathname: '/invitation/[id]',
+          params: { id: ref },
+        } as Href;
+      }
+      return '/(tabs)/notifications' as Href;
+
+    // referenceId = CommunityCleanupEvent id (not report id) — deep-link to the vote/join screen.
+    case 'CommunityCleanupOpened':
+      if (ref) {
+        return {
+          pathname: '/community/[id]',
+          params: { id: ref },
+        } as Href;
+      }
+      return '/community' as Href;
+
     case 'NearbyReport':
       if (ref) {
         return {
@@ -80,6 +100,16 @@ function resolveFieldWorkerHref(type: string, ref: string | null): Href | null {
   switch (type) {
     case 'ContractExpiry':
       return '/(staff)/settings' as Href;
+
+    // referenceId = CommunityCleanupEvent id — Cleaner được chỉ định làm Leader.
+    case 'CommunityCleanupLeaderAssigned':
+      if (ref) {
+        return {
+          pathname: '/community-lead/[id]',
+          params: { id: ref },
+        } as Href;
+      }
+      return '/(staff)/assignments' as Href;
 
     case 'ReportAssigned':
     case 'ReportStatusChanged':
