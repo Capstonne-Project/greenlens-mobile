@@ -95,6 +95,26 @@ const META_BY_TYPE: Record<string, NotificationMeta> = {
     categoryLabel: 'Từ chối',
     isReportLinked: true,
   },
+  StaffInvitationReceived: {
+    icon: 'people-outline',
+    categoryLabel: 'Lời mời',
+    isReportLinked: false,
+  },
+  StaffInvitationAccepted: {
+    icon: 'checkmark-circle-outline',
+    categoryLabel: 'Lời mời',
+    isReportLinked: false,
+  },
+  StaffInvitationDeclined: {
+    icon: 'close-circle-outline',
+    categoryLabel: 'Lời mời',
+    isReportLinked: false,
+  },
+  CommunityCleanupLeaderAssigned: {
+    icon: 'people-circle-outline',
+    categoryLabel: 'Cộng đồng',
+    isReportLinked: false,
+  },
 };
 
 const UUID_RE =

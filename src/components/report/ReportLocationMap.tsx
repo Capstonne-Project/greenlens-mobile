@@ -1,9 +1,16 @@
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
+import { openGoogleMapsDirections } from '@/utils/open-directions';
 
 /** Cùng style chấm đỏ Home map (`CitizenMapPinMarker`) */
 const DOT_COLOR = colors.error;
@@ -12,6 +19,57 @@ interface ReportLocationMapProps {
   latitude: number;
   longitude: number;
   address?: string | null;
+  /** Ẩn nút "Chỉ đường Google Maps" — mặc định hiện khi toạ độ hợp lệ */
+  hideDirectionsButton?: boolean;
+}
+
+function DirectionsButton({
+  latitude,
+  longitude,
+  address,
+}: {
+  latitude: number;
+  longitude: number;
+  address?: string | null;
+}) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View
+      style={[animatedStyle, { position: 'absolute', bottom: 10, right: 10 }]}
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Chỉ đường bằng Google Maps"
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          void openGoogleMapsDirections(latitude, longitude, address);
+        }}
+        onPressIn={() => {
+          scale.value = withSpring(0.92, { damping: 18, stiffness: 320 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 18, stiffness: 320 });
+        }}
+        className="flex-row items-center gap-1.5 rounded-full bg-white px-3 py-2"
+        style={{
+          shadowColor: '#000',
+          shadowOpacity: 0.18,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 4,
+        }}
+      >
+        <Ionicons name="navigate" size={15} color={colors.primary} />
+        <Text className="text-xs font-bold" style={{ color: colors.primary }}>
+          Chỉ đường
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
 }
 
 function isValidCoord(lat: number, lng: number): boolean {
@@ -29,6 +87,7 @@ export function ReportLocationMap({
   latitude,
   longitude,
   address,
+  hideDirectionsButton = false,
 }: ReportLocationMapProps) {
   if (!isValidCoord(latitude, longitude)) {
     return (
@@ -112,6 +171,9 @@ export function ReportLocationMap({
             </View>
           </Marker>
         </MapView>
+        {!hideDirectionsButton ? (
+          <DirectionsButton latitude={latitude} longitude={longitude} address={address} />
+        ) : null}
       </View>
     </View>
   );

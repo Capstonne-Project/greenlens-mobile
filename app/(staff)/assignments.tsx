@@ -1,17 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import React, { useCallback, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { AssignmentActionButton } from '@/components/assignment/AssignmentActionButton';
 import { Text } from '@/components/ui/text';
 import { useMyAssignments } from '@/hooks/useMyAssignments';
+import { communityCleanupService } from '@/services/communityCleanup.service';
 import { useFieldWorkerTaskStore } from '@/stores/fieldWorkerTask.store';
 import { colors } from '@/theme/colors';
 import type { AssignmentItem, AssignmentStatus } from '@/types/cleanup-assignment.types';
+import type { CommunityCleanupListItem, CommunityCleanupStatus } from '@/types/community-cleanup.types';
 import { getTaskRouteParams } from '@/utils/field-worker-task';
 
 // ─── Configs ────────────────────────────────────────────────────────────────
@@ -44,16 +47,36 @@ const ASSIGNMENT_STATUS_CHIP: Record<
 
 type FilterTab = { label: string; value: AssignmentStatus | undefined; count?: number };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Community-led task (Leader) merge ────────────────────────────────────────
 
-function formatTimeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const h = Math.floor(diff / 3_600_000);
-  const m = Math.floor((diff % 3_600_000) / 60_000);
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
+const COMMUNITY_STATUS_CHIP: Record<CommunityCleanupStatus, { label: string; color: string; bg: string }> = {
+  OpenForJoin: { label: 'Đang mở đăng ký', color: '#065F46', bg: '#D1FAE5' },
+  JoinClosed: { label: 'Đã đóng đăng ký', color: '#92400E', bg: '#FEF3C7' },
+  InProgress: { label: 'Đang dọn dẹp', color: '#1E40AF', bg: '#DBEAFE' },
+  PendingVerification: { label: 'Chờ LEO duyệt', color: '#6D28D9', bg: '#EDE9FE' },
+  Completed: { label: 'Hoàn thành', color: '#374151', bg: '#F3F4F6' },
+  Cancelled: { label: 'Đã hủy', color: '#991B1B', bg: '#FEE2E2' },
+};
+
+/** Gộp trạng thái chương trình cộng đồng về bucket filter chung của "Nhiệm vụ" — để 1 tab lọc cả 2 loại. */
+function communityStatusToFilterBucket(status: CommunityCleanupStatus): AssignmentStatus {
+  switch (status) {
+    case 'OpenForJoin':
+    case 'JoinClosed':
+      return 'Assigned';
+    case 'InProgress':
+    case 'PendingVerification':
+      return 'InProgress';
+    case 'Completed':
+      return 'Completed';
+    case 'Cancelled':
+      return 'Declined';
+    default:
+      return 'Assigned';
+  }
 }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatSlaRemaining(slaStr: string): { text: string; overdue: boolean } {
   const diff = new Date(slaStr).getTime() - Date.now();
@@ -68,7 +91,12 @@ function formatSlaRemaining(slaStr: string): { text: string; overdue: boolean } 
   return { text: `${h}h ${m}m`, overdue: false };
 }
 
-// ─── Assignment Card ──────────────────────────────────────────────────────────
+// ─── Cinema poster card sizing ────────────────────────────────────────────────
+
+const POSTER_WIDTH = 152;
+const POSTER_HEIGHT = 216;
+
+// ─── Assignment poster card ("Công việc") ──────────────────────────────────────
 
 interface AssignmentCardProps {
   item: AssignmentItem;
@@ -80,127 +108,162 @@ const AssignmentCard = React.memo(function AssignmentCard({ item, onPress }: Ass
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   const severity = SEVERITY_CONFIG[item.severity] ?? SEVERITY_CONFIG.Medium;
-  const thumbBg  = SEVERITY_THUMB_BG[item.severity] ?? '#F7F8FA';
+  const thumbBg = SEVERITY_THUMB_BG[item.severity] ?? '#F7F8FA';
   const statusChip = ASSIGNMENT_STATUS_CHIP[item.assignmentStatus];
-
-  const assignedTime = item.assignedAt
-    ? new Date(item.assignedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-    : '';
-
-  const assignedDateLabel = item.assignedAt
-    ? (() => {
-        const d = new Date(item.assignedAt);
-        const today = new Date();
-        const isToday = d.toDateString() === today.toDateString();
-        return isToday ? assignedTime : 'Hôm qua';
-      })()
-    : '';
-
   const sla = item.slaResolveDueAt ? formatSlaRemaining(item.slaResolveDueAt) : null;
 
-  // Extract officer name từ note hoặc dùng placeholder
-  const officerLabel = `Officer · ${assignedDateLabel}`;
-  const nextStepHint =
-    item.assignmentStatus === 'InProgress'
-      ? 'Tiếp tục · ảnh hiện trạng / tiến độ'
-      : item.assignmentStatus === 'Assigned'
-        ? 'Chạm để xem & nhận nhiệm vụ'
-        : null;
-
   return (
-    <Animated.View style={animStyle} className="mx-4 mb-3">
+    <Animated.View style={[animStyle, { width: POSTER_WIDTH }]}>
       <Pressable
-        onPressIn={() => { scale.value = withSpring(0.97, { damping: 16, stiffness: 280 }); }}
+        onPressIn={() => { scale.value = withSpring(0.96, { damping: 16, stiffness: 280 }); }}
         onPressOut={() => { scale.value = withSpring(1, { damping: 16, stiffness: 280 }); }}
         onPress={() => onPress(item)}
-        className="flex-row rounded-2xl bg-white p-3 shadow-sm"
-        style={{
-          elevation: 2,
-          borderWidth: item.assignmentStatus === 'InProgress' ? 1 : 0,
-          borderColor: item.assignmentStatus === 'InProgress' ? '#FDE68A' : 'transparent',
-        }}
+        className="overflow-hidden rounded-2xl bg-white shadow-sm"
+        style={{ width: POSTER_WIDTH, height: POSTER_HEIGHT, elevation: 3 }}
       >
-        {/* Thumbnail */}
-        <View
-          className="mr-3 h-16 w-16 items-center justify-center rounded-xl"
-          style={{ backgroundColor: thumbBg }}
-        >
-          {item.firstImageUrl ? (
-            <Animated.Image
-              source={{ uri: item.firstImageUrl }}
-              className="h-16 w-16 rounded-xl"
-              style={{ resizeMode: 'cover' }}
-            />
-          ) : (
-            <Ionicons name="image-outline" size={28} color={severity.color} />
-          )}
+        {item.firstImageUrl ? (
+          <Animated.Image
+            source={{ uri: item.firstImageUrl }}
+            style={{ width: '100%', height: '100%', position: 'absolute' }}
+          />
+        ) : (
+          <View
+            className="absolute inset-0 items-center justify-center"
+            style={{ backgroundColor: thumbBg }}
+          >
+            <Ionicons name="image-outline" size={36} color={severity.color} />
+          </View>
+        )}
+
+        <LinearGradient
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.82)']}
+          locations={[0, 0.45, 1]}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '65%' }}
+        />
+
+        <View className="absolute left-2 right-2 top-2 flex-row items-center justify-between gap-1">
+          {statusChip ? (
+            <View className="shrink rounded-full px-2 py-0.5" style={{ backgroundColor: statusChip.bg }}>
+              <Text className="text-[10px] font-bold" style={{ color: statusChip.color }} numberOfLines={1}>
+                {statusChip.label}
+              </Text>
+            </View>
+          ) : <View />}
+          <View className="shrink rounded-full px-2 py-0.5" style={{ backgroundColor: severity.bg }}>
+            <Text className="text-[10px] font-bold" style={{ color: severity.color }} numberOfLines={1}>
+              {severity.label}
+            </Text>
+          </View>
         </View>
 
-        {/* Content */}
-        <View className="flex-1">
-          {/* Code + badges */}
-          <View className="mb-1 flex-row items-center justify-between gap-2">
-            <Text className="text-xs text-textSecondary">{item.reportCode}</Text>
-            <View className="flex-row items-center gap-1">
-              {statusChip ? (
-                <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: statusChip.bg }}>
-                  <Text className="text-[11px] font-semibold" style={{ color: statusChip.color }}>
-                    {statusChip.label}
-                  </Text>
-                </View>
-              ) : null}
-              <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: severity.bg }}>
-                <Text className="text-[11px] font-semibold" style={{ color: severity.color }}>
-                  {severity.label}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Category name */}
-          <Text className="mb-1 text-[15px] font-semibold text-textPrimary" numberOfLines={1}>
+        <View className="absolute bottom-0 left-0 right-0 p-2.5">
+          <Text className="text-[13px] font-bold text-white" numberOfLines={2}>
             {item.categoryName}
           </Text>
-
-          {/* Address */}
-          <View className="mb-1.5 flex-row items-center gap-1">
-            <Ionicons name="location-outline" size={12} color={colors.textSecondary} />
-            <Text className="flex-1 text-xs text-textSecondary" numberOfLines={1}>
+          <View className="mt-1 flex-row items-center gap-1">
+            <Ionicons name="location-outline" size={11} color="rgba(255,255,255,0.85)" />
+            <Text
+              className="flex-1 text-[10px]"
+              style={{ color: 'rgba(255,255,255,0.85)' }}
+              numberOfLines={1}
+            >
               {item.address}
             </Text>
           </View>
-
-          {nextStepHint ? (
+          <View className="mt-1.5 flex-row items-center gap-1">
             <Text
-              className="mb-1 text-[11px] font-medium"
-              style={{ color: item.assignmentStatus === 'InProgress' ? '#92400E' : colors.primary }}
+              className="flex-1 text-[10px]"
+              style={{ color: 'rgba(255,255,255,0.7)' }}
               numberOfLines={1}
             >
-              {nextStepHint}
+              {item.reportCode}
             </Text>
-          ) : null}
-
-          {/* Footer: officer · time | SLA */}
-          <View className="flex-row items-center justify-between">
-            <Text className="text-xs text-textSecondary">{officerLabel}</Text>
             {sla ? (
-              <View className="flex-row items-center gap-0.5">
-                {sla.overdue && (
-                  <Ionicons name="time" size={13} color={colors.error} />
-                )}
+              <View className="flex-row shrink-0 items-center gap-0.5">
+                <Ionicons name="time" size={11} color={sla.overdue ? '#FCA5A5' : 'rgba(255,255,255,0.85)'} />
                 <Text
-                  className="text-xs font-semibold"
-                  style={{ color: sla.overdue ? colors.error : colors.textSecondary }}
+                  className="text-[10px] font-bold"
+                  style={{ color: sla.overdue ? '#FCA5A5' : '#fff' }}
                 >
                   {sla.text}
                 </Text>
               </View>
-            ) : item.assignedAt ? (
-              <View className="flex-row items-center gap-0.5">
-                <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
-                <Text className="text-xs text-textSecondary">{formatTimeAgo(item.assignedAt)}</Text>
-              </View>
             ) : null}
+          </View>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+});
+
+// ─── Community-led poster card ("Cộng đồng") ───────────────────────────────────
+
+interface CommunityLedCardProps {
+  item: CommunityCleanupListItem;
+  onPress: (item: CommunityCleanupListItem) => void;
+}
+
+const CommunityLedCard = React.memo(function CommunityLedCard({ item, onPress }: CommunityLedCardProps) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const statusChip = COMMUNITY_STATUS_CHIP[item.status] ?? COMMUNITY_STATUS_CHIP.OpenForJoin;
+
+  return (
+    <Animated.View style={[animStyle, { width: POSTER_WIDTH }]}>
+      <Pressable
+        onPressIn={() => { scale.value = withSpring(0.96, { damping: 16, stiffness: 280 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 16, stiffness: 280 }); }}
+        onPress={() => onPress(item)}
+        className="overflow-hidden rounded-2xl bg-white shadow-sm"
+        style={{ width: POSTER_WIDTH, height: POSTER_HEIGHT, elevation: 3, borderWidth: 1, borderColor: '#111827' }}
+      >
+        {item.thumbnailUrl ? (
+          <Animated.Image
+            source={{ uri: item.thumbnailUrl }}
+            style={{ width: '100%', height: '100%', position: 'absolute' }}
+          />
+        ) : (
+          <View className="absolute inset-0 items-center justify-center" style={{ backgroundColor: '#F3F4F6' }}>
+            <Ionicons name="people-outline" size={36} color="#111827" />
+          </View>
+        )}
+
+        <LinearGradient
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.82)']}
+          locations={[0, 0.45, 1]}
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '65%' }}
+        />
+
+        <View className="absolute left-2 right-2 top-2 flex-row items-center justify-between gap-1">
+          <View
+            className="flex-row shrink items-center gap-1 rounded-full px-2 py-0.5"
+            style={{ backgroundColor: '#111827' }}
+          >
+            <Ionicons name="people" size={10} color="#fff" />
+            <Text className="text-[10px] font-bold text-white" numberOfLines={1}>Cộng đồng</Text>
+          </View>
+          <View className="shrink rounded-full px-2 py-0.5" style={{ backgroundColor: statusChip.bg }}>
+            <Text className="text-[10px] font-bold" style={{ color: statusChip.color }} numberOfLines={1}>
+              {statusChip.label}
+            </Text>
+          </View>
+        </View>
+
+        <View className="absolute bottom-0 left-0 right-0 p-2.5">
+          <Text className="text-[13px] font-bold text-white" numberOfLines={2}>
+            {item.title}
+          </Text>
+          <View className="mt-1.5 flex-row items-center justify-between">
+            <View className="flex-row items-center gap-0.5">
+              <Ionicons name="people-outline" size={11} color="rgba(255,255,255,0.85)" />
+              <Text className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.85)' }}>
+                {item.participantCount}/{item.maxParticipants}
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-0.5">
+              <Ionicons name="trending-up-outline" size={11} color="#fff" />
+              <Text className="text-[10px] font-bold text-white">{item.progressPercent}%</Text>
+            </View>
           </View>
         </View>
       </Pressable>
@@ -212,18 +275,10 @@ const AssignmentCard = React.memo(function AssignmentCard({ item, onPress }: Ass
 
 function AssignmentCardSkeleton() {
   return (
-    <View className="mx-4 mb-3 flex-row rounded-2xl bg-white p-3 shadow-sm" style={{ elevation: 2 }}>
-      <View className="mr-3 h-16 w-16 rounded-xl bg-surface" />
-      <View className="flex-1 justify-between py-1">
-        <View className="flex-row items-center justify-between">
-          <View className="h-3 w-20 rounded bg-border" />
-          <View className="h-4 w-16 rounded-full bg-border" />
-        </View>
-        <View className="h-4 w-3/4 rounded bg-border" />
-        <View className="h-3 w-full rounded bg-surface" />
-        <View className="h-3 w-1/2 rounded bg-surface" />
-      </View>
-    </View>
+    <View
+      className="overflow-hidden rounded-2xl bg-surface"
+      style={{ width: POSTER_WIDTH, height: POSTER_HEIGHT }}
+    />
   );
 }
 
@@ -250,60 +305,129 @@ interface FilterChipProps {
 }
 
 function FilterChip({ tab, isActive, onPress }: FilterChipProps) {
-  const scale = useSharedValue(1);
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+  const underline = useSharedValue(isActive ? 1 : 0);
+
+  useEffect(() => {
+    underline.value = withTiming(isActive ? 1 : 0, { duration: 220 });
+  }, [isActive, underline]);
+
+  const underlineStyle = useAnimatedStyle(() => ({
+    opacity: underline.value,
+    transform: [{ scaleX: underline.value }],
   }));
 
   return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={() => {
-          scale.value = withSpring(0.96, { damping: 18, stiffness: 320 });
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1, { damping: 18, stiffness: 320 });
-        }}
-        className="flex-row items-center gap-1 rounded-full px-4 py-2"
-        style={{ backgroundColor: isActive ? colors.textPrimary : colors.surface }}
-      >
+    <Pressable onPress={onPress} className="mr-6 items-center pb-2.5 pt-1">
+      <View className="flex-row items-center gap-1.5">
         <Text
           className="text-sm font-semibold"
-          style={{ color: isActive ? colors.white : colors.textSecondary }}
+          style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}
         >
           {tab.label}
         </Text>
         {tab.count !== undefined && tab.count > 0 ? (
           <View
-            className="h-5 min-w-5 items-center justify-center rounded-full px-1"
+            className="h-4 min-w-4 items-center justify-center rounded-full px-1"
             style={{ backgroundColor: isActive ? colors.primary : colors.border }}
           >
             <Text
-              className="text-[11px] font-bold"
+              className="text-[10px] font-bold"
               style={{ color: isActive ? colors.white : colors.textSecondary }}
             >
               {tab.count}
             </Text>
           </View>
         ) : null}
-      </Pressable>
-    </Animated.View>
+      </View>
+      <Animated.View
+        style={[
+          underlineStyle,
+          {
+            position: 'absolute',
+            bottom: 0,
+            height: 2.5,
+            width: '100%',
+            backgroundColor: colors.primary,
+          },
+        ]}
+      />
+    </Pressable>
   );
 }
 
-// ─── Sort label ───────────────────────────────────────────────────────────────
+// ─── Poster section (horizontal card row) ──────────────────────────────────────
 
-function SortLabel({ count, label }: { count: number; label: string }) {
+function PosterLoadingFooter({ visible }: { visible: boolean }) {
+  if (!visible) return null;
   return (
-    <View className="mx-4 mb-3 flex-row items-center justify-between">
-      <Text className="text-xs font-semibold uppercase tracking-wide text-textSecondary">
-        {count} nhiệm vụ
-      </Text>
-      <Text className="text-xs text-textSecondary">
-        {label}
-      </Text>
+    <View className="items-center justify-center" style={{ width: 60, height: POSTER_HEIGHT }}>
+      <ActivityIndicator size="small" color={colors.primary} />
     </View>
+  );
+}
+
+function TaskPosterRow({
+  data,
+  onPress,
+  onEndReached,
+  isLoadingMore,
+}: {
+  data: AssignmentItem[];
+  onPress: (item: AssignmentItem) => void;
+  onEndReached: () => void;
+  isLoadingMore: boolean;
+}) {
+  return (
+    <FlatList
+      horizontal
+      data={data}
+      keyExtractor={(item) => item.assignmentId}
+      renderItem={({ item }) => <AssignmentCard item={item} onPress={onPress} />}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+      onEndReachedThreshold={0.4}
+      onEndReached={onEndReached}
+      ListFooterComponent={<PosterLoadingFooter visible={isLoadingMore} />}
+    />
+  );
+}
+
+function CommunityPosterRow({
+  data,
+  onPress,
+  onEndReached,
+  isLoadingMore,
+}: {
+  data: CommunityCleanupListItem[];
+  onPress: (item: CommunityCleanupListItem) => void;
+  onEndReached: () => void;
+  isLoadingMore: boolean;
+}) {
+  return (
+    <FlatList
+      horizontal
+      data={data}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => <CommunityLedCard item={item} onPress={onPress} />}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+      onEndReachedThreshold={0.4}
+      onEndReached={onEndReached}
+      ListFooterComponent={<PosterLoadingFooter visible={isLoadingMore} />}
+    />
+  );
+}
+
+function PosterSectionSkeleton() {
+  return (
+    <FlatList
+      horizontal
+      data={[0, 1, 2]}
+      keyExtractor={(n) => String(n)}
+      renderItem={() => <AssignmentCardSkeleton />}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+    />
   );
 }
 
@@ -313,26 +437,74 @@ export default function AssignmentsScreen() {
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState<AssignmentStatus | undefined>(undefined);
 
+  const POSTER_PAGE_SIZE = 5;
+
   // Fetch tất cả để đếm count cho từng tab
   const { items: allItems, refetch: refetchAll } = useMyAssignments({ pageSize: 100 });
-  const { items, isLoading, errorMessage, refetch } = useMyAssignments({
+  const {
+    items,
+    isLoading,
+    isLoadingMore: isLoadingMoreTasks,
+    hasMore: hasMoreTasks,
+    errorMessage,
+    refetch,
+    loadMore: loadMoreTasks,
+  } = useMyAssignments({
     assignmentStatus: activeFilter,
-    pageSize: 50,
+    pageSize: POSTER_PAGE_SIZE,
   });
 
+  // Chương trình dọn cộng đồng mà user hiện tại là Leader — gộp chung 1 danh sách
+  // "Nhiệm vụ" với assignment thường, đánh dấu bằng badge "Cộng đồng".
+  const [ledItems, setLedItems] = useState<CommunityCleanupListItem[]>([]);
+  const [ledPage, setLedPage] = useState(1);
+  const [ledHasMore, setLedHasMore] = useState(false);
+  const [isLoadingMoreLed, setIsLoadingMoreLed] = useState(false);
+
+  const refetchLed = useCallback(async () => {
+    try {
+      const res = await communityCleanupService.getLedByMe({ page: 1, pageSize: POSTER_PAGE_SIZE });
+      setLedItems(res.data.data.items.filter((i) => i.status !== 'Cancelled'));
+      setLedPage(1);
+      setLedHasMore(res.data.data.pagination.hasNext);
+    } catch {
+      // Không có quyền/không phải Leader nào — bỏ qua, danh sách assignment thường vẫn hoạt động.
+      setLedItems([]);
+      setLedHasMore(false);
+    }
+  }, []);
+
+  const loadMoreLed = useCallback(async () => {
+    if (isLoadingMoreLed || !ledHasMore) return;
+    setIsLoadingMoreLed(true);
+    try {
+      const nextPage = ledPage + 1;
+      const res = await communityCleanupService.getLedByMe({ page: nextPage, pageSize: POSTER_PAGE_SIZE });
+      setLedItems((prev) => [...prev, ...res.data.data.items.filter((i) => i.status !== 'Cancelled')]);
+      setLedPage(nextPage);
+      setLedHasMore(res.data.data.pagination.hasNext);
+    } catch {
+      // Giữ nguyên danh sách hiện tại — không báo lỗi để không gián đoạn cuộn.
+    } finally {
+      setIsLoadingMoreLed(false);
+    }
+  }, [isLoadingMoreLed, ledHasMore, ledPage]);
+
   const countOf = useCallback(
-    (status: AssignmentStatus) => allItems.filter((i) => i.assignmentStatus === status).length,
-    [allItems],
+    (status: AssignmentStatus) =>
+      allItems.filter((i) => i.assignmentStatus === status).length +
+      ledItems.filter((i) => communityStatusToFilterBucket(i.status) === status).length,
+    [allItems, ledItems],
   );
 
   useFocusEffect(
     useCallback(() => {
-      void Promise.all([refetchAll(), refetch()]);
-    }, [refetch, refetchAll]),
+      void Promise.all([refetchAll(), refetch(), refetchLed()]);
+    }, [refetch, refetchAll, refetchLed]),
   );
 
   const FILTER_TABS: FilterTab[] = [
-    { label: 'Tất cả',      value: undefined,    count: allItems.length },
+    { label: 'Tất cả',      value: undefined,    count: allItems.length + ledItems.length },
     { label: 'Chờ nhận',     value: 'Assigned',  count: countOf('Assigned') },
     { label: 'Đang xử lý',   value: 'InProgress', count: countOf('InProgress') },
     { label: 'Hoàn thành',  value: 'Completed',  count: countOf('Completed') },
@@ -348,21 +520,20 @@ export default function AssignmentsScreen() {
     } as never);
   }, []);
 
-  const renderItem = useCallback(
-    ({ item }: { item: AssignmentItem }) => (
-      <AssignmentCard item={item} onPress={handleCardPress} />
-    ),
-    [handleCardPress],
+  const handleLedCardPress = useCallback((item: CommunityCleanupListItem) => {
+    router.push({ pathname: '/community-lead/[id]', params: { id: item.id } } as never);
+  }, []);
+
+  const filteredCommunity = ledItems.filter(
+    (i) => activeFilter === undefined || communityStatusToFilterBucket(i.status) === activeFilter,
   );
-
-  const keyExtractor = useCallback((item: AssignmentItem) => item.assignmentId, []);
-
+  const totalCount = items.length + filteredCommunity.length;
   const activeTabLabel = FILTER_TABS.find((t) => t.value === activeFilter)?.label ?? 'Tất cả';
 
   return (
     <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
       {/* Header */}
-      <View className="px-4 pb-4 pt-3">
+      <View className="px-4 pb-10 pt-5">
         <Text className="text-2xl font-bold text-textPrimary">Nhiệm vụ</Text>
         <Text className="mt-1 text-sm text-textSecondary">
           Theo dõi công việc của đội theo từng trạng thái.
@@ -373,8 +544,9 @@ export default function AssignmentsScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 14, gap: 8 }}
-        style={{ flexGrow: 0 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 10 }}
+        className="border-b border-border"
+        style={{ flexGrow: 0, paddingTop: 20 }}
       >
         {FILTER_TABS.map((tab) => (
           <FilterChip
@@ -386,14 +558,9 @@ export default function AssignmentsScreen() {
         ))}
       </ScrollView>
 
-      {/* Sort label */}
-      {!isLoading && items.length > 0 && (
-        <SortLabel count={items.length} label="Ưu tiên theo SLA" />
-      )}
-
-      {/* List */}
-      {errorMessage && items.length === 0 ? (
-        <View className="flex-1 items-center justify-center px-8">
+      {/* Content */}
+      {errorMessage && totalCount === 0 ? (
+        <View className="flex-1 items-center justify-center pt-20 px-8">
           <Ionicons name="cloud-offline-outline" size={42} color={colors.textDisabled} />
           <Text className="mt-3 text-center text-sm leading-5 text-textSecondary">
             {errorMessage}
@@ -408,18 +575,23 @@ export default function AssignmentsScreen() {
             />
           </View>
         </View>
-      ) : isLoading && items.length === 0 ? (
-        <View>{[0, 1, 2, 3].map((n) => <AssignmentCardSkeleton key={n} />)}</View>
+      ) : isLoading && totalCount === 0 ? (
+        <View className="gap-6">
+          <View>
+            <Text className="mb-3 px-4 text-lg font-bold text-textPrimary">Công việc</Text>
+            <PosterSectionSkeleton />
+          </View>
+          <View>
+            <Text className="mb-3 px-4 text-lg font-bold text-textPrimary">Cộng đồng</Text>
+            <PosterSectionSkeleton />
+          </View>
+        </View>
+      ) : totalCount === 0 ? (
+        <EmptyState label={activeTabLabel.toLowerCase()} />
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={keyExtractor}
-          renderItem={renderItem}
+        <ScrollView
           showsVerticalScrollIndicator={false}
-          removeClippedSubviews
-          maxToRenderPerBatch={10}
-          contentContainerStyle={{ paddingTop: 2, paddingBottom: insets.bottom + 100, flexGrow: 1 }}
-          ListEmptyComponent={<EmptyState label={activeTabLabel.toLowerCase()} />}
+          contentContainerStyle={{ paddingTop: 10, paddingBottom: insets.bottom + 100 }}
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
@@ -428,7 +600,31 @@ export default function AssignmentsScreen() {
               colors={[colors.primary]}
             />
           }
-        />
+        >
+          {items.length > 0 ? (
+            <View className="mb-8">
+              <Text className="mb-3 px-4 text-lg font-bold text-textPrimary">Công việc</Text>
+              <TaskPosterRow
+                data={items}
+                onPress={handleCardPress}
+                onEndReached={loadMoreTasks}
+                isLoadingMore={isLoadingMoreTasks && hasMoreTasks}
+              />
+            </View>
+          ) : null}
+
+          {filteredCommunity.length > 0 ? (
+            <View className="mb-6 pt-1">
+              <Text className="mb-3 px-4 text-lg font-bold text-textPrimary">Cộng đồng</Text>
+              <CommunityPosterRow
+                data={filteredCommunity}
+                onPress={handleLedCardPress}
+                onEndReached={loadMoreLed}
+                isLoadingMore={isLoadingMoreLed && ledHasMore}
+              />
+            </View>
+          ) : null}
+        </ScrollView>
       )}
     </View>
   );

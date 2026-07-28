@@ -35,6 +35,10 @@ export interface PublicMapReportDto {
   imageUrl?: string | null;
   status?: string | null;
   createdAt?: string | null;
+  /** True khi báo cáo có chương trình dọn cộng đồng đang mở/chạy — pin hiển thị màu đen kèm nhãn "Cộng đồng". */
+  hasActiveCommunityCleanup?: boolean | null;
+  /** Id chương trình dọn cộng đồng đang active, chỉ có khi hasActiveCommunityCleanup = true. */
+  communityCleanupEventId?: string | null;
 }
 
 export interface PublicMapDetailMeta {

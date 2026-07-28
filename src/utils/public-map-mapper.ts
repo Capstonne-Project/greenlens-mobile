@@ -65,5 +65,7 @@ export function publicMapDtoToCitizenPin(dto: PublicMapReportDto): CitizenMapPin
     watchersCount: Math.max(0, dto.reporterCount ?? 0),
     severity: dto.severity,
     status: dto.status,
+    isCommunity: dto.hasActiveCommunityCleanup ?? false,
+    communityCleanupEventId: dto.communityCleanupEventId ?? undefined,
   };
 }

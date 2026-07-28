@@ -6,6 +6,8 @@ import { useCallback, useState, type ReactNode } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
+  Dimensions,
+  FlatList,
   Pressable,
   ScrollView,
   View,
@@ -55,6 +57,9 @@ const ASSIGNMENT_STATUS_CONFIG: Record<string, { label: string; color: string; b
   Declined:   { label: 'Từ chối',    color: '#991B1B', bg: '#FEE2E2' },
   Escalated:  { label: 'Đã chuyển cấp', color: '#6D28D9', bg: '#EDE9FE' },
 };
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const GALLERY_HEIGHT = 320;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -136,6 +141,73 @@ function TimelineStep({ label, time, done, active = false, isLast = false }: Tim
           </Text>
         ) : null}
       </View>
+    </View>
+  );
+}
+
+interface TaskDetailGalleryProps {
+  images: { url: string }[];
+  severityBg: string;
+  severityColor: string;
+}
+
+/** Gallery ảnh hiện trường nhiều ảnh — cùng format viền/overlay như report detail của USER. */
+function TaskDetailGallery({ images, severityBg, severityColor }: TaskDetailGalleryProps) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const items = images.length > 0 ? images : [{ url: '' }];
+
+  return (
+    <View style={{ height: GALLERY_HEIGHT, backgroundColor: '#000' }}>
+      <FlatList
+        data={items}
+        keyExtractor={(item, index) => item.url || `placeholder-${index}`}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) => {
+          const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+          setActiveIndex(Math.max(0, Math.min(items.length - 1, index)));
+        }}
+        renderItem={({ item }) =>
+          item.url ? (
+            <Image
+              source={{ uri: item.url }}
+              style={{ width: SCREEN_WIDTH, height: GALLERY_HEIGHT }}
+              contentFit="cover"
+            />
+          ) : (
+            <View
+              className="items-center justify-center"
+              style={{ width: SCREEN_WIDTH, height: GALLERY_HEIGHT, backgroundColor: severityBg }}
+            >
+              <Ionicons name="image-outline" size={48} color={severityColor} />
+            </View>
+          )
+        }
+      />
+
+      {images.length > 1 ? (
+        <>
+          <View pointerEvents="none" className="absolute bottom-4 left-4 flex-row gap-1.5">
+            {images.map((_, index) => (
+              <View
+                key={`dot-${index}`}
+                className="rounded-full"
+                style={{
+                  width: activeIndex === index ? 7 : 5,
+                  height: activeIndex === index ? 7 : 5,
+                  backgroundColor: activeIndex === index ? '#fff' : 'rgba(255,255,255,0.45)',
+                }}
+              />
+            ))}
+          </View>
+          <View pointerEvents="none" className="absolute bottom-4 right-4 rounded-full bg-black/45 px-2.5 py-1">
+            <Text className="text-[11px] font-semibold text-white">
+              {activeIndex + 1}/{images.length}
+            </Text>
+          </View>
+        </>
+      ) : null}
     </View>
   );
 }
@@ -376,7 +448,6 @@ export default function AssignmentDetailScreen() {
     ? (ASSIGNMENT_STATUS_CONFIG[task.assignmentStatus] ?? ASSIGNMENT_STATUS_CONFIG.Assigned)
     : null;
   const sla = task?.slaResolveDueAt ? formatSlaRemaining(task.slaResolveDueAt) : null;
-  const firstImage = task?.reportImages?.[0]?.url ?? null;
   const hasBeforeImages = task?.hasBeforeImages === true;
   const awaitingBeforeImages =
     task?.assignmentStatus === 'InProgress' && !hasBeforeImages;
@@ -400,30 +471,24 @@ export default function AssignmentDetailScreen() {
       >
         <Pressable
           onPress={() => router.back()}
-          className="h-9 w-9 items-center justify-center rounded-full bg-white"
-          style={{ elevation: 4, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8 }}
+          className="h-9 w-9 items-center justify-center rounded-full bg-black/40"
         >
-          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
+          <Ionicons name="chevron-back" size={22} color={colors.white} />
         </Pressable>
 
         {task ? (
-          <View
-            className="flex-row items-center gap-1.5 rounded-full bg-white px-3 py-1.5"
-            style={{ elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6 }}
-          >
+          <View className="flex-row items-center gap-1.5 rounded-full bg-black/40 px-3 py-1.5">
             {sla ? (
               <>
-                <Ionicons name="time" size={14} color={sla.overdue ? colors.error : colors.warning} />
-                <Text className="text-xs font-bold" style={{ color: sla.overdue ? colors.error : colors.warning }}>
+                <Ionicons name="time" size={14} color={sla.overdue ? '#FCA5A5' : colors.white} />
+                <Text className="text-xs font-bold text-white">
                   SLA {sla.text}
                 </Text>
               </>
             ) : assignStatus ? (
-              <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: assignStatus.bg }}>
-                <Text className="text-[11px] font-semibold" style={{ color: assignStatus.color }}>
-                  {assignStatus.label}
-                </Text>
-              </View>
+              <Text className="text-[11px] font-bold text-white">
+                {assignStatus.label}
+              </Text>
             ) : null}
           </View>
         ) : null}
@@ -450,16 +515,29 @@ export default function AssignmentDetailScreen() {
           </View>
         ) : task ? (
           <>
-            {/* Hero image */}
-            {firstImage ? (
-              <Image source={{ uri: firstImage }} style={{ width: '100%', height: 240 }} contentFit="cover" />
-            ) : (
-              <View className="w-full items-center justify-center" style={{ height: 180, backgroundColor: severity.bg }}>
-                <Ionicons name="image-outline" size={48} color={severity.color} />
-              </View>
-            )}
+            {/* Gallery ảnh hiện trường — nhiều ảnh, cùng format với report detail của USER */}
+            <TaskDetailGallery
+              images={task.reportImages}
+              severityBg={severity.bg}
+              severityColor={severity.color}
+            />
 
-            <View className="px-4 pt-4">
+            {/* Dialog bao ngoài — bo góc trên, chồng lên gallery */}
+            <View
+              className="-mt-6 rounded-t-[28px] bg-white"
+              style={{
+                shadowColor: '#000',
+                shadowOpacity: 0.15,
+                shadowRadius: 16,
+                shadowOffset: { width: 0, height: -4 },
+                elevation: 18,
+              }}
+            >
+              <View className="items-center pt-2.5">
+                <View className="h-1.5 w-10 rounded-full bg-border" />
+              </View>
+
+              <View className="px-4 pt-3">
               {/* Code + badges */}
               <View className="mb-2 flex-row flex-wrap items-center gap-2">
                 <Text className="text-xs text-textSecondary">{task.reportCode}</Text>
@@ -677,6 +755,7 @@ export default function AssignmentDetailScreen() {
                   />
                 </View>
               ) : null}
+              </View>
             </View>
           </>
         ) : null}
