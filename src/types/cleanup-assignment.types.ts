@@ -1,3 +1,4 @@
+import type { ApiPagination } from '@/types/api.types';
 import type { ReportStatus, ReportWorkflowStatus } from '@/types/report-status.types';
 
 export type AssignmentStatus =
@@ -34,17 +35,42 @@ export interface AssignmentItem {
   firstImageUrl: string | null;
 }
 
+/** BE trả `{ items, pagination }` (PaginationMeta) — không phải totalCount/page/pageSize phẳng. */
 export interface MyAssignmentsResponse {
   items: AssignmentItem[];
-  totalCount: number;
-  page: number;
-  pageSize: number;
+  pagination: ApiPagination;
 }
 
 export interface MyAssignmentsParams {
   page?: number;
   pageSize?: number;
   assignmentStatus?: AssignmentStatus;
+}
+
+// ─── Progress stats (dashboard "Tiến độ") ──────────────────────────────────────
+
+export interface StatusCountItem {
+  status: AssignmentStatus;
+  count: number;
+}
+
+export interface SeverityCountItem {
+  severity: SeverityLevel;
+  count: number;
+}
+
+export interface DailyCompletionItem {
+  /** yyyy-MM-dd */
+  date: string;
+  count: number;
+}
+
+export interface MyTaskProgressStats {
+  totalCount: number;
+  statusCounts: StatusCountItem[];
+  severityCounts: SeverityCountItem[];
+  overdueCount: number;
+  completionTrend: DailyCompletionItem[];
 }
 
 // ─── Detail ───────────────────────────────────────────────────────────────────
