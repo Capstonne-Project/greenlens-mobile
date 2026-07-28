@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { notificationService } from '@/services/notification.service';
 import { useNotificationStore } from '@/stores/notification.store';
@@ -47,6 +47,7 @@ export function useNotifications(
   const clearUnread = useNotificationStore((s) => s.clearUnread);
   const decrementUnread = useNotificationStore((s) => s.decrementUnread);
   const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const realtimeTick = useNotificationStore((s) => s.realtimeTick);
 
   const [items, setItems] = useState<AppNotification[]>([]);
   const [page, setPage] = useState(1);
@@ -172,6 +173,14 @@ export function useNotifications(
     setTotalCount(0);
     void fetchPage(1, 'replace');
   }, [enabled, fetchPage, filter]);
+
+  /** SignalR bắn noti mới trong lúc màn này đang mở — refetch trang đầu để hiện ngay, không cần đợi bấm vào */
+  const lastRealtimeTick = useRef(realtimeTick);
+  useEffect(() => {
+    if (!enabled || realtimeTick === lastRealtimeTick.current) return;
+    lastRealtimeTick.current = realtimeTick;
+    void fetchPage(1, items.length > 0 ? 'refresh' : 'replace');
+  }, [enabled, realtimeTick, fetchPage, items.length]);
 
   return useMemo(
     () => ({

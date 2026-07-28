@@ -318,6 +318,16 @@ export default function ReportsTabScreen() {
           count={tabCounts.NEEDS_CONFIRM ?? 0}
           onPress={() => goToFilterKey('NEEDS_CONFIRM')}
         />
+
+        <TapScale onPress={() => router.push('/community')}>
+          <View className="mx-0 flex-row items-center justify-between border-b border-border bg-white px-4 py-2.5">
+            <View className="flex-row items-center gap-2">
+              <Ionicons name="leaf-outline" size={15} color={colors.primary} />
+              <Text className="text-[12px] text-textPrimary">Chương trình dọn cộng đồng</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={15} color={colors.textSecondary} />
+          </View>
+        </TapScale>
       </View>
 
       <View className="flex-1" onLayout={onPagerLayout}>

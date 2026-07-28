@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
 import MapView from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,9 +13,11 @@ import { HCM_INITIAL_REGION } from '@/constants/map-region';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyAssignments } from '@/hooks/useMyAssignments';
 import { useStaffMapPins } from '@/hooks/useStaffMapPins';
+import { communityCleanupService } from '@/services/communityCleanup.service';
 import { useNotificationStore } from '@/stores/notification.store';
 import { colors } from '@/theme/colors';
 import type { AssignmentStats } from '@/types/cleanup-assignment.types';
+import type { CommunityCleanupListItem, CommunityCleanupStatus } from '@/types/community-cleanup.types';
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
@@ -173,42 +176,37 @@ function MiniMapSection({ pins, totalCount }: MiniMapSectionProps) {
   );
 }
 
-// ─── Officer Message ─────────────────────────────────────────────────────────
+// ─── Community-led row (thay thế "Officer Feed") ──────────────────────────────
 
-interface OfficerMessageProps {
-  name: string;
-  message: string;
-  time: string;
-  isOnline?: boolean;
-}
+const COMMUNITY_STATUS_LABEL: Record<CommunityCleanupStatus, { label: string; color: string }> = {
+  OpenForJoin: { label: 'Đang mở đăng ký', color: '#065F46' },
+  JoinClosed: { label: 'Đã đóng đăng ký', color: '#92400E' },
+  InProgress: { label: 'Đang dọn dẹp', color: '#1E40AF' },
+  PendingVerification: { label: 'Chờ LEO duyệt', color: '#6D28D9' },
+  Completed: { label: 'Hoàn thành', color: '#374151' },
+  Cancelled: { label: 'Đã hủy', color: '#991B1B' },
+};
 
-function OfficerMessage({ name, message, time, isOnline = false }: OfficerMessageProps) {
-  // Lấy chữ cái đầu để làm avatar
-  const initial = name.replace('Officer ', '')[0] ?? 'O';
+function CommunityLedRow({ item, onPress }: { item: CommunityCleanupListItem; onPress: () => void }) {
+  const statusCfg = COMMUNITY_STATUS_LABEL[item.status] ?? COMMUNITY_STATUS_LABEL.OpenForJoin;
 
   return (
-    <View className="flex-row items-start py-3">
-      <View className="relative mr-3">
-        <View className="h-9 w-9 items-center justify-center rounded-full bg-primary">
-          <Text className="text-sm font-bold text-white">{initial}</Text>
-        </View>
-        {isOnline && (
-          <View
-            className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white"
-            style={{ backgroundColor: '#22C55E' }}
-          />
-        )}
+    <Pressable onPress={onPress} className="flex-row items-start py-3">
+      <View className="mr-3 h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: '#111827' }}>
+        <Ionicons name="people" size={16} color="#fff" />
       </View>
 
       <View className="flex-1">
         <View className="flex-row items-center gap-1.5">
-          <Text className="text-[13px] font-bold text-textPrimary">{name}</Text>
-          <View className="h-1 w-1 rounded-full bg-textSecondary opacity-40" />
-          <Text className="text-[11px] text-textSecondary">{time}</Text>
+          <Text className="flex-1 text-[13px] font-bold text-textPrimary" numberOfLines={1}>{item.title}</Text>
+          <Text className="text-[11px] font-semibold" style={{ color: statusCfg.color }}>{statusCfg.label}</Text>
         </View>
-        <Text className="mt-0.5 text-[13px] text-textSecondary" numberOfLines={2}>{message}</Text>
+        <Text className="mt-0.5 text-[13px] text-textSecondary" numberOfLines={1}>
+          {item.reportCode} · {item.participantCount}/{item.maxParticipants} người · {item.progressPercent}%
+        </Text>
       </View>
-    </View>
+      <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} style={{ marginTop: 8, marginLeft: 4 }} />
+    </Pressable>
   );
 }
 
@@ -236,6 +234,25 @@ export default function StaffHomeScreen() {
 
   const { items, isLoading } = useMyAssignments({ pageSize: 100 });
   const { pins } = useStaffMapPins();
+
+  // Chương trình dọn cộng đồng mà user hiện tại là Leader — thay thế feed "Từ Officer".
+  const [ledItems, setLedItems] = useState<CommunityCleanupListItem[]>([]);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      void (async () => {
+        try {
+          const res = await communityCleanupService.getLedByMe({ page: 1, pageSize: 5 });
+          if (!cancelled) setLedItems(res.data.data.items.filter((i) => i.status !== 'Cancelled'));
+        } catch {
+          if (!cancelled) setLedItems([]);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
 
   const stats: AssignmentStats = useMemo(() => {
     if (!items.length) {
@@ -399,29 +416,35 @@ export default function StaffHomeScreen() {
           </Pressable>
         </View>
 
-        {/* ── Officer Feed ── */}
+        {/* ── Cộng đồng của bạn ── */}
         <View
           className="mx-4 mt-4 overflow-hidden rounded-2xl bg-white"
           style={{ elevation: 3, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } }}
         >
           <SectionHeader
-            title="Từ Officer"
+            title="Cộng đồng của bạn"
             actionLabel="Xem hết"
-            onAction={() => router.push('/notifications' as never)}
+            onAction={() => router.push('/community-lead' as never)}
           />
           <View className="px-4 pb-2">
-            <OfficerMessage
-              name="Officer Minh"
-              message="Ưu tiên xử lý hotspot Nguyễn Huệ"
-              time="09:12"
-              isOnline
-            />
-            <View className="h-px bg-border" />
-            <OfficerMessage
-              name="Officer Lan"
-              message="Đã duyệt báo cáo RPT-2098"
-              time="08:40"
-            />
+            {ledItems.length > 0 ? (
+              ledItems.map((item, i) => (
+                <React.Fragment key={item.id}>
+                  {i > 0 && <View className="h-px bg-border" />}
+                  <CommunityLedRow
+                    item={item}
+                    onPress={() => router.push({ pathname: '/community-lead/[id]', params: { id: item.id } } as never)}
+                  />
+                </React.Fragment>
+              ))
+            ) : (
+              <View className="items-center py-6">
+                <Ionicons name="people-outline" size={28} color={colors.textDisabled} />
+                <Text className="mt-2 text-center text-xs text-textSecondary">
+                  Bạn chưa dẫn dắt chương trình dọn cộng đồng nào. LEO sẽ chỉ định khi mở chương trình mới.
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 

@@ -15,6 +15,9 @@ export interface CitizenMapPin {
   /** Raw string từ BE (vd. "Low"/"High", "Submitted"/"Resolved") — dùng cho badge trong list card */
   severity?: string | null;
   status?: string | null;
+  /** True khi báo cáo có chương trình dọn cộng đồng đang mở/chạy — marker màu đen + nhãn "Cộng đồng". */
+  isCommunity?: boolean;
+  communityCleanupEventId?: string;
 }
 
 export const CITIZEN_MAP_MOCK_PINS: CitizenMapPin[] = [

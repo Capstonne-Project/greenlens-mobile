@@ -26,6 +26,10 @@ export default function RootLayout() {
         <Stack.Screen name="(staff)" />
         <Stack.Screen name="(inspector)" />
         <Stack.Screen name="assignment" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen
+          name="invitation"
+          options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+        />
       </Stack>
       <PortalHost />
     </GestureHandlerRootView>

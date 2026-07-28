@@ -1,0 +1,87 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'd:\\CapsoneProject\\Mobile\\green-lens-app\\.codex\\hooks\\pre_write_guard.py'",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|Bash|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'd:\\CapsoneProject\\Mobile\\green-lens-app\\.codex\\hooks\\observe.py' pre",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python 'd:\\CapsoneProject\\Mobile\\green-lens-app\\.codex\\hooks\\suggest_compact.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|Bash|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'd:\\CapsoneProject\\Mobile\\green-lens-app\\.codex\\hooks\\observe.py' post",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'd:\\CapsoneProject\\Mobile\\green-lens-app\\.codex\\hooks\\post_edit_linter.py'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'd:\\CapsoneProject\\Mobile\\green-lens-app\\.codex\\hooks\\pre-compact.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'd:\\CapsoneProject\\Mobile\\green-lens-app\\.codex\\hooks\\session-start.py'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python 'd:\\CapsoneProject\\Mobile\\green-lens-app\\.codex\\hooks\\plan-context.py'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
