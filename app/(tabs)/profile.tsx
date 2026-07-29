@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -13,6 +14,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import { NotificationBell } from '@/components/common/NotificationBell';
 import { TapScale } from '@/components/layout/TapScale';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/hooks/useAuth';
@@ -82,7 +84,7 @@ function IconButton({ icon, onPress }: { icon: keyof typeof Ionicons.glyphMap; o
         onPressIn={() => { scale.value = withSpring(0.9, { damping: 16, stiffness: 280 }); }}
         onPressOut={() => { scale.value = withSpring(1, { damping: 16, stiffness: 280 }); }}
         hitSlop={8}
-        className="h-9 w-9 items-center justify-center rounded-full bg-surface"
+        className="h-9 w-9 items-center justify-center"
       >
         <Ionicons name={icon} size={20} color={colors.textPrimary} />
       </Pressable>
@@ -96,6 +98,153 @@ function StatItem({ value, label }: { value: string | number; label: string }) {
       <Text className="text-lg font-bold text-textPrimary">{value}</Text>
       <Text className="mt-0.5 text-xs text-textSecondary">{label}</Text>
     </View>
+  );
+}
+
+const BUBBLE_SHADOW = Platform.select({
+  ios: {
+    shadowColor: colors.primary,
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  android: { elevation: 6 },
+}) as object;
+
+/**
+ * Bubble "flair" hiển thị huy hiệu người dùng ghim, nổi lên phía trên avatar.
+ * Tự giãn theo độ dài tên huy hiệu — không cắt chữ.
+ */
+function FeaturedBadgeBubble({ name, onPress }: { name: string; onPress: () => void }) {
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(8);
+  const scale = useSharedValue(0.92);
+
+  useEffect(() => {
+    opacity.value = withTiming(1, { duration: 260 });
+    translateY.value = withSpring(0, { damping: 15, stiffness: 220 });
+    scale.value = withSpring(1, { damping: 15, stiffness: 220 });
+  }, [opacity, translateY, scale, name]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }, { scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle} className="mb-2 self-start">
+      <TapScale onPress={onPress}>
+        <View className="relative">
+          <LinearGradient
+            colors={[colors.primary, colors.primaryDark]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              borderRadius: 999,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              ...BUBBLE_SHADOW,
+            }}
+          >
+            <Ionicons name="ribbon" size={13} color={colors.white} />
+            <Text className="text-xs font-bold text-white">{name}</Text>
+          </LinearGradient>
+
+          {/* Mũi bubble trỏ xuống tâm avatar (avatar 80px, tâm ≈ 40) */}
+          <View
+            style={{
+              position: 'absolute',
+              bottom: -3,
+              left: 34,
+              width: 10,
+              height: 10,
+              borderRadius: 2,
+              backgroundColor: colors.primary,
+              transform: [{ rotate: '45deg' }],
+            }}
+          />
+        </View>
+      </TapScale>
+    </Animated.View>
+  );
+}
+
+/** Thẻ tổng quan huy hiệu — cuộn ngang để xem hết, huy hiệu đang ghim được tô sáng. */
+function BadgeShowcaseCard({
+  achievements,
+  featuredName,
+  onPress,
+}: {
+  achievements: string[];
+  featuredName?: string | null;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} className="mx-4 mt-4">
+      <View className="overflow-hidden rounded-2xl bg-white" style={CARD_3D_SHADOW}>
+        <View className="flex-row items-center gap-3 px-4 pt-3.5">
+          <View
+            className="h-9 w-9 items-center justify-center rounded-full"
+            style={{ backgroundColor: `${colors.primary}1A` }}
+          >
+            <Ionicons name="ribbon" size={18} color={colors.primary} />
+          </View>
+          <View className="flex-1">
+            <Text className="text-sm font-bold text-textPrimary">Huy hiệu của tôi</Text>
+            <Text className="mt-0.5 text-xs text-textSecondary">
+              {achievements.length > 0
+                ? `Đã đạt ${achievements.length} huy hiệu`
+                : 'Chưa đạt huy hiệu nào'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+        </View>
+
+        {achievements.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 14, gap: 8 }}
+          >
+            {achievements.map((name) => {
+              const isFeatured = name === featuredName;
+              return (
+                <View
+                  key={name}
+                  className="flex-row items-center gap-1.5 rounded-full px-3 py-1.5"
+                  style={{
+                    backgroundColor: isFeatured ? colors.primary : colors.surface,
+                    borderWidth: 1,
+                    borderColor: isFeatured ? colors.primary : colors.border,
+                  }}
+                >
+                  <Ionicons
+                    name={isFeatured ? 'star' : 'ribbon-outline'}
+                    size={13}
+                    color={isFeatured ? colors.white : colors.primary}
+                  />
+                  <Text
+                    className="text-xs font-semibold"
+                    style={{ color: isFeatured ? colors.white : colors.textPrimary }}
+                  >
+                    {name}
+                  </Text>
+                </View>
+              );
+            })}
+          </ScrollView>
+        ) : (
+          <View className="px-4 pb-4 pt-2">
+            <Text className="text-xs text-textSecondary">
+              Gửi báo cáo và tham gia dọn rác để mở khóa huy hiệu đầu tiên của bạn.
+            </Text>
+          </View>
+        )}
+      </View>
+    </Pressable>
   );
 }
 
@@ -466,6 +615,7 @@ export default function ProfileTabScreen() {
   );
 
   const roleLabel = user?.role ? ROLE_LABEL[user.role] : undefined;
+  const achievements = user?.achievements ?? [];
   const resolvedCount = useMemo(() => items.filter((i) => i.resolvedAt).length, [items]);
 
   const openDetail = (itemOrId: MyReportItem | string) => {
@@ -497,7 +647,7 @@ export default function ProfileTabScreen() {
           {user?.fullName ?? 'Hồ sơ'}
         </Text>
         <View className="flex-row items-center gap-2">
-          <IconButton icon="notifications-outline" onPress={() => router.push('/(tabs)/notifications' as Href)} />
+          <NotificationBell size={20} />
           <IconButton icon="settings-outline" onPress={() => router.push('/(tabs)/settings' as Href)} />
         </View>
       </View>
@@ -507,19 +657,28 @@ export default function ProfileTabScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         showsVerticalScrollIndicator={false}
       >
-        <View className="flex-row items-center px-4 pt-4">
-          <View className="h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-surface">
-            {user?.avatarUrl ? (
-              <Image source={{ uri: user.avatarUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-            ) : (
-              <Text className="text-3xl font-bold text-textPrimary">{user?.fullName?.[0]?.toUpperCase() ?? 'H'}</Text>
-            )}
-          </View>
+        <View className="px-4 pt-4">
+          {user?.featuredBadge ? (
+            <FeaturedBadgeBubble
+              name={user.featuredBadge.nameVi}
+              onPress={() => router.push('/badges' as Href)}
+            />
+          ) : null}
 
-          <View className="flex-1 flex-row">
-            <StatItem value={items.length} label="Báo cáo" />
-            <StatItem value={user?.points ?? 0} label="Điểm" />
-            <StatItem value={resolvedCount} label="Đã xử lý" />
+          <View className="flex-row items-center">
+            <View className="h-20 w-20 items-center justify-center overflow-hidden rounded-full border-2 border-border bg-surface">
+              {user?.avatarUrl ? (
+                <Image source={{ uri: user.avatarUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+              ) : (
+                <Text className="text-3xl font-bold text-textPrimary">{user?.fullName?.[0]?.toUpperCase() ?? 'H'}</Text>
+              )}
+            </View>
+
+            <View className="flex-1 flex-row">
+              <StatItem value={items.length} label="Báo cáo" />
+              <StatItem value={user?.points ?? 0} label="Điểm" />
+              <StatItem value={resolvedCount} label="Đã xử lý" />
+            </View>
           </View>
         </View>
 
@@ -538,6 +697,12 @@ export default function ProfileTabScreen() {
             </Text>
           </TapScale>
         </View>
+
+        <BadgeShowcaseCard
+          achievements={achievements}
+          featuredName={user?.featuredBadge?.nameVi}
+          onPress={() => router.push('/badges' as Href)}
+        />
 
         <View className="px-4 pt-4">
           <TapScale onPress={() => router.push('/(tabs)/edit-profile' as Href)}>
