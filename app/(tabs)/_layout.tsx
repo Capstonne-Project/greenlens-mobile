@@ -16,7 +16,9 @@ export default function CitizenTabsLayout() {
       <Tabs.Screen name="settings" options={{ href: null, title: 'Cài đặt' }} />
       <Tabs.Screen name="change-password" options={{ href: null, title: 'Đổi mật khẩu' }} />
       <Tabs.Screen name="edit-profile" options={{ href: null, title: 'Chỉnh sửa hồ sơ' }} />
-      <Tabs.Screen name="notifications" options={{ title: 'Thông báo' }} />
+      {/* Thông báo mở từ NotificationBell trên header, không còn là tab */}
+      <Tabs.Screen name="notifications" options={{ href: null, title: 'Thông báo' }} />
+      <Tabs.Screen name="leaderboard" options={{ title: 'BXH' }} />
       <Tabs.Screen name="profile" options={{ title: 'Hồ sơ' }} />
     </Tabs>
   );

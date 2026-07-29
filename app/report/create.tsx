@@ -1129,11 +1129,12 @@ export default function ReportCreateWizardScreen() {
         onSubmit={() => void handleSubmit()}
       />
 
-      {/* Upload / AI prepare — scan overlay trên ảnh đang xử lý */}
+      {/* Scan overlay CHỈ khi phân tích bằng AI. Tắt AI → upload thuần, đã có
+          banner "Đang tải ảnh lên server..." + badge trạng thái trên từng ảnh. */}
       <AiImageScanOverlay
-        visible={isAnalyzing}
+        visible={isAnalyzing && useAi}
         imageUri={images[0]?.localUri}
-        mode={useAi ? "ai" : "upload"}
+        mode="ai"
       />
 
       {/* AI Result dialog */}

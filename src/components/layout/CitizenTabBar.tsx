@@ -12,8 +12,9 @@ import { useNotificationStore } from '@/stores/notification.store';
 import { colors } from '@/theme/colors';
 import { resolveUnreadCount } from '@/utils/notification-unread';
 
+// "Thông báo" đã chuyển lên header (NotificationBell) — không còn là tab.
 const LEFT_TABS = ['index', 'reports'] as const;
-const RIGHT_TABS = ['notifications', 'profile'] as const;
+const RIGHT_TABS = ['leaderboard', 'profile'] as const;
 
 type TabName = (typeof LEFT_TABS)[number] | (typeof RIGHT_TABS)[number];
 
@@ -23,7 +24,7 @@ const TAB_META: Record<
 > = {
   index: { label: 'Trang chủ', icon: 'home-outline', activeIcon: 'home' },
   reports: { label: 'Báo cáo', icon: 'file-tray-outline', activeIcon: 'file-tray' },
-  notifications: { label: 'Thông báo', icon: 'notifications-outline', activeIcon: 'notifications' },
+  leaderboard: { label: 'BXH', icon: 'trophy-outline', activeIcon: 'trophy' },
   profile: { label: 'Hồ sơ', icon: 'person-outline', activeIcon: 'person' },
 };
 
@@ -57,14 +58,12 @@ interface TabSlotProps extends BottomTabBarProps {
 function TabSlot({ routeName, state, descriptors, navigation }: TabSlotProps) {
   const route = state.routes.find((r) => r.name === routeName);
   const meta = TAB_META[routeName];
-  const unreadCount = useNotificationStore((s) => s.unreadCount);
   if (!route) return <View className="w-[52px]" />;
 
   const routeIndex = state.routes.findIndex((r) => r.key === route.key);
   const isFocused = state.index === routeIndex;
   const { options } = descriptors[route.key];
   const label = (options.title as string) ?? meta.label;
-  const showBadge = routeName === 'notifications' && unreadCount > 0;
 
   const onPress = () => {
     const event = navigation.emit({
@@ -84,23 +83,11 @@ function TabSlot({ routeName, state, descriptors, navigation }: TabSlotProps) {
       onPress={onPress}
       className="min-w-[52px] items-center gap-0.5 py-1"
     >
-      <View className="relative">
-        <Ionicons
-          name={isFocused ? meta.activeIcon : meta.icon}
-          size={24}
-          color={isFocused ? colors.primary : colors.textSecondary}
-        />
-        {showBadge ? (
-          <View
-            className="absolute -right-2.5 -top-1.5 min-w-[16px] items-center justify-center rounded-full border-2 border-white px-1"
-            style={{ height: 16, backgroundColor: colors.error }}
-          >
-            <Text className="text-[9px] font-bold leading-[10px] text-white">
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </Text>
-          </View>
-        ) : null}
-      </View>
+      <Ionicons
+        name={isFocused ? meta.activeIcon : meta.icon}
+        size={24}
+        color={isFocused ? colors.primary : colors.textSecondary}
+      />
       <Text
         className="text-[11px] font-medium"
         style={{ color: isFocused ? colors.primary : colors.textSecondary }}

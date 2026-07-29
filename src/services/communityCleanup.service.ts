@@ -25,6 +25,10 @@ export const communityCleanupService = {
   getById: (eventId: string) =>
     api.get<ApiEnvelope<CommunityCleanupEventDetail>>(`/community-cleanups/${eventId}`),
 
+  /** BR-CMU-003: tối đa 1 event active/report. `data` = null nếu report chưa có chương trình. */
+  getActiveByReportId: (reportId: string) =>
+    api.get<ApiEnvelope<CommunityCleanupEventDetail | null>>(`/reports/${reportId}/community-cleanup`),
+
   join: (eventId: string) => api.post<void>(`/community-cleanups/${eventId}/join`, {}),
 
   withdraw: (eventId: string) => api.post<void>(`/community-cleanups/${eventId}/withdraw`, {}),

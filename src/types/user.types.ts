@@ -1,3 +1,5 @@
+import type { FeaturedBadge } from '@/types/gamification.types';
+
 /** Mobile roles — master plan §1 (LEO/Admin/CompanyManager không có shell mobile) */
 export type UserRole =
   | 'Citizen'
@@ -16,6 +18,8 @@ export interface User {
   isPhoneVerified?: boolean;
   points?: number;
   reportCount?: number;
+  achievements?: string[];
+  featuredBadge?: FeaturedBadge | null;
   createdAt?: string;
   teamId?: string;
   teamName?: string;
