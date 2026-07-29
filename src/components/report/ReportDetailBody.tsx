@@ -1,5 +1,6 @@
 import { MergedReportsSection } from '@/components/report/MergedReportsSection';
 import { ReportCommentsSection } from '@/components/report/ReportCommentsSection';
+import { ReportCommunityCleanupSection } from '@/components/report/ReportCommunityCleanupSection';
 import { ReportLocationMap } from '@/components/report/ReportLocationMap';
 import { ReportSatisfactionCard } from '@/components/report/ReportSatisfactionCard';
 import { Text } from '@/components/ui/text';
@@ -381,6 +382,8 @@ export function ReportDetailBody({
           </View>
         </View>
       ) : null}
+
+      <ReportCommunityCleanupSection reportId={detail.id} />
 
       {!hideOpsProgress ? (
         <>
