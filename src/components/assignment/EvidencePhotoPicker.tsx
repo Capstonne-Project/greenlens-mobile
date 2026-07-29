@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { Pressable, View } from 'react-native';
+import { Dimensions, Pressable, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -9,6 +9,11 @@ import Animated, {
 
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
+
+// Grid 3 cột: trừ padding màn hình (px-4 = 16*2) và 2 khoảng gap-3 (12*2) giữa các ô.
+const SCREEN_PADDING_X = 16 * 2;
+const TILE_GAP = 12;
+const TILE_SIZE = (Dimensions.get('window').width - SCREEN_PADDING_X - TILE_GAP * 2) / 3;
 
 export interface EvidencePhoto {
   uri: string;
@@ -101,10 +106,14 @@ function PhotoTile({ uri, index, onRemove }: PhotoTileProps) {
   }));
 
   return (
-    <View className="relative aspect-square w-[31%] overflow-visible">
+    <View
+      className="relative overflow-visible"
+      style={{ width: TILE_SIZE, height: TILE_SIZE }}
+    >
       <Image
         source={{ uri }}
-        className="h-full w-full rounded-xl bg-surface"
+        className="rounded-xl bg-surface"
+        style={{ width: TILE_SIZE, height: TILE_SIZE }}
         contentFit="cover"
         cachePolicy="memory-disk"
       />
