@@ -93,6 +93,42 @@ export async function clearDevicePushToken(): Promise<void> {
   }
 }
 
+export type LocalNotifyType = 'success' | 'error' | 'warning' | 'info';
+
+const LOCAL_NOTIFY_TITLE: Record<LocalNotifyType, string> = {
+  success: 'Thành công',
+  error: 'Lỗi',
+  warning: 'Cảnh báo',
+  info: 'Thông báo',
+};
+
+/**
+ * Báo kết quả hành động tại chỗ (check-in, join, upload, ...) bằng banner
+ * notification của hệ điều hành thay vì toast trong app.
+ * No-op nếu thiết bị/nền tảng không hỗ trợ hoặc user chưa cấp quyền.
+ */
+export async function notifyLocal(message: string, type: LocalNotifyType = 'info'): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications) return;
+
+  const granted = await ensurePushPermission();
+  if (!granted) return;
+
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: LOCAL_NOTIFY_TITLE[type],
+        body: message,
+      },
+      trigger: null,
+    });
+  } catch (error) {
+    if (__DEV__) {
+      console.warn('[push] notifyLocal failed', error);
+    }
+  }
+}
+
 export function parsePushData(
   data: Record<string, unknown> | undefined,
 ): { type?: string; referenceId?: string; notificationId?: string } {

@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
+  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -13,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
+import { notifyLocal } from '@/utils/push-notifications';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,18 +90,22 @@ export function Toast({
 
   useEffect(() => {
     if (visible) {
-      // Slide down + fade in
-      translateY.value = withSpring(0, { damping: 18, stiffness: 260 });
-      opacity.value    = withTiming(1, { duration: 220 });
-
-      // Auto-hide after duration
-      translateY.value = withDelay(
-        duration,
-        withSpring(-120, { damping: 18, stiffness: 260 }, (finished) => {
-          if (finished && onHide) runOnJS(onHide)();
-        }),
+      // Slide down + fade in, hold, then auto-hide — chained in ONE assignment per
+      // shared value. Assigning `.value` twice in the same tick (in → then delayed out)
+      // cancels the first animation before it ever runs, so the toast never appears.
+      translateY.value = withSequence(
+        withSpring(0, { damping: 18, stiffness: 260 }),
+        withDelay(
+          duration,
+          withSpring(-120, { damping: 18, stiffness: 260 }, (finished) => {
+            if (finished && onHide) runOnJS(onHide)();
+          }),
+        ),
       );
-      opacity.value = withDelay(duration, withTiming(0, { duration: 300 }));
+      opacity.value = withSequence(
+        withTiming(1, { duration: 220 }),
+        withDelay(duration, withTiming(0, { duration: 300 })),
+      );
     } else {
       translateY.value = withSpring(-120, { damping: 18, stiffness: 260 });
       opacity.value    = withTiming(0, { duration: 200 });
@@ -144,8 +150,6 @@ export function Toast({
 
 // ─── useToast hook ────────────────────────────────────────────────────────────
 
-import { useCallback, useState } from 'react';
-
 interface ToastState {
   visible: boolean;
   type: ToastType;
@@ -159,8 +163,9 @@ export function useToast() {
     message: '',
   });
 
+  /** Báo kết quả hành động bằng banner notification của hệ thống thay vì toast trong app. */
   const show = useCallback((message: string, type: ToastType = 'success') => {
-    setState({ visible: true, type, message });
+    void notifyLocal(message, type);
   }, []);
 
   const hide = useCallback(() => {
