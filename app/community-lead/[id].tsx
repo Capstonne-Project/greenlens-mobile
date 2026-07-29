@@ -288,8 +288,8 @@ export default function CommunityLeadWorkspaceScreen() {
   const canSubmitVerification = event?.progressPercent === 100 && hasBeforeMedia && afterImages.length >= 2;
 
   return (
-    <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
-      <View className="flex-row items-center justify-between px-4 pb-3 pt-1">
+    <View className="flex-1 bg-background">
+      <View className="flex-row items-center justify-between px-4 pb-3 pt-1" style={{ paddingTop: insets.top + 4 }}>
         <View className="flex-row items-center">
           <Pressable
             onPress={() => router.back()}

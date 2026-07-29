@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Text, TextInput, View } from 'react-native';
+import { NotificationBell } from '@/components/common/NotificationBell';
 import { TapScale } from '@/components/layout/TapScale';
 import { useAuthStore } from '@/stores/auth.store';
 
@@ -19,7 +20,7 @@ export function CitizenHomeHeader({ onProfilePress }: CitizenHomeHeaderProps) {
 
   return (
     <View className="gap-3">
-      <View className="flex-row items-center gap-3">
+      <View className="flex-row items-center gap-2">
         <View className="h-11 flex-1 flex-row items-center gap-2 rounded-full border border-border bg-white px-3">
           <Ionicons name="search-outline" size={18} color="#94A3B8" />
           <TextInput
@@ -29,6 +30,8 @@ export function CitizenHomeHeader({ onProfilePress }: CitizenHomeHeaderProps) {
             className="flex-1 py-0 text-sm text-textPrimary"
           />
         </View>
+
+        <NotificationBell />
 
         <TapScale onPress={onProfilePress ?? (() => {})}>
           <View className="h-11 w-11 items-center justify-center rounded-full bg-info">

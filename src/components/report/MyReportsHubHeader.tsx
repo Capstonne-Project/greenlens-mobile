@@ -1,3 +1,4 @@
+import { NotificationBell } from '@/components/common/NotificationBell';
 import { TapScale } from '@/components/layout/TapScale';
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
@@ -22,11 +23,14 @@ export function MyReportsHubHeader({
         <Text className="text-[22px] font-semibold tracking-tight text-textPrimary">
           Báo cáo của tôi
         </Text>
-        <TapScale onPress={onCreatePress}>
-          <View className="h-9 w-9 items-center justify-center rounded-full border border-border bg-white">
-            <Ionicons name="add" size={20} color={colors.textPrimary} />
-          </View>
-        </TapScale>
+        <View className="flex-row items-center gap-1">
+          <NotificationBell size={22} />
+          <TapScale onPress={onCreatePress}>
+            <View className="h-9 w-9 items-center justify-center rounded-full border border-border bg-white">
+              <Ionicons name="add" size={20} color={colors.textPrimary} />
+            </View>
+          </TapScale>
+        </View>
       </View>
 
       <View className="h-11 flex-row items-center rounded-full bg-surface px-3.5">

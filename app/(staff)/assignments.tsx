@@ -282,16 +282,32 @@ function AssignmentCardSkeleton() {
   );
 }
 
-// ─── Empty state ──────────────────────────────────────────────────────────────
+// ─── Section header & inline empty ────────────────────────────────────────────
 
-function EmptyState({ label }: { label: string }) {
+/** Tiêu đề nhóm + số lượng — luôn hiện dù nhóm rỗng, để layout không nhảy khi đổi tab. */
+function SectionHeader({ title, count }: { title: string; count: number }) {
   return (
-    <View className="flex-1 items-center justify-center px-6 py-16">
-      <Ionicons name="checkmark-circle-outline" size={56} color={colors.textDisabled} />
-      <Text className="mt-3 text-base font-semibold text-textPrimary">Không có {label}</Text>
-      <Text className="mt-1 text-center text-sm text-textSecondary">
-        Không tìm thấy nhiệm vụ nào trong danh mục này.
-      </Text>
+    <View className="mb-3 flex-row items-center gap-2 px-4">
+      <Text className="text-[17px] font-bold text-textPrimary">{title}</Text>
+      {count > 0 ? (
+        <Text className="text-[13px] font-semibold text-textSecondary">{count}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** Empty state trong nhóm — chỉ icon + chữ, không nền, không viền. */
+function SectionEmpty({
+  icon,
+  label,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+}) {
+  return (
+    <View className="flex-row items-center gap-2 px-4 pb-1 pt-0.5">
+      <Ionicons name={icon} size={17} color={colors.textDisabled} />
+      <Text className="flex-1 text-[13px] leading-5 text-textSecondary">{label}</Text>
     </View>
   );
 }
@@ -529,12 +545,15 @@ export default function AssignmentsScreen() {
   );
   const totalCount = items.length + filteredCommunity.length;
   const activeTabLabel = FILTER_TABS.find((t) => t.value === activeFilter)?.label ?? 'Tất cả';
+  /** "Tất cả" → "nào"; tab cụ thể → tên trạng thái, để câu empty đọc tự nhiên. */
+  const emptyScopeLabel =
+    activeFilter === undefined ? 'nào' : `ở trạng thái "${activeTabLabel.toLowerCase()}"`;
 
   return (
     <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
       {/* Header */}
-      <View className="px-4 pb-10 pt-5">
-        <Text className="text-2xl font-bold text-textPrimary">Nhiệm vụ</Text>
+      <View className="px-4 pb-4 pt-4">
+        <Text className="text-[26px] font-bold leading-8 text-textPrimary">Nhiệm vụ</Text>
         <Text className="mt-1 text-sm text-textSecondary">
           Theo dõi công việc của đội theo từng trạng thái.
         </Text>
@@ -546,7 +565,7 @@ export default function AssignmentsScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 10 }}
         className="border-b border-border"
-        style={{ flexGrow: 0, paddingTop: 20 }}
+        style={{ flexGrow: 0 }}
       >
         {FILTER_TABS.map((tab) => (
           <FilterChip
@@ -576,22 +595,20 @@ export default function AssignmentsScreen() {
           </View>
         </View>
       ) : isLoading && totalCount === 0 ? (
-        <View className="gap-6">
-          <View>
-            <Text className="mb-3 px-4 text-lg font-bold text-textPrimary">Công việc</Text>
+        <View style={{ paddingTop: 18 }}>
+          <View className="mb-7">
+            <SectionHeader title="Công việc" count={0} />
             <PosterSectionSkeleton />
           </View>
           <View>
-            <Text className="mb-3 px-4 text-lg font-bold text-textPrimary">Cộng đồng</Text>
+            <SectionHeader title="Cộng đồng" count={0} />
             <PosterSectionSkeleton />
           </View>
         </View>
-      ) : totalCount === 0 ? (
-        <EmptyState label={activeTabLabel.toLowerCase()} />
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingTop: 10, paddingBottom: insets.bottom + 100 }}
+          contentContainerStyle={{ paddingTop: 18, paddingBottom: insets.bottom + 100 }}
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
@@ -601,29 +618,40 @@ export default function AssignmentsScreen() {
             />
           }
         >
-          {items.length > 0 ? (
-            <View className="mb-8">
-              <Text className="mb-3 px-4 text-lg font-bold text-textPrimary">Công việc</Text>
+          {/* Cả 2 nhóm luôn hiện — layout ổn định khi đổi tab, user biết nhóm nào đang rỗng. */}
+          <View className="mb-7">
+            <SectionHeader title="Công việc" count={items.length} />
+            {items.length > 0 ? (
               <TaskPosterRow
                 data={items}
                 onPress={handleCardPress}
                 onEndReached={loadMoreTasks}
                 isLoadingMore={isLoadingMoreTasks && hasMoreTasks}
               />
-            </View>
-          ) : null}
+            ) : (
+              <SectionEmpty
+                icon="briefcase-outline"
+                label={`Không có công việc ${emptyScopeLabel} được giao.`}
+              />
+            )}
+          </View>
 
-          {filteredCommunity.length > 0 ? (
-            <View className="mb-6 pt-1">
-              <Text className="mb-3 px-4 text-lg font-bold text-textPrimary">Cộng đồng</Text>
+          <View>
+            <SectionHeader title="Cộng đồng" count={filteredCommunity.length} />
+            {filteredCommunity.length > 0 ? (
               <CommunityPosterRow
                 data={filteredCommunity}
                 onPress={handleLedCardPress}
                 onEndReached={loadMoreLed}
                 isLoadingMore={isLoadingMoreLed && ledHasMore}
               />
-            </View>
-          ) : null}
+            ) : (
+              <SectionEmpty
+                icon="people-outline"
+                label={`Không có nhiệm vụ cộng đồng ${emptyScopeLabel} được giao.`}
+              />
+            )}
+          </View>
         </ScrollView>
       )}
     </View>
