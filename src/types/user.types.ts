@@ -1,4 +1,5 @@
 import type { FeaturedBadge } from '@/types/gamification.types';
+import type { ReportWorkflowStatus } from '@/types/report-status.types';
 
 /** Mobile roles — master plan §1 (LEO/Admin/CompanyManager không có shell mobile) */
 export type UserRole =
@@ -23,6 +24,51 @@ export interface User {
   createdAt?: string;
   teamId?: string;
   teamName?: string;
+}
+
+/**
+ * Hồ sơ công khai của người dùng khác — `GET /v1/users/{id}/public-profile`.
+ * KHÔNG chứa email/số điện thoại (BE chủ động không trả về).
+ */
+export interface PublicUserProfile {
+  id: string;
+  fullName: string;
+  avatarUrl?: string | null;
+  role: UserRole;
+  /** Null khi điểm bị khóa do nghi gian lận */
+  points?: number | null;
+  level?: number | null;
+  rank?: number | null;
+  reportCount: number;
+  achievements: string[];
+  featuredBadge?: FeaturedBadge | null;
+  joinedAt: string;
+}
+
+/**
+ * Báo cáo công khai trên hồ sơ người khác — `GET /v1/users/{id}/reports`.
+ * BE không trả `address` để tránh lộ nơi ở của người gửi.
+ */
+export interface PublicUserReportItem {
+  id: string;
+  code: string;
+  categoryName: string;
+  severity: 'Low' | 'Medium' | 'High' | 'Critical';
+  status: ReportWorkflowStatus;
+  createdAt: string;
+  imageUrl?: string | null;
+}
+
+export interface PublicUserReportsResponse {
+  items: PublicUserReportItem[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
 }
 
 export interface LoginDto {
