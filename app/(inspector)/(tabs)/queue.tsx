@@ -1,90 +1,159 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  InspectionDossierCard,
+  InspectionQueueSkeleton,
+  InspectionStatusFilter,
+  type InspectionFilterValue,
+} from '@/components/inspection';
 import { Text } from '@/components/ui/text';
 import { useInspectionQueue } from '@/hooks/useInspectionQueue';
-import { StatusBadge } from '@/shared/components/StatusBadge';
-import { SlaCountdown } from '@/shared/components/SlaCountdown';
 import { colors } from '@/theme/colors';
 import type { InspectionQueueItem } from '@/types/inspection.types';
 
-function InspectionQueueCard({ item }: { item: InspectionQueueItem }) {
-  return (
-    <Pressable
-      onPress={() => router.push(`/(inspector)/inspection/${item.id}` as never)}
-      className="mx-4 mb-3 rounded-2xl bg-white p-4 shadow-sm"
-      style={{ elevation: 2 }}
-    >
-      <View className="mb-2 flex-row items-center justify-between">
-        <Text className="text-xs text-textSecondary">{item.reportCode}</Text>
-        <StatusBadge kind="inspection" status={item.status} />
-      </View>
-      <Text className="mb-1 text-base font-bold text-textPrimary">{item.violatorName}</Text>
-      <Text className="mb-2 text-sm text-textSecondary" numberOfLines={2}>{item.address}</Text>
-      {item.violationDescription ? (
-        <Text className="mb-2 text-xs text-textSecondary" numberOfLines={2}>{item.violationDescription}</Text>
-      ) : null}
-      <View className="flex-row items-center justify-between">
-        {item.slaInspectionDueAt ? (
-          <SlaCountdown dueAt={item.slaInspectionDueAt} />
-        ) : (
-          <View />
-        )}
-        <Text className="text-xs text-textSecondary">
-          {new Date(item.createdAt).toLocaleDateString('vi-VN')}
-        </Text>
-      </View>
-    </Pressable>
-  );
+/** Hồ sơ chưa nhận / quá hạn cần nổi lên trước, sau đó theo SLA gần nhất. */
+function sortByUrgency(items: InspectionQueueItem[]): InspectionQueueItem[] {
+  const weight = (item: InspectionQueueItem) => {
+    if (item.status === 'Overdue') return 0;
+    if (item.status === 'Draft') return 1;
+    if (item.status === 'InProgress') return 2;
+    return 3;
+  };
+  return items.slice().sort((a, b) => {
+    const byWeight = weight(a) - weight(b);
+    if (byWeight !== 0) return byWeight;
+    if (a.slaInspectionDueAt && b.slaInspectionDueAt) {
+      return a.slaInspectionDueAt.localeCompare(b.slaInspectionDueAt);
+    }
+    if (a.slaInspectionDueAt) return -1;
+    if (b.slaInspectionDueAt) return 1;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
 }
 
-function QueueSkeleton() {
+interface HeaderStatProps {
+  value: number;
+  label: string;
+  color?: string;
+}
+
+function HeaderStat({ value, label, color = colors.textPrimary }: HeaderStatProps) {
   return (
-    <View className="mx-4 mb-3 h-28 rounded-2xl bg-surface" />
+    <View className="flex-1 items-center">
+      <Text className="text-lg font-bold" style={{ color }}>
+        {value}
+      </Text>
+      <Text className="mt-0.5 text-[11px] text-textSecondary">{label}</Text>
+    </View>
   );
 }
 
 export default function InspectorQueueScreen() {
   const insets = useSafeAreaInsets();
-  const { items, isLoading, errorMessage, refetch } = useInspectionQueue();
+  const { status: statusParam } = useLocalSearchParams<{ status?: string }>();
+  const [filter, setFilter] = useState<InspectionFilterValue>(null);
+
+  // Deep-link từ tab Tổng quan: /(inspector)/queue?status=Overdue
+  useEffect(() => {
+    if (statusParam) setFilter(statusParam as InspectionFilterValue);
+  }, [statusParam]);
+
+  const { items, totalCount, isLoading, errorMessage, refetch } = useInspectionQueue({
+    status: filter ?? undefined,
+  });
+
+  const sorted = useMemo(() => sortByUrgency(items), [items]);
+
+  const overdueCount = useMemo(
+    () => items.filter((item) => item.status === 'Overdue').length,
+    [items],
+  );
+  const unclaimedCount = useMemo(
+    () => items.filter((item) => item.status === 'Draft').length,
+    [items],
+  );
+
+  const handlePress = useCallback((id: string) => {
+    router.push(`/(inspector)/inspection/${id}` as never);
+  }, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: InspectionQueueItem }) => (
+      <InspectionDossierCard item={item} onPress={handlePress} />
+    ),
+    [handlePress],
+  );
 
   return (
-    <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
-      <View className="px-4 pb-3 pt-2">
-        <Text className="text-2xl font-bold text-textPrimary">Hồ sơ thanh tra</Text>
-        <Text className="mt-1 text-sm text-textSecondary">Queue từ LEO — không dùng resolve report</Text>
+    <View className="flex-1 bg-white">
+      <View style={{ paddingTop: insets.top + 12 }} className="px-4 pb-4">
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-textSecondary">
+          Thanh tra môi trường
+        </Text>
+        <Text className="mt-0.5 text-lg font-bold text-textPrimary">Hồ sơ xử lý</Text>
+
+        <View className="mt-4 flex-row">
+          <HeaderStat value={totalCount} label="Tổng hồ sơ" />
+          <View className="w-px bg-border" />
+          <HeaderStat value={unclaimedCount} label="Chờ nhận việc" color={colors.warning} />
+          <View className="w-px bg-border" />
+          <HeaderStat value={overdueCount} label="Quá hạn" color={colors.error} />
+        </View>
+      </View>
+
+      <View className="border-t border-border bg-white pb-3 pt-3">
+        <InspectionStatusFilter value={filter} onChange={setFilter} />
       </View>
 
       {errorMessage ? (
-        <View className="mx-4 mb-3 rounded-xl bg-red-50 px-3 py-2">
+        <View className="mx-4 mt-3 rounded-xl bg-red-50 px-3.5 py-3">
           <Text className="text-sm text-error">{errorMessage}</Text>
-          <Pressable onPress={() => void refetch()} className="mt-2">
-            <Text className="text-sm font-semibold text-primary">Thử lại</Text>
+          <Pressable onPress={() => void refetch()} hitSlop={6} className="mt-1.5">
+            <Text className="text-sm font-bold text-primary">Thử lại</Text>
           </Pressable>
         </View>
       ) : null}
 
       <FlatList
-        data={isLoading ? [] : items}
+        data={isLoading ? [] : sorted}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <InspectionQueueCard item={item} />}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => void refetch()} />}
+        renderItem={renderItem}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading && items.length > 0}
+            onRefresh={() => void refetch()}
+            tintColor={colors.primary}
+          />
+        }
+        ListHeaderComponent={<View className="h-3" />}
         ListEmptyComponent={
           isLoading ? (
-            <View>
-              <QueueSkeleton />
-              <QueueSkeleton />
-            </View>
+            <InspectionQueueSkeleton />
           ) : (
             <View className="items-center px-6 py-16">
-              <Ionicons name="document-outline" size={48} color={colors.textSecondary} />
-              <Text className="mt-3 text-center text-textSecondary">Chưa có hồ sơ trong hàng đợi</Text>
+              <Ionicons name="folder-open-outline" size={44} color={colors.textDisabled} />
+              <Text className="mt-3 text-base font-bold text-textPrimary">Không có hồ sơ</Text>
+              <Text className="mt-1 text-center text-sm leading-5 text-textSecondary">
+                {filter
+                  ? 'Không có hồ sơ nào ở trạng thái này. Thử bộ lọc khác.'
+                  : 'Hồ sơ mới do cán bộ LEO lập sẽ xuất hiện tại đây.'}
+              </Text>
+              {filter ? (
+                <Pressable onPress={() => setFilter(null)} hitSlop={8} className="mt-3">
+                  <Text className="text-sm font-bold text-primary">Xem tất cả</Text>
+                </Pressable>
+              ) : null}
             </View>
           )
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        removeClippedSubviews
+        initialNumToRender={8}
+        windowSize={11}
       />
     </View>
   );
