@@ -9,6 +9,8 @@ export interface ReportCommentItem {
   content: string;
   authorName: string;
   authorId: string;
+  /** Null khi tác giả là nhân viên đội xử lý (hiện nhãn chung) hoặc chưa đặt avatar */
+  authorAvatarUrl?: string | null;
   createdAt: string;
   updatedAt?: string | null;
   isHidden: boolean;

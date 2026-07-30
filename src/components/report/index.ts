@@ -8,4 +8,5 @@ export { ReportCommentsSection } from './ReportCommentsSection';
 export { ReportDetailBody } from './ReportDetailBody';
 export { ReportDetailView } from './ReportDetailView';
 export { ReportLocationMap } from './ReportLocationMap';
+export { ReportReporterRow } from './ReportReporterRow';
 export { ReportSatisfactionCard } from './ReportSatisfactionCard';
