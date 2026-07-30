@@ -1,11 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NotificationBell } from '@/components/common/NotificationBell';
+import { UserAvatar } from '@/components/common/UserAvatar';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/hooks/useAuth';
 import { gamificationService } from '@/services/gamification.service';
@@ -41,12 +44,16 @@ function PodiumColumn({
   entry,
   place,
   isCurrentUser,
+  onOpenProfile,
 }: {
   entry: LeaderboardEntry | undefined;
   place: 1 | 2 | 3;
   isCurrentUser: boolean;
+  onOpenProfile: (userId: string) => void;
 }) {
   const meta = PODIUM_META[place];
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   if (!entry) {
     return (
@@ -59,45 +66,60 @@ function PodiumColumn({
     );
   }
 
+  const openProfile = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onOpenProfile(entry.userId);
+  };
+
   return (
     <View className="flex-1 items-center justify-end">
       {place === 1 ? (
         <Ionicons name="trophy" size={22} color={meta.medal} style={{ marginBottom: 4 }} />
       ) : null}
 
-      <View className="relative">
-        <View
-          className="items-center justify-center overflow-hidden rounded-full bg-surface"
-          style={{
-            width: meta.avatar,
-            height: meta.avatar,
-            borderWidth: isCurrentUser ? 2.5 : 2,
-            borderColor: isCurrentUser ? colors.primary : colors.white,
+      <Animated.View style={animatedStyle}>
+        <Pressable
+          onPress={openProfile}
+          onPressIn={() => {
+            scale.value = withSpring(0.93, { damping: 16, stiffness: 280 });
           }}
+          onPressOut={() => {
+            scale.value = withSpring(1, { damping: 16, stiffness: 280 });
+          }}
+          className="relative"
         >
-          {entry.avatarUrl ? (
-            <Image source={{ uri: entry.avatarUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-          ) : (
-            <Text className="text-2xl font-bold text-textPrimary">
-              {entry.displayName?.[0]?.toUpperCase() ?? '?'}
-            </Text>
-          )}
-        </View>
-
-        {place !== 1 ? (
           <View
-            className="absolute -right-1 -top-0.5 h-6 w-6 items-center justify-center rounded-full border-2 border-white"
-            style={{ backgroundColor: meta.medal }}
+            className="items-center justify-center overflow-hidden rounded-full"
+            style={{
+              borderWidth: isCurrentUser ? 2.5 : 2,
+              borderColor: isCurrentUser ? colors.primary : colors.white,
+              borderRadius: 999,
+            }}
           >
-            <Text className="text-[11px] font-bold text-white">{place}</Text>
+            <UserAvatar
+              name={entry.displayName}
+              avatarUrl={entry.avatarUrl}
+              size={meta.avatar}
+            />
           </View>
-        ) : null}
-      </View>
 
-      <Text className="mt-1.5 px-1 text-center text-xs font-bold text-textPrimary" numberOfLines={1}>
-        {entry.displayName}
-        {isCurrentUser ? ' (Bạn)' : ''}
-      </Text>
+          {place !== 1 ? (
+            <View
+              className="absolute -right-1 -top-0.5 h-6 w-6 items-center justify-center rounded-full border-2 border-white"
+              style={{ backgroundColor: meta.medal }}
+            >
+              <Text className="text-[11px] font-bold text-white">{place}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </Animated.View>
+
+      <Pressable onPress={openProfile} hitSlop={4}>
+        <Text className="mt-1.5 px-1 text-center text-xs font-bold text-textPrimary" numberOfLines={1}>
+          {entry.displayName}
+          {isCurrentUser ? ' (Bạn)' : ''}
+        </Text>
+      </Pressable>
 
       <LinearGradient
         colors={meta.pill}
@@ -130,38 +152,55 @@ function PodiumColumn({
   );
 }
 
-function LeaderboardRow({ entry, isCurrentUser }: { entry: LeaderboardEntry; isCurrentUser: boolean }) {
+function LeaderboardRow({
+  entry,
+  isCurrentUser,
+  onOpenProfile,
+}: {
+  entry: LeaderboardEntry;
+  isCurrentUser: boolean;
+  onOpenProfile: (userId: string) => void;
+}) {
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
   return (
-    <View
-      className="mb-2 flex-row items-center gap-3 rounded-xl bg-white px-4 py-3"
-      style={[CARD_3D_SHADOW, isCurrentUser ? { borderWidth: 1.5, borderColor: colors.primary } : undefined]}
-    >
-      <View className="w-8 flex-row items-center gap-1">
-        <Ionicons name="trophy-outline" size={13} color={colors.textSecondary} />
-        <Text className="text-sm font-bold text-textSecondary">{entry.rank}</Text>
-      </View>
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        onPress={() => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onOpenProfile(entry.userId);
+        }}
+        onPressIn={() => {
+          scale.value = withSpring(0.97, { damping: 18, stiffness: 260 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 18, stiffness: 260 });
+        }}
+        className="mb-2 flex-row items-center gap-3 rounded-xl bg-white px-4 py-3"
+        style={[CARD_3D_SHADOW, isCurrentUser ? { borderWidth: 1.5, borderColor: colors.primary } : undefined]}
+      >
+        <View className="w-8 flex-row items-center gap-1">
+          <Ionicons name="trophy-outline" size={13} color={colors.textSecondary} />
+          <Text className="text-sm font-bold text-textSecondary">{entry.rank}</Text>
+        </View>
 
-      <View className="h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-surface">
-        {entry.avatarUrl ? (
-          <Image source={{ uri: entry.avatarUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
-        ) : (
-          <Text className="text-base font-bold text-textPrimary">{entry.displayName?.[0]?.toUpperCase() ?? '?'}</Text>
-        )}
-      </View>
+        <UserAvatar name={entry.displayName} avatarUrl={entry.avatarUrl} size={40} />
 
-      <View className="flex-1">
-        <Text className="text-sm font-bold text-textPrimary" numberOfLines={1}>
-          {entry.displayName}
-          {isCurrentUser ? ' (Bạn)' : ''}
-        </Text>
-        <Text className="mt-0.5 text-xs text-textSecondary">Cấp {entry.level}</Text>
-      </View>
+        <View className="flex-1">
+          <Text className="text-sm font-bold text-textPrimary" numberOfLines={1}>
+            {entry.displayName}
+            {isCurrentUser ? ' (Bạn)' : ''}
+          </Text>
+          <Text className="mt-0.5 text-xs text-textSecondary">Cấp {entry.level}</Text>
+        </View>
 
-      <View className="flex-row items-center gap-1">
-        <Ionicons name="star" size={14} color={colors.warning} />
-        <Text className="text-sm font-bold text-textPrimary">{entry.points.toLocaleString('vi-VN')}</Text>
-      </View>
-    </View>
+        <View className="flex-row items-center gap-1">
+          <Ionicons name="star" size={14} color={colors.warning} />
+          <Text className="text-sm font-bold text-textPrimary">{entry.points.toLocaleString('vi-VN')}</Text>
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -192,6 +231,18 @@ export default function LeaderboardScreen() {
 
   const [first, second, third] = entries;
   const restEntries = entries.slice(3);
+
+  const openProfile = useCallback(
+    (userId: string) => {
+      // Bấm vào chính mình → về hồ sơ cá nhân, không mở màn hồ sơ người khác.
+      if (userId === user?.id) {
+        router.push('/(tabs)/profile' as Href);
+        return;
+      }
+      router.push({ pathname: '/user/[id]', params: { id: userId } } as Href);
+    },
+    [user?.id],
+  );
 
   return (
     <View className="flex-1 bg-white">
@@ -248,9 +299,24 @@ export default function LeaderboardScreen() {
         ) : (
           <>
             <View className="flex-row items-end gap-2 px-4 pt-5">
-              <PodiumColumn entry={second} place={2} isCurrentUser={second?.userId === user?.id} />
-              <PodiumColumn entry={first} place={1} isCurrentUser={first?.userId === user?.id} />
-              <PodiumColumn entry={third} place={3} isCurrentUser={third?.userId === user?.id} />
+              <PodiumColumn
+                entry={second}
+                place={2}
+                isCurrentUser={second?.userId === user?.id}
+                onOpenProfile={openProfile}
+              />
+              <PodiumColumn
+                entry={first}
+                place={1}
+                isCurrentUser={first?.userId === user?.id}
+                onOpenProfile={openProfile}
+              />
+              <PodiumColumn
+                entry={third}
+                place={3}
+                isCurrentUser={third?.userId === user?.id}
+                onOpenProfile={openProfile}
+              />
             </View>
 
             <View className="px-4 pt-5">
@@ -262,7 +328,12 @@ export default function LeaderboardScreen() {
                 </View>
               ) : (
                 restEntries.map((entry) => (
-                  <LeaderboardRow key={entry.userId} entry={entry} isCurrentUser={entry.userId === user?.id} />
+                  <LeaderboardRow
+                    key={entry.userId}
+                    entry={entry}
+                    isCurrentUser={entry.userId === user?.id}
+                    onOpenProfile={openProfile}
+                  />
                 ))
               )}
             </View>

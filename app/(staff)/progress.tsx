@@ -13,6 +13,7 @@ import {
   ScrollView,
   View,
 } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DonutChart, type DonutSegment } from '@/components/progress/DonutChart';
@@ -75,6 +76,29 @@ function SectionLabel({ text }: { text: string }) {
   );
 }
 
+/** Tiêu đề cho 2 danh sách dưới — có icon nhận diện và số lượng. */
+function ListHeader({
+  icon,
+  text,
+  count,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  text: string;
+  count: number;
+}) {
+  return (
+    <View className="mb-2 flex-row items-center gap-1.5">
+      <Ionicons name={icon} size={13} color={colors.textSecondary} />
+      <Text className="text-[11px] font-bold uppercase tracking-widest text-textSecondary">
+        {text}
+      </Text>
+      <View className="rounded-full px-1.5 py-0.5" style={{ backgroundColor: colors.border }}>
+        <Text className="text-[10px] font-bold text-textSecondary">{count}</Text>
+      </View>
+    </View>
+  );
+}
+
 function LegendRow({ color, label, value, total }: { color: string; label: string; value: number; total: number }) {
   const percent = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
@@ -118,31 +142,96 @@ function RangeToggle({ value, onChange }: { value: TrendRange; onChange: (next: 
   );
 }
 
-function CommunityProgressCard({ item, onPress }: { item: CommunityCleanupListItem; onPress: () => void }) {
+const COMMUNITY_STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  OpenForJoin: { label: 'Đang mở đăng ký', color: '#075985', bg: '#E0F2FE' },
+  JoinClosed: { label: 'Đã đóng đăng ký', color: '#3730A3', bg: '#E0E7FF' },
+  InProgress: { label: 'Đang dọn', color: '#5B21B6', bg: '#EDE9FE' },
+  PendingVerification: { label: 'Chờ xác minh', color: '#86198F', bg: '#FAE8FF' },
+};
+
+function CommunityProgressCard({
+  item,
+  onPress,
+}: {
+  item: CommunityCleanupListItem;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
   const percent = Math.max(0, Math.min(100, item.progressPercent));
+  const meta = COMMUNITY_STATUS_META[item.status] ?? COMMUNITY_STATUS_META.OpenForJoin;
+  const isFull = item.spotsLeft <= 0;
+
   return (
-    <Pressable onPress={onPress} className="mb-3 rounded-2xl bg-white p-4" style={CARD_STYLE}>
-      <View className="flex-row items-center gap-2">
-        <Text className="flex-1 text-sm font-bold text-textPrimary" numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text className="text-sm font-extrabold" style={{ color: colors.primary }}>
-          {percent}%
-        </Text>
-      </View>
-      <View className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-surface">
-        <View
-          className="h-full rounded-full"
-          style={{ width: `${percent}%` as `${number}%`, backgroundColor: colors.primary }}
-        />
-      </View>
-      <View className="mt-2 flex-row items-center gap-1">
-        <Ionicons name="people-outline" size={11} color={colors.textSecondary} />
-        <Text className="text-[11px] text-textSecondary">
-          {item.participantCount}/{item.maxParticipants} người tham gia
-        </Text>
-      </View>
-    </Pressable>
+    <Animated.View style={animStyle} className="mb-2.5">
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => {
+          scale.value = withSpring(0.985, { damping: 18, stiffness: 300 });
+        }}
+        onPressOut={() => {
+          scale.value = withSpring(1, { damping: 18, stiffness: 300 });
+        }}
+        className="overflow-hidden rounded-2xl bg-white"
+        style={CARD_STYLE}
+      >
+        <View className="flex-row items-center gap-3 px-3.5 py-3">
+          <View className="items-center">
+            <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: meta.color }} />
+          </View>
+
+          <View className="min-w-0 flex-1">
+            <View className="flex-row items-center gap-2">
+              <Text className="flex-1 text-[14px] font-bold text-textPrimary" numberOfLines={1}>
+                {item.title}
+              </Text>
+              <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: meta.bg }}>
+                <Text className="text-[10px] font-bold" style={{ color: meta.color }}>
+                  {meta.label}
+                </Text>
+              </View>
+            </View>
+
+            <View className="mt-1 flex-row items-center gap-1">
+              <Ionicons name="people-outline" size={10} color={colors.textSecondary} />
+              <Text className="text-[11px] text-textSecondary">
+                {item.participantCount}/{item.maxParticipants} người
+              </Text>
+              {isFull ? (
+                <Text className="text-[11px] font-semibold" style={{ color: colors.warning }}>
+                  · Đã đủ
+                </Text>
+              ) : (
+                <Text className="text-[11px] text-textSecondary">
+                  · còn {item.spotsLeft} chỗ
+                </Text>
+              )}
+            </View>
+
+            <View
+              className="mt-2 h-1 overflow-hidden rounded-full"
+              style={{ backgroundColor: colors.border }}
+            >
+              <View
+                className="h-full rounded-full"
+                style={{ width: `${percent}%` as `${number}%`, backgroundColor: meta.color }}
+              />
+            </View>
+
+            <View className="mt-1.5 flex-row items-center gap-2">
+              <Text className="text-[10px] text-textDisabled">{item.reportCode}</Text>
+              <View className="flex-1" />
+              <Text className="text-[10px] font-bold" style={{ color: meta.color }}>
+                {percent}%
+              </Text>
+            </View>
+          </View>
+
+          <Ionicons name="chevron-forward" size={15} color={colors.textDisabled} />
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -398,8 +487,8 @@ export default function StaffProgressScreen() {
 
               {/* Chương trình cộng đồng */}
               {ledItems.length > 0 ? (
-                <View className="mb-2">
-                  <SectionLabel text="Chương trình cộng đồng đang dẫn dắt" />
+                <View className="mb-4 mt-2">
+                  <ListHeader icon="people-outline" text="Chương trình đang dẫn" count={ledItems.length} />
                   {ledItems.map((item) => (
                     <CommunityProgressCard
                       key={item.id}
@@ -415,15 +504,24 @@ export default function StaffProgressScreen() {
               {/* Từng nhiệm vụ — phân trang 5 phần tử/lần, tự tải thêm khi cuộn gần cuối */}
               {sortedTasks.length > 0 ? (
                 <View className="mt-2">
-                  <SectionLabel text="Theo từng nhiệm vụ" />
+                  <ListHeader
+                    icon="clipboard-outline"
+                    text="Theo từng nhiệm vụ"
+                    count={stats.total || sortedTasks.length}
+                  />
                   {sortedTasks.map((item) => (
                     <TaskProgressCard key={item.assignmentId} item={item} onPress={handleTaskPress} />
                   ))}
                   <TaskListLoadingFooter visible={isLoadingMoreTasks && hasMoreTasks} />
+                  {!hasMoreTasks && sortedTasks.length > TASK_LIST_PAGE_SIZE ? (
+                    <Text className="py-2 text-center text-[11px] text-textDisabled">
+                      Đã hiển thị tất cả nhiệm vụ
+                    </Text>
+                  ) : null}
                 </View>
               ) : isTaskListLoading ? (
                 <View className="mt-2">
-                  <SectionLabel text="Theo từng nhiệm vụ" />
+                  <ListHeader icon="clipboard-outline" text="Theo từng nhiệm vụ" count={0} />
                   <TaskListLoadingFooter visible />
                 </View>
               ) : null}
