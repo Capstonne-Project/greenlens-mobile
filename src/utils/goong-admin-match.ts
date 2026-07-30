@@ -2,16 +2,7 @@ import { catalogService } from '@/services/catalog.service';
 import { goongService } from '@/services/goong.service';
 import type { CatalogProvince, CatalogWard } from '@/types/catalog.types';
 import type { ReportLocationDraft } from '@/types/pollution-report.types';
-
-function normalizeAdminName(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/^(tinh|thanh pho|tp\.?|quan|huyen|thi xa|phuong|xa|thi tran)\s+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+import { normalizeAdminName } from '@/utils/normalize-vietnamese';
 
 function matchByName<T extends { name: string }>(items: T[], targetName?: string): T | undefined {
   if (!targetName?.trim()) {
