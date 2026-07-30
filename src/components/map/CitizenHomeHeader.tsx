@@ -1,11 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Text, TextInput, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { NotificationBell } from '@/components/common/NotificationBell';
 import { TapScale } from '@/components/layout/TapScale';
 import { useAuthStore } from '@/stores/auth.store';
+import { colors } from '@/theme/colors';
 
 interface CitizenHomeHeaderProps {
   onProfilePress?: () => void;
+  onSearchPress?: () => void;
+  /** Tên vùng đang focus — hiện thay placeholder khi có */
+  activeAreaName?: string | null;
 }
 
 function initials(name: string): string {
@@ -15,21 +19,30 @@ function initials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export function CitizenHomeHeader({ onProfilePress }: CitizenHomeHeaderProps) {
+export function CitizenHomeHeader({
+  onProfilePress,
+  onSearchPress,
+  activeAreaName,
+}: CitizenHomeHeaderProps) {
   const user = useAuthStore((s) => s.user);
 
   return (
     <View className="gap-3">
       <View className="flex-row items-center gap-2">
-        <View className="h-11 flex-1 flex-row items-center gap-2 rounded-full border border-border bg-white px-3">
+        {/* Pressable thay TextInput: bàn phím trên header dễ bị map che, nên mở overlay riêng */}
+        <Pressable
+          onPress={onSearchPress}
+          className="h-11 flex-1 flex-row items-center gap-2 rounded-full border border-border bg-white px-3"
+        >
           <Ionicons name="search-outline" size={18} color="#94A3B8" />
-          <TextInput
-            editable={false}
-            placeholder="Tìm địa điểm, báo cáo..."
-            placeholderTextColor="#94A3B8"
-            className="flex-1 py-0 text-sm text-textPrimary"
-          />
-        </View>
+          <Text
+            numberOfLines={1}
+            className="flex-1 text-sm"
+            style={{ color: activeAreaName ? colors.textPrimary : '#94A3B8' }}
+          >
+            {activeAreaName ?? 'Tìm tỉnh, thành phố, phường/xã...'}
+          </Text>
+        </Pressable>
 
         <NotificationBell />
 
