@@ -1,3 +1,4 @@
+import { UserAvatar } from '@/components/common/UserAvatar';
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
 import type { CommentThread, ReportCommentItem } from '@/types/comment.types';
@@ -38,48 +39,23 @@ interface ReportCommentsSectionProps {
   onSubmit: (content: string, parentCommentId?: string | null) => Promise<boolean>;
   onToggleLike: (commentId: string) => Promise<boolean>;
   onRetry?: () => void;
+  /** Mở hồ sơ công khai tác giả bình luận — bỏ qua với bình luận của đội xử lý */
+  onOpenUserProfile?: (userId: string) => void;
 }
 
 const TEAM_DISPLAY_NAME = 'Đội xử lý';
-const AVATAR_PALETTE = ['#10B981', '#3B82F6', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6'] as const;
 
-function hashColor(seed: string): string {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
-  return `${parts[0].slice(0, 1)}${parts[parts.length - 1].slice(0, 1)}`.toUpperCase();
-}
-
-interface CommentAvatarProps {
+/** Avatar trong composer — người đang soạn không có avatarUrl trong context này. */
+function CommentAvatar({
+  name,
+  isTeam = false,
+  size = 36,
+}: {
   name: string;
   isTeam?: boolean;
   size?: number;
-}
-
-function CommentAvatar({ name, isTeam = false, size = 36 }: CommentAvatarProps) {
-  const bg = isTeam ? colors.primary : hashColor(name || 'user');
-  return (
-    <View
-      className="items-center justify-center rounded-full"
-      style={{ width: size, height: size, backgroundColor: bg }}
-    >
-      {isTeam ? (
-        <Ionicons name="shield-checkmark" size={size * 0.45} color="#fff" />
-      ) : (
-        <Text className="font-bold text-white" style={{ fontSize: size * 0.34 }}>
-          {getInitials(name)}
-        </Text>
-      )}
-    </View>
-  );
+}) {
+  return <UserAvatar name={name} isTeam={isTeam} size={size} />;
 }
 
 interface ActionChipProps {
@@ -132,22 +108,47 @@ interface CommentBubbleProps {
   onReply: (item: ReportCommentItem) => void;
   onLike: (commentId: string) => void;
   likeBusy?: boolean;
+  onOpenProfile?: (userId: string) => void;
 }
 
-function CommentBubble({ item, isReply = false, onReply, onLike, likeBusy }: CommentBubbleProps) {
+function CommentBubble({
+  item,
+  isReply = false,
+  onReply,
+  onLike,
+  likeBusy,
+  onOpenProfile,
+}: CommentBubbleProps) {
   const isTeam = item.authorName === TEAM_DISPLAY_NAME;
   const displayName = item.authorName || 'Người dùng';
   const likeLabel = item.likeCount > 0 ? String(item.likeCount) : 'Thích';
 
+  // Đội xử lý hiện nhãn chung — không có hồ sơ cá nhân để mở.
+  const canOpenProfile = Boolean(onOpenProfile) && !isTeam && Boolean(item.authorId);
+  const openProfile = () => {
+    if (!canOpenProfile) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onOpenProfile!(item.authorId);
+  };
+
   return (
     <View className={`flex-row gap-2.5 py-2 ${isReply ? 'pl-10' : 'px-1'}`}>
-      <CommentAvatar name={displayName} isTeam={isTeam} size={isReply ? 28 : 36} />
+      <Pressable onPress={openProfile} disabled={!canOpenProfile} hitSlop={4}>
+        <UserAvatar
+          name={displayName}
+          avatarUrl={item.authorAvatarUrl}
+          isTeam={isTeam}
+          size={isReply ? 28 : 36}
+        />
+      </Pressable>
 
       <View className="min-w-0 flex-1">
         <View className="mb-0.5 flex-row flex-wrap items-center gap-1.5">
-          <Text className="text-[13px] font-semibold text-textPrimary" numberOfLines={1}>
-            {displayName}
-          </Text>
+          <Pressable onPress={openProfile} disabled={!canOpenProfile} hitSlop={4}>
+            <Text className="text-[13px] font-semibold text-textPrimary" numberOfLines={1}>
+              {displayName}
+            </Text>
+          </Pressable>
           {isTeam ? (
             <View className="rounded px-1.5 py-0.5" style={{ backgroundColor: '#D1FAE5' }}>
               <Text className="text-[10px] font-bold" style={{ color: '#065F46' }}>
@@ -427,6 +428,7 @@ export function ReportCommentsSection({
   onSubmit,
   onToggleLike,
   onRetry,
+  onOpenUserProfile,
 }: ReportCommentsSectionProps) {
   const [draft, setDraft] = useState('');
   const [replyTo, setReplyTo] = useState<ReportCommentItem | null>(null);
@@ -483,6 +485,7 @@ export function ReportCommentsSection({
                 onReply={(item) => openComposer(item)}
                 onLike={(id) => void onToggleLike(id)}
                 likeBusy={likingCommentId === thread.root.id}
+                onOpenProfile={onOpenUserProfile}
               />
               {thread.replies.map((reply) => (
                 <CommentBubble
@@ -492,6 +495,7 @@ export function ReportCommentsSection({
                   onReply={(item) => openComposer(item)}
                   onLike={(id) => void onToggleLike(id)}
                   likeBusy={likingCommentId === reply.id}
+                  onOpenProfile={onOpenUserProfile}
                 />
               ))}
             </View>
