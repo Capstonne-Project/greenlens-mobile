@@ -1,50 +1,115 @@
-import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
-import { Pressable, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { UserAvatar } from '@/components/common/UserAvatar';
+import { ProfileStatsCard, SettingsRow } from '@/components/inspection';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/hooks/useAuth';
-import { colors } from '@/theme/colors';
+import { useInspectionKpi } from '@/hooks/useInspectionKpi';
 
 export default function InspectorProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const { kpi } = useInspectionKpi('ThisMonth');
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = () => {
+    Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất khỏi ứng dụng?', [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Đăng xuất',
+        style: 'destructive',
+        onPress: () => {
+          setLoggingOut(true);
+          void logout()
+            .then(() => router.replace('/(auth)/login' as Href))
+            .finally(() => setLoggingOut(false));
+        },
+      },
+    ]);
+  };
+
+  const teamName = user?.teamName ?? kpi?.teamName;
 
   return (
-    <View className="flex-1 bg-background" style={{ paddingTop: insets.top, paddingBottom: insets.bottom + 24 }}>
-      <View className="px-4 pb-3 pt-2">
-        <Text className="text-2xl font-bold text-textPrimary">Cá nhân</Text>
-      </View>
-
-      <View className="mx-4 mb-4 flex-row items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
-        <View className="h-12 w-12 items-center justify-center rounded-full bg-primary">
-          <Text className="text-lg font-bold text-white">{user?.fullName?.[0] ?? 'I'}</Text>
-        </View>
-        <View className="flex-1">
-          <Text className="text-base font-semibold text-textPrimary">{user?.fullName}</Text>
-          <Text className="text-sm text-textSecondary">{user?.email}</Text>
-          <View className="mt-1 self-start rounded-full bg-surface px-2 py-0.5">
-            <Text className="text-xs font-semibold text-primary">Inspector</Text>
+    <View className="flex-1 bg-white">
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View className="px-4" style={{ paddingTop: insets.top + 16 }}>
+          <View className="flex-row items-center gap-3">
+            <UserAvatar name={user?.fullName ?? 'Inspector'} avatarUrl={user?.avatarUrl} size={64} />
+            <View className="flex-1">
+              <Text className="text-lg font-bold text-textPrimary" numberOfLines={1}>
+                {user?.fullName ?? 'Inspector'}
+              </Text>
+              {user?.email ? (
+                <Text className="mt-0.5 text-sm text-textSecondary" numberOfLines={1}>
+                  {user.email}
+                </Text>
+              ) : null}
+              <Text className="mt-0.5 text-xs font-semibold text-primary">
+                Thanh tra viên{teamName ? ` · ${teamName}` : ''}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      <Pressable
-        onPress={() => router.push('/(inspector)/(tabs)/notifications' as Href)}
-        className="mx-4 mb-3 flex-row items-center gap-3 rounded-2xl bg-white px-4 py-4"
-      >
-        <Ionicons name="notifications-outline" size={22} color={colors.textSecondary} />
-        <Text className="text-base font-semibold text-textPrimary">Thông báo</Text>
-      </Pressable>
+        {kpi ? (
+          <View className="mx-4 mt-5 border-t border-border pt-4">
+            <ProfileStatsCard
+              items={[
+                { value: String(kpi.totalInspections), label: 'Hồ sơ tháng này' },
+                { value: `${Math.round(kpi.penaltyIssuedOnTimePercent)}%`, label: 'Đúng hạn' },
+                { value: String(kpi.repeatOffenderCount), label: 'Tái phạm' },
+              ]}
+            />
+          </View>
+        ) : null}
 
-      <Pressable
-        onPress={() => void logout().then(() => router.replace('/(auth)/login' as Href))}
-        className="mx-4 flex-row items-center gap-3 rounded-2xl bg-white px-4 py-4"
-      >
-        <Ionicons name="log-out-outline" size={22} color={colors.error} />
-        <Text className="text-base font-semibold text-error">Đăng xuất</Text>
-      </Pressable>
+        <View className="mx-4 mt-5">
+          <Text className="mb-1 text-[11px] font-bold uppercase tracking-widest text-textSecondary">
+            Hoạt động
+          </Text>
+          <SettingsRow
+            icon="notifications-outline"
+            label="Thông báo"
+            onPress={() => router.push('/(inspector)/(tabs)/notifications' as Href)}
+          />
+          <SettingsRow
+            icon="document-text-outline"
+            label="Hồ sơ đang xử lý"
+            onPress={() => router.push('/(inspector)/(tabs)/queue' as Href)}
+          />
+          <SettingsRow
+            icon="map-outline"
+            label="Bản đồ hiện trường"
+            isLast
+            onPress={() => router.push('/(inspector)/(tabs)/map' as Href)}
+          />
+        </View>
+
+        <View className="mx-4 mt-5">
+          <Text className="mb-1 text-[11px] font-bold uppercase tracking-widest text-textSecondary">
+            Ứng dụng
+          </Text>
+          <SettingsRow icon="information-circle-outline" label="Phiên bản" value="1.0.0" showChevron={false} isLast />
+        </View>
+
+        <View className="mx-4 mt-5">
+          <SettingsRow
+            icon="log-out-outline"
+            label={loggingOut ? 'Đang đăng xuất…' : 'Đăng xuất'}
+            tone="danger"
+            showChevron={false}
+            isLast
+            onPress={loggingOut ? undefined : handleLogout}
+          />
+        </View>
+      </ScrollView>
     </View>
   );
 }
