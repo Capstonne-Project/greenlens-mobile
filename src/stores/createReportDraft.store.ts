@@ -57,7 +57,8 @@ const initialState = {
   description: '',
   tags: [] as string[],
   wasteTagIds: [] as string[],
-  isAnonymous: true,
+  // Mặc định TẮT ẩn danh — người dùng chủ động bật nếu muốn giấu danh tính.
+  isAnonymous: false,
   submittedReportCode: null as string | null,
   slaVerifyDueAt: null as string | null,
   useAi: true,
