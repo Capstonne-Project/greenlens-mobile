@@ -1,6 +1,5 @@
-import { Stack, Tabs } from 'expo-router';
+import { Stack } from 'expo-router';
 
-import { InspectorTabBar } from '@/components/layout/InspectorTabBar';
 import { useRoleGuard } from '@/hooks/useRoleGuard';
 
 export default function InspectorRootLayout() {
