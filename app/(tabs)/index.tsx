@@ -9,16 +9,24 @@ import {
   getCitizenMapLayerById,
   type CitizenMapLayerId,
 } from '@/constants/map-layers';
+import { AreaDimMask } from '@/components/map/AreaDimMask';
+import { AreaFocusChip } from '@/components/map/AreaFocusChip';
+import { PlaceSearchOverlay } from '@/components/map/PlaceSearchOverlay';
 import { HCM_INITIAL_REGION } from '@/constants/map-region';
 import type { CitizenMapPin } from '@/data/citizen-map-mock';
+import { useAreaBoundary } from '@/hooks/useAreaBoundary';
+import { usePlaceSearch } from '@/hooks/usePlaceSearch';
 import { usePollutionCategories } from '@/hooks/usePollutionCategories';
 import { useUserMapLocation } from '@/hooks/useUserMapLocation';
 import { useViewportMapReports } from '@/hooks/useViewportMapReports';
 import { useAuthStore } from '@/stores/auth.store';
 import { TapScale } from '@/components/layout/TapScale';
 import { colors } from '@/theme/colors';
+import type { PlaceSuggestion } from '@/types/place-search.types';
+import type { ReportSearchItem } from '@/types/report-search.types';
+import { isPointInAnyPolygonGroup } from '@/utils/point-in-polygon';
 import { useRouter, type Href } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Text, View } from 'react-native';
 import MapView, { type Camera, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -90,6 +98,64 @@ export default function CitizenHomeScreen() {
     });
 
   const { categories } = usePollutionCategories();
+
+  // ── Search địa giới + focus vùng ──
+  const [isSearchOpen, setSearchOpen] = useState(false);
+  const placeSearch = usePlaceSearch();
+  const {
+    areaFocus,
+    isLoading: isBoundaryLoading,
+    hasNoBoundary,
+    focusArea,
+    clearFocus,
+  } = useAreaBoundary();
+
+  /** Chỉ hiện báo cáo nằm TRONG ranh giới vùng đã chọn (map và sheet dùng chung). */
+  const visiblePins = useMemo(() => {
+    if (!areaFocus || areaFocus.polygonGroups.length === 0) return pins;
+    return pins.filter((pin) =>
+      isPointInAnyPolygonGroup(areaFocus.polygonGroups, {
+        latitude: pin.latitude,
+        longitude: pin.longitude,
+      }),
+    );
+  }, [pins, areaFocus]);
+
+  const onSelectPlace = useCallback(
+    async (suggestion: PlaceSuggestion) => {
+      setSearchOpen(false);
+      setSelected(null);
+
+      const focus = await focusArea(suggestion);
+
+      // Sau khi chọn tỉnh mới nạp phường của tỉnh đó — không thể tải hết ~10.000 phường.
+      if (suggestion.kind === 'province') {
+        void placeSearch.loadWardsFor(suggestion.provinceCode);
+      }
+
+      const coords = focus?.fitCoords ?? [];
+      if (coords.length >= 2) {
+        mapRef.current?.fitToCoordinates(coords, {
+          // bottom lớn vì DraggableReportsSheet che phần dưới map
+          edgePadding: { top: 140, right: 60, bottom: 340, left: 60 },
+          animated: true,
+        });
+      }
+    },
+    [focusArea, placeSearch],
+  );
+
+  /** Chọn báo cáo từ kết quả search → mở thẳng chi tiết báo cáo đó. */
+  const onSelectSearchedReport = useCallback(
+    (report: ReportSearchItem) => {
+      setSearchOpen(false);
+      router.push({
+        pathname: '/report/[id]',
+        params: { id: report.id, source: 'map' },
+      } as Href);
+    },
+    [router],
+  );
 
 
 
@@ -407,7 +473,10 @@ export default function CitizenHomeScreen() {
 
       >
 
-        {pins.map((pin) => (
+        {/* Lớp mờ đã tự vẽ viền ranh giới — không thêm <Polygon> riêng, tránh viền đôi */}
+        {areaFocus ? <AreaDimMask polygonGroups={areaFocus.polygonGroups} /> : null}
+
+        {visiblePins.map((pin) => (
           <CitizenMapPinMarker
             key={pin.id}
             pin={pin}
@@ -477,7 +546,22 @@ export default function CitizenHomeScreen() {
           </View>
         ) : (
           <>
-            <CitizenHomeHeader onProfilePress={() => router.push('/(tabs)/profile' as Href)} />
+            <CitizenHomeHeader
+              onProfilePress={() => router.push('/(tabs)/profile' as Href)}
+              onSearchPress={() => setSearchOpen(true)}
+              activeAreaName={areaFocus?.name ?? null}
+            />
+            {areaFocus ? (
+              <View className="mt-2.5">
+                <AreaFocusChip
+                  name={areaFocus.name}
+                  reportCount={visiblePins.length}
+                  isLoading={isBoundaryLoading}
+                  hasNoBoundary={hasNoBoundary}
+                  onClear={clearFocus}
+                />
+              </View>
+            ) : null}
             <View className="mt-3">
               <CategoryFilterChips selected={filter} categories={categories} onChange={setFilter} />
             </View>
@@ -498,13 +582,21 @@ export default function CitizenHomeScreen() {
       ) : null}
 
       <DraggableReportsSheet
-        pins={pins}
+        pins={visiblePins}
         focusedPin={selected}
-        reportCount={pins.length}
+        reportCount={visiblePins.length}
         isLoading={isLoading}
         onOpenDetail={onOpenReportDetail}
         onSnapChange={setSheetSnap}
         bottomInset={insets.bottom}
+      />
+
+      <PlaceSearchOverlay
+        visible={isSearchOpen}
+        search={placeSearch}
+        onClose={() => setSearchOpen(false)}
+        onSelect={onSelectPlace}
+        onSelectReport={onSelectSearchedReport}
       />
 
     </View>

@@ -894,7 +894,7 @@ export default function ReportCreateWizardScreen() {
           onToggle={() => toggleSection("images")}
         >
           <View className="gap-5">
-            <View className="flex-row items-center justify-between rounded-2xl bg-surface px-3 py-3">
+            <View className="flex-row items-center justify-between rounded-2xl border border-border px-3 py-3">
               <View className="flex-row items-center gap-2.5 flex-1 pr-4">
                 <Ionicons name="sparkles" size={20} color={useAi ? colors.primary : colors.textDisabled} />
                 <View className="flex-1">

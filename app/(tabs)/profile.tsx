@@ -8,8 +8,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
+  FadeIn,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
+  withRepeat,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -19,15 +22,12 @@ import { TapScale } from '@/components/layout/TapScale';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/hooks/useAuth';
 import { useMyReports } from '@/hooks/useMyReports';
-import { communityCleanupService } from '@/services/communityCleanup.service';
 import { userService } from '@/services/user.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { colors } from '@/theme/colors';
-import type { CommunityCleanupListItem } from '@/types/community-cleanup.types';
 import type { MyReportItem } from '@/types/my-reports.types';
 import type { UserRole } from '@/types/user.types';
-import { getApiErrorMessage } from '@/utils/api-error-message';
-import { formatDate } from '@/utils/formatters';
+import { formatDate, formatRelativeTime } from '@/utils/formatters';
 import { resolveMyReportDetailTarget } from '@/utils/report-merge';
 import { getReportStatusMeta } from '@/utils/report-status';
 
@@ -39,11 +39,11 @@ const ROLE_LABEL: Record<UserRole, string> = {
 };
 
 const CATEGORY_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
-  waste: 'trash',
-  water_pollution: 'water',
-  air_pollution: 'cloud',
-  noise: 'volume-high',
-  other: 'help-circle',
+  waste: 'trash-outline',
+  water_pollution: 'water-outline',
+  air_pollution: 'cloud-outline',
+  noise: 'volume-high-outline',
+  other: 'leaf-outline',
 };
 
 const CATEGORY_COLOR: Record<string, string> = {
@@ -53,6 +53,19 @@ const CATEGORY_COLOR: Record<string, string> = {
   noise: '#8B5CF6',
   other: colors.textSecondary,
 };
+
+/**
+ * BE hiện chỉ trả `categoryName` (tiếng Việt) trên `/reports/my` — `categoryCode`
+ * là field legacy thường rỗng, nên suy icon từ tên hiển thị thay vì code.
+ */
+function resolveActivityIcon(categoryName: string): keyof typeof Ionicons.glyphMap {
+  const name = categoryName.toLowerCase();
+  if (name.includes('nước')) return 'water-outline';
+  if (name.includes('khí') || name.includes('khói') || name.includes('bụi')) return 'cloud-outline';
+  if (name.includes('ồn') || name.includes('tiếng')) return 'volume-high-outline';
+  if (name.includes('rác') || name.includes('chất thải')) return 'trash-outline';
+  return 'leaf-outline';
+}
 
 /**
  * TODO(BE): mock tạm — `/users/me` hiện chưa trả field `links` (website, social, shop…).
@@ -293,6 +306,85 @@ function ReportThumb({
   );
 }
 
+/**
+ * Nút tab hồ sơ — icon-only trước đây buộc người dùng phải đoán nội dung từng tab,
+ * nên bổ sung nhãn chữ. Icon nảy nhẹ khi được chọn để phản hồi tức thì.
+ */
+function ProfileTabButton({
+  icon,
+  label,
+  active,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  useEffect(() => {
+    scale.value = withSpring(active ? 1.12 : 1, { damping: 12, stiffness: 240 });
+  }, [active, scale]);
+
+  const tint = active ? colors.textPrimary : colors.textSecondary;
+
+  return (
+    <Pressable
+      onPress={() => {
+        if (!active) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress();
+      }}
+      className="flex-1 items-center gap-1 border-b-2 pb-2.5 pt-3"
+      style={{ borderColor: active ? colors.textPrimary : 'transparent' }}
+    >
+      <Animated.View style={iconStyle}>
+        <Ionicons name={icon} size={21} color={tint} />
+      </Animated.View>
+      <Text
+        className={`text-[11px] ${active ? 'font-bold' : 'font-medium'}`}
+        style={{ color: tint }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * Skeleton nhịp thở cho tab Hoạt động — khớp layout card thật (thumbnail 68px +
+ * 3 dòng text + hàng chân) để không bị "nhảy" khi data về.
+ */
+function ListCardSkeleton({ index }: { index: number }) {
+  const pulse = useSharedValue(0.5);
+
+  useEffect(() => {
+    pulse.value = withDelay(
+      index * 120,
+      withRepeat(withTiming(1, { duration: 720 }), -1, true),
+    );
+  }, [index, pulse]);
+
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+
+  return (
+    <View className="mb-3 rounded-2xl border border-border bg-white p-3.5">
+      <Animated.View style={pulseStyle}>
+        <View className="flex-row gap-3">
+          <View className="h-[68px] w-[68px] rounded-[14px] bg-surface" />
+          <View className="flex-1 justify-center">
+            <View className="h-3.5 w-3/4 rounded bg-surface" />
+            <View className="mt-2 h-3 w-1/2 rounded bg-surface" />
+            <View className="mt-2 h-3 w-2/5 rounded bg-surface" />
+          </View>
+        </View>
+        <View className="mt-3 h-3 w-full rounded bg-surface" />
+      </Animated.View>
+    </View>
+  );
+}
+
 function ReportThumbSkeleton() {
   return (
     <View className="aspect-square w-[33.33%] p-[0.75px]">
@@ -301,106 +393,86 @@ function ReportThumbSkeleton() {
   );
 }
 
+/** Câu mô tả trạng thái bằng ngôn ngữ người dùng — cho biết "giờ sao rồi, tôi cần làm gì". */
+function activityHint(status: string): { icon: keyof typeof Ionicons.glyphMap; text: string } {
+  if (status === 'Resolved' || status === 'PenaltyIssued') {
+    return { icon: 'checkmark-circle', text: 'Đã xử lý xong — chờ bạn xác nhận' };
+  }
+  if (status === 'InProgress') return { icon: 'sync', text: 'Đội vệ sinh đang xử lý' };
+  if (status === 'Verified' || status === 'Assigned' || status === 'Dispatched') {
+    return { icon: 'shield-checkmark', text: 'Đã xác minh — đang chờ phân công' };
+  }
+  if (status === 'Submitted') return { icon: 'hourglass', text: 'Đang chờ xác minh' };
+  if (status === 'Closed' || status === 'ClosedNoViolation') {
+    return { icon: 'checkmark-done', text: 'Đã hoàn thành' };
+  }
+  if (status === 'Duplicate') return { icon: 'git-merge', text: 'Đã gộp vào báo cáo gốc' };
+  if (status === 'Rejected') return { icon: 'close-circle', text: 'Không được tiếp nhận' };
+  return { icon: 'information-circle', text: getReportStatusMeta(status).label };
+}
+
 function ActivityCard({ item, onPress }: { item: MyReportItem; onPress: () => void }) {
   const statusMeta = getReportStatusMeta(item.status);
+  const icon = resolveActivityIcon(item.categoryName);
+  const hint = activityHint(item.status);
 
   return (
     <TapScale onPress={onPress}>
-      <View className="mb-3 overflow-hidden rounded-xl bg-white" style={CARD_3D_SHADOW}>
-        <View className="flex-row items-center justify-between px-4 pt-3.5">
-          <Text className="text-xs text-textSecondary">{item.code}</Text>
-          <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: statusMeta.bgColor }}>
-            <Text className="text-[10px] font-semibold" style={{ color: statusMeta.textColor }}>
-              {statusMeta.label}
-            </Text>
-          </View>
-        </View>
-
-        <View className="flex-row items-center gap-3 px-4 pb-4 pt-3">
-          <View
-            className="h-12 w-12 items-center justify-center rounded-lg"
-            style={{ backgroundColor: `${CATEGORY_COLOR[item.categoryCode ?? 'other'] ?? colors.textSecondary}1A` }}
-          >
-            <Ionicons
-              name={CATEGORY_ICON[item.categoryCode ?? 'other'] ?? 'help-circle'}
-              size={22}
-              color={CATEGORY_COLOR[item.categoryCode ?? 'other'] ?? colors.textSecondary}
+      <View className="mb-3 rounded-2xl border border-border bg-white p-3.5">
+        <View className="flex-row gap-3">
+          {item.imageUrl ? (
+            <Image
+              source={{ uri: item.imageUrl }}
+              style={{ width: 68, height: 68, borderRadius: 14 }}
+              contentFit="cover"
+              transition={160}
             />
-          </View>
-          <View className="flex-1">
-            <Text className="text-[15px] font-bold text-textPrimary" numberOfLines={1}>
-              {item.categoryName}
-            </Text>
+          ) : (
+            <View className="h-[68px] w-[68px] items-center justify-center rounded-[14px] bg-surface">
+              <Ionicons name={icon} size={26} color={colors.textDisabled} />
+            </View>
+          )}
+
+          <View className="min-w-0 flex-1">
+            <View className="flex-row items-center gap-1.5">
+              <Ionicons name={icon} size={13} color={colors.textSecondary} />
+              <Text className="flex-1 text-[15px] font-bold text-textPrimary" numberOfLines={1}>
+                {item.categoryName}
+              </Text>
+            </View>
+
             <View className="mt-1 flex-row items-center gap-1">
-              <Ionicons name="location-outline" size={12} color={colors.textSecondary} />
+              <Ionicons name="location-outline" size={12} color={colors.textDisabled} />
               <Text className="flex-1 text-xs text-textSecondary" numberOfLines={1}>
                 {item.address}
               </Text>
             </View>
-          </View>
-          <View className="h-8 w-8 items-center justify-center rounded-full bg-surface">
-            <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-          </View>
-        </View>
-      </View>
-    </TapScale>
-  );
-}
 
-function CommunityEventCard({
-  item,
-  onPress,
-  onJoin,
-  isJoining,
-}: {
-  item: CommunityCleanupListItem;
-  onPress: () => void;
-  onJoin: () => void;
-  isJoining: boolean;
-}) {
-  const alreadyJoined = item.myParticipation?.status === 'Joined' || item.myParticipation?.status === 'CheckedIn';
-
-  return (
-    <TapScale onPress={onPress}>
-      <View className="mb-3 overflow-hidden rounded-xl bg-white" style={CARD_3D_SHADOW}>
-        <View className="flex-row items-center justify-between px-4 pt-3.5">
-          <Text className="text-xs text-textSecondary">{item.reportCode}</Text>
-          <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: '#D1FAE5' }}>
-            <Text className="text-[10px] font-semibold" style={{ color: '#065F46' }}>Đang mở đăng ký</Text>
+            <View className="mt-1.5 flex-row items-center gap-1.5">
+              <Ionicons name={hint.icon} size={12} color={statusMeta.textColor} />
+              <Text
+                className="flex-1 text-[11px] font-medium"
+                style={{ color: statusMeta.textColor }}
+                numberOfLines={1}
+              >
+                {hint.text}
+              </Text>
+            </View>
           </View>
         </View>
 
-        <View className="flex-row items-center gap-3 px-4 pb-3 pt-3">
-          <View className="h-12 w-12 items-center justify-center rounded-lg" style={{ backgroundColor: `${colors.primary}1A` }}>
-            <Ionicons name="leaf-outline" size={22} color={colors.primary} />
-          </View>
-          <View className="flex-1">
-            <Text className="text-[15px] font-bold text-textPrimary" numberOfLines={1}>
-              {item.title}
+        <View className="mt-3 flex-row items-center justify-between border-t border-border/70 pt-2.5">
+          <View className="min-w-0 flex-1 flex-row items-center gap-2">
+            <View className="rounded-full px-2.5 py-1" style={{ backgroundColor: statusMeta.bgColor }}>
+              <Text className="text-[11px] font-semibold" style={{ color: statusMeta.textColor }}>
+                {statusMeta.label}
+              </Text>
+            </View>
+            <Text className="text-[11px] text-textDisabled" numberOfLines={1}>
+              {formatRelativeTime(item.createdAt)}
             </Text>
-            <View className="mt-1 flex-row items-center gap-1">
-              <Ionicons name="people-outline" size={12} color={colors.textSecondary} />
-              <Text className="flex-1 text-xs text-textSecondary" numberOfLines={1}>
-                Còn {item.spotsLeft} chỗ / {item.maxParticipants}
-              </Text>
-            </View>
           </View>
-        </View>
-
-        <View className="flex-row border-t border-border">
-          <TapScale onPress={onPress} className="flex-1">
-            <View className="items-center py-3">
-              <Text className="text-sm font-semibold text-textSecondary">Xem chi tiết</Text>
-            </View>
-          </TapScale>
-          <View className="w-px bg-border" />
-          <TapScale onPress={alreadyJoined || isJoining ? () => {} : onJoin} className="flex-1">
-            <View className="items-center py-3">
-              <Text className="text-sm font-semibold" style={{ color: alreadyJoined ? colors.textSecondary : colors.primary }}>
-                {isJoining ? 'Đang xử lý…' : alreadyJoined ? 'Đã tham gia' : 'Tham gia (Vote)'}
-              </Text>
-            </View>
-          </TapScale>
+          <Ionicons name="chevron-forward" size={16} color={colors.textDisabled} />
         </View>
       </View>
     </TapScale>
@@ -562,47 +634,9 @@ export default function ProfileTabScreen() {
   const { user } = useAuth();
   const setUser = useAuthStore((s) => s.setUser);
   const { items, isLoading } = useMyReports({ filterKey: 'ALL', pageSize: 12 });
-  const [tab, setTab] = useState<'grid' | 'activity' | 'community'>('grid');
+  const [tab, setTab] = useState<'grid' | 'activity'>('grid');
   const [linksOpen, setLinksOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState<MyReportItem | null>(null);
-
-  const [communityEvents, setCommunityEvents] = useState<CommunityCleanupListItem[]>([]);
-  const [isCommunityLoading, setCommunityLoading] = useState(false);
-  const [communityError, setCommunityError] = useState<string | null>(null);
-  const [joiningEventId, setJoiningEventId] = useState<string | null>(null);
-
-  const loadCommunityEvents = useCallback(async () => {
-    setCommunityLoading(true);
-    setCommunityError(null);
-    try {
-      const res = await communityCleanupService.getOpen({ page: 1, pageSize: 20 });
-      setCommunityEvents(res.data.data.items);
-    } catch (err) {
-      setCommunityError(getApiErrorMessage(err, 'Không thể tải chương trình dọn cộng đồng.'));
-    } finally {
-      setCommunityLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (tab === 'community') void loadCommunityEvents();
-  }, [tab, loadCommunityEvents]);
-
-  const handleJoinCommunityEvent = useCallback(
-    async (eventId: string) => {
-      if (joiningEventId) return;
-      setJoiningEventId(eventId);
-      try {
-        await communityCleanupService.join(eventId);
-        await loadCommunityEvents();
-      } catch (err) {
-        Alert.alert('Không thể tham gia', getApiErrorMessage(err, 'Vui lòng thử lại.'));
-      } finally {
-        setJoiningEventId(null);
-      }
-    },
-    [joiningEventId, loadCommunityEvents],
-  );
 
   /** Đồng bộ lại hồ sơ mới nhất từ server mỗi lần vào tab — theo docs/mobile-get-profile-api.md */
   useFocusEffect(
@@ -713,63 +747,23 @@ export default function ProfileTabScreen() {
         </View>
 
         <View className="mt-4 flex-row border-b border-border">
-          <Pressable onPress={() => setTab('grid')} className="flex-1 items-center border-b-2 py-3" style={{ borderColor: tab === 'grid' ? colors.textPrimary : 'transparent' }}>
-            <Ionicons name="grid-outline" size={22} color={tab === 'grid' ? colors.textPrimary : colors.textSecondary} />
-          </Pressable>
-          <Pressable onPress={() => setTab('activity')} className="flex-1 items-center border-b-2 py-3" style={{ borderColor: tab === 'activity' ? colors.textPrimary : 'transparent' }}>
-            <Ionicons name="time-outline" size={22} color={tab === 'activity' ? colors.textPrimary : colors.textSecondary} />
-          </Pressable>
-          <Pressable onPress={() => setTab('community')} className="flex-1 items-center border-b-2 py-3" style={{ borderColor: tab === 'community' ? colors.textPrimary : 'transparent' }}>
-            <Ionicons name="leaf-outline" size={22} color={tab === 'community' ? colors.textPrimary : colors.textSecondary} />
-          </Pressable>
+          <ProfileTabButton
+            icon="grid-outline"
+            label="Ảnh"
+            active={tab === 'grid'}
+            onPress={() => setTab('grid')}
+          />
+          <ProfileTabButton
+            icon="time-outline"
+            label="Hoạt động"
+            active={tab === 'activity'}
+            onPress={() => setTab('activity')}
+          />
         </View>
 
-        {tab === 'community' ? (
-          <View className="px-4 pt-4">
-            <View className="mb-3 flex-row items-center justify-between">
-              <Text className="text-sm text-textSecondary">Chương trình dọn cộng đồng đang mở</Text>
-              <TapScale onPress={() => router.push('/community' as Href)}>
-                <Text className="text-sm font-semibold text-primary">Xem tất cả</Text>
-              </TapScale>
-            </View>
-            {isCommunityLoading ? (
-              Array.from({ length: 2 }).map((_, index) => (
-                <View key={`community-skeleton-${index}`} className="mb-3 rounded-xl bg-surface p-4">
-                  <View className="h-3 w-16 rounded bg-border" />
-                  <View className="mt-3 h-4 w-2/3 rounded bg-border" />
-                  <View className="mt-2 h-3 w-1/2 rounded bg-border" />
-                </View>
-              ))
-            ) : communityError ? (
-              <View className="items-center px-6 py-16">
-                <Ionicons name="alert-circle-outline" size={28} color={colors.error} />
-                <Text className="mt-3 text-center text-sm text-textSecondary">{communityError}</Text>
-                <TapScale onPress={() => void loadCommunityEvents()}>
-                  <View className="mt-3 rounded-xl px-5 py-2" style={{ backgroundColor: colors.primary }}>
-                    <Text className="text-sm font-semibold text-white">Thử lại</Text>
-                  </View>
-                </TapScale>
-              </View>
-            ) : communityEvents.length === 0 ? (
-              <View className="items-center px-6 py-16">
-                <Ionicons name="leaf-outline" size={28} color={colors.textSecondary} />
-                <Text className="mt-3 text-center text-sm text-textSecondary">
-                  Chưa có chương trình dọn cộng đồng nào gần bạn. Khi LEO mở chương trình, bạn sẽ thấy ở đây.
-                </Text>
-              </View>
-            ) : (
-              communityEvents.map((event) => (
-                <CommunityEventCard
-                  key={event.id}
-                  item={event}
-                  isJoining={joiningEventId === event.id}
-                  onPress={() => router.push({ pathname: '/community/[id]', params: { id: event.id } } as Href)}
-                  onJoin={() => void handleJoinCommunityEvent(event.id)}
-                />
-              ))
-            )}
-          </View>
-        ) : tab === 'grid' ? (
+        {/* key theo tab → remount + fade-in mỗi lần đổi, tránh cảm giác "nhảy" cứng */}
+        <Animated.View key={tab} entering={FadeIn.duration(220)}>
+        {tab === 'grid' ? (
           <View className="flex-row flex-wrap">
             {isLoading ? (
               Array.from({ length: 9 }).map((_, index) => <ReportThumbSkeleton key={`thumb-skeleton-${index}`} />)
@@ -793,19 +787,24 @@ export default function ProfileTabScreen() {
           </View>
         ) : (
           <View className="px-4 pt-4">
+            <View className="mb-3 flex-row items-center justify-between">
+              <Text className="text-sm text-textSecondary">Báo cáo gần đây của bạn</Text>
+              {items.length > 0 ? (
+                <Text className="text-sm font-semibold text-textSecondary">{items.length} báo cáo</Text>
+              ) : null}
+            </View>
             {isLoading ? (
               Array.from({ length: 3 }).map((_, index) => (
-                <View key={`activity-skeleton-${index}`} className="mb-3 rounded-xl bg-surface p-4">
-                  <View className="h-3 w-16 rounded bg-border" />
-                  <View className="mt-3 h-4 w-2/3 rounded bg-border" />
-                  <View className="mt-2 h-3 w-1/2 rounded bg-border" />
-                </View>
+                <ListCardSkeleton key={`activity-skeleton-${index}`} index={index} />
               ))
             ) : items.length === 0 ? (
-              <View className="items-center px-6 py-16">
-                <Ionicons name="document-text-outline" size={28} color={colors.textSecondary} />
-                <Text className="mt-3 text-center text-sm text-textSecondary">
-                  Chưa có hoạt động nào gần đây.
+              <View className="items-center px-6 py-14">
+                <Ionicons name="document-text-outline" size={40} color={colors.textDisabled} />
+                <Text className="mt-3 text-center text-[15px] font-semibold text-textPrimary">
+                  Chưa có hoạt động nào
+                </Text>
+                <Text className="mt-1 text-center text-sm leading-5 text-textSecondary">
+                  Gửi báo cáo đầu tiên để theo dõi tiến độ xử lý ngay tại đây.
                 </Text>
               </View>
             ) : (
@@ -813,6 +812,7 @@ export default function ProfileTabScreen() {
             )}
           </View>
         )}
+        </Animated.View>
       </ScrollView>
 
       <LinksSheet visible={linksOpen} onClose={() => setLinksOpen(false)} />
