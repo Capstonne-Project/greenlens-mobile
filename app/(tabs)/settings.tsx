@@ -133,14 +133,13 @@ function SettingCard({ children }: { children: ReactNode }) {
 
 export default function CitizenSettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth();
+  const { user, logoutAndRedirectToLogin } = useAuth();
   const [isLoggingOut, setLoggingOut] = useState(false);
 
   const doLogout = async () => {
     setLoggingOut(true);
     try {
-      await logout();
-      router.replace('/(auth)/login' as Href);
+      await logoutAndRedirectToLogin();
     } finally {
       setLoggingOut(false);
     }

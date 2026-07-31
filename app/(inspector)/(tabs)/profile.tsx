@@ -210,7 +210,7 @@ function StatRing({
 
 export default function InspectorProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth();
+  const { user, logoutAndRedirectToLogin } = useAuth();
   const { kpi, isLoading: isKpiLoading } = useInspectionKpi('ThisMonth');
   const [isLoggingOut, setLoggingOut] = useState(false);
 
@@ -219,8 +219,7 @@ export default function InspectorProfileScreen() {
   const doLogout = async () => {
     setLoggingOut(true);
     try {
-      await logout();
-      router.replace('/(auth)/login' as Href);
+      await logoutAndRedirectToLogin();
     } finally {
       setLoggingOut(false);
     }

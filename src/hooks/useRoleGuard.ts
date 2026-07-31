@@ -15,6 +15,9 @@ export function useRoleGuard(expectedShell: AppShell): void {
   useEffect(() => {
     if (!isAuthenticated || !user) return;
     if (canAccessShell(user.role, expectedShell)) return;
+    // router.replace() ở đây chỉ thay route trong nested stack hiện tại (vd. (inspector)),
+    // không đổi được sang shell khác ở Root Stack — phải dismiss hết nested stack trước.
+    if (router.canDismiss()) router.dismissAll();
     router.replace(getPostLoginHref(user.role));
   }, [expectedShell, isAuthenticated, user]);
 }

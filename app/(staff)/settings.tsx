@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { Children, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, View } from 'react-native';
 import Animated, {
@@ -143,7 +143,7 @@ function InfoPill({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label
 
 export default function StaffSettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth();
+  const { user, logoutAndRedirectToLogin } = useAuth();
   const labels = useFieldWorkerLabels();
   const { profile: team, isLeader, isLoading: isTeamLoading } = useTeamAccess();
   const [isLoggingOut, setLoggingOut] = useState(false);
@@ -153,8 +153,7 @@ export default function StaffSettingsScreen() {
   const doLogout = async () => {
     setLoggingOut(true);
     try {
-      await logout();
-      router.replace('/(auth)/login' as Href);
+      await logoutAndRedirectToLogin();
     } finally {
       setLoggingOut(false);
     }
