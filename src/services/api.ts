@@ -81,6 +81,7 @@ function isNoRefreshPath(url?: string): boolean {
 let refreshPromise: Promise<string | null> | null = null;
 
 async function performRefresh(): Promise<string | null> {
+  const startSessionId = useAuthStore.getState().sessionId;
   const rt = await SecureStore.getItemAsync('refreshToken');
   if (!rt) return null;
   try {
@@ -88,6 +89,13 @@ async function performRefresh(): Promise<string | null> {
       refreshToken: rt,
     });
     const p = res.data.data;
+
+    // Phiên đã đổi (logout / login lại) trong lúc chờ refresh — bỏ qua kết quả
+    // trễ này để tránh ghi đè state của phiên đăng nhập mới hơn.
+    if (useAuthStore.getState().sessionId !== startSessionId) {
+      return null;
+    }
+
     await useAuthStore.getState().setAuth(normalizeMobileUser(p.user as UserFromApi), {
       accessToken: p.accessToken,
       refreshToken: p.refreshToken,

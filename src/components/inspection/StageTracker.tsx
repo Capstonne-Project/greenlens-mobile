@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, ScrollView, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
@@ -19,7 +20,7 @@ interface StageTrackerProps<K extends string> {
   onSelect: (key: K) => void;
 }
 
-const STAGE_WIDTH = 72;
+const NODE_SIZE = 30;
 
 function StageNode<K extends string>({
   stage,
@@ -42,14 +43,14 @@ function StageNode<K extends string>({
       accessibilityState={{ selected: isActive, disabled: isLocked }}
       disabled={isLocked}
       onPress={onPress}
-      style={{ width: STAGE_WIDTH }}
       className="items-center"
+      style={{ width: 56 }}
     >
       <View
         style={{
-          height: 40,
-          width: 40,
-          borderRadius: 20,
+          height: NODE_SIZE,
+          width: NODE_SIZE,
+          borderRadius: NODE_SIZE / 2,
           backgroundColor: bg,
           borderWidth: 1.5,
           borderColor: border,
@@ -58,14 +59,14 @@ function StageNode<K extends string>({
         }}
       >
         {stage.status === 'done' ? (
-          <Ionicons name="checkmark" size={18} color={colors.white} />
+          <Ionicons name="checkmark" size={14} color={colors.white} />
         ) : (
-          <Ionicons name={stage.icon} size={16} color={fg} />
+          <Ionicons name={stage.icon} size={13} color={fg} />
         )}
       </View>
       <Text
-        className="mt-1.5 text-center text-[10px] font-semibold leading-3"
-        numberOfLines={2}
+        className="mt-1 text-center text-[9px] font-semibold leading-3"
+        numberOfLines={1}
         style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}
       >
         {stage.label}
@@ -75,8 +76,81 @@ function StageNode<K extends string>({
 }
 
 /**
- * Rail tiến trình ngang — mỗi stage là 1 node bấm được (nếu không bị khoá);
- * connector giữa các node đổi màu theo tiến độ. Không animation.
+ * Đường nối giữa 2 node.
+ * - `filled`: nền fill màu chạy dần từ trái sang phải khi stage trước "done".
+ * - `leadsToActive`: chấm sáng chạy lặp dọc connector dẫn tới stage đang xem,
+ *   để mắt luôn thấy có chuyển động thay vì đứng yên.
+ */
+function StageConnector({ filled, leadsToActive }: { filled: boolean; leadsToActive: boolean }) {
+  const progress = useRef(new Animated.Value(filled ? 1 : 0)).current;
+  const travel = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: filled ? 1 : 0,
+      duration: 420,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [filled, progress]);
+
+  useEffect(() => {
+    if (!leadsToActive) {
+      travel.stopAnimation();
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.timing(travel, {
+        toValue: 1,
+        duration: 1100,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [leadsToActive, travel]);
+
+  return (
+    <View
+      className="flex-1"
+      style={{ height: 2, marginTop: NODE_SIZE / 2, backgroundColor: colors.border, overflow: 'hidden' }}
+    >
+      <Animated.View
+        style={{
+          height: '100%',
+          backgroundColor: colors.primary,
+          width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+        }}
+      />
+      {leadsToActive ? (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: 0,
+            height: '100%',
+            width: 14,
+            borderRadius: 1,
+            backgroundColor: colors.primary,
+            opacity: 0.55,
+            transform: [
+              {
+                translateX: travel.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-14, 72],
+                }),
+              },
+            ],
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Rail tiến trình ngang — 5 stage nằm gọn một hàng (không scroll). Connector
+ * giữa các node fill màu chạy dần khi stage trước chuyển sang "done".
  */
 export function StageTracker<K extends string>({
   stages,
@@ -84,26 +158,18 @@ export function StageTracker<K extends string>({
   onSelect,
 }: StageTrackerProps<K>) {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ paddingHorizontal: 20, alignItems: 'flex-start' }}
-    >
+    <View className="flex-row items-start justify-center px-2">
       {stages.map((stage, index) => (
-        <View key={stage.key} className="flex-row items-start">
-          <StageNode stage={stage} isActive={stage.key === activeKey} onPress={() => onSelect(stage.key)} />
-          {index < stages.length - 1 ? (
-            <View
-              style={{
-                width: 24,
-                height: 2,
-                marginTop: 19,
-                backgroundColor: stage.status === 'done' ? colors.primary : colors.border,
-              }}
+        <View key={stage.key} className="flex-row items-start" style={index === 0 ? undefined : { flex: 1, maxWidth: 72 }}>
+          {index > 0 ? (
+            <StageConnector
+              filled={stages[index - 1].status === 'done'}
+              leadsToActive={stage.key === activeKey && stages[index - 1].status === 'done'}
             />
           ) : null}
+          <StageNode stage={stage} isActive={stage.key === activeKey} onPress={() => onSelect(stage.key)} />
         </View>
       ))}
-    </ScrollView>
+    </View>
   );
 }

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { inspectionService } from '@/services/inspection.service';
 import { reportDetailService } from '@/services/reportDetail.service';
+// MOCK — xoá import này + nhánh `if (USE_INSPECTION_MOCK)` bên dưới khi có BE thật.
+import { mockGetReportDetail, USE_INSPECTION_MOCK } from '@/mocks/inspection-mock-data';
 import type { InspectionDetail } from '@/types/inspection.types';
 
 export interface InspectionMediaItem {
@@ -37,7 +39,9 @@ export function useInspectionDetail(id: string | undefined) {
       // Ảnh + toạ độ hiện trường lấy từ report gốc (InspectionReport không lưu toạ độ).
       // Lỗi ở đây không nên chặn cả màn hình.
       try {
-        const report = (await reportDetailService.getById(data.reportId)).data.data;
+        const report = USE_INSPECTION_MOCK
+          ? await mockGetReportDetail(data.reportId)
+          : (await reportDetailService.getById(data.reportId)).data.data;
         setReportMedia(report.media.map((m) => ({ url: m.url, mimeType: m.mediaType })));
         setSceneCoords(
           typeof report.latitude === 'number' && typeof report.longitude === 'number'

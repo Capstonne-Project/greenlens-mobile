@@ -79,9 +79,11 @@ export function useAuth() {
   );
 
   const logout = useCallback(async () => {
-    await clearPushTokenSafe();
-    useNotificationStore.getState().clearUnread();
+    // Clear auth state trước — tránh network call bên dưới (bị 401 do token cũ)
+    // trigger auto-refresh và ghi đè state của phiên đăng nhập kế tiếp.
     await clearAuth();
+    useNotificationStore.getState().clearUnread();
+    await clearPushTokenSafe();
   }, [clearAuth]);
 
   /** §4 — khôi phục phiên bằng refresh token (rotation), không dùng GET /me */

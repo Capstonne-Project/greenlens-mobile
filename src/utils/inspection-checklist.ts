@@ -78,12 +78,14 @@ export function buildChecklistState(
       inCategory.find((item) => !item.mediaUrl && item.description?.trim())?.description?.trim() ??
       null;
 
+    // Tick xanh chỉ khi thực sự đã có nội dung/file — mục tùy chọn (Video/Audio/Other)
+    // không tự "đạt" khi trống, dù không bị chặn nộp biên bản (xem getMissingRequirements).
     const satisfied =
       meta.category === 'ViolationStatus'
         ? Boolean(note)
         : meta.category === 'ScenePhoto'
           ? files.length >= SCENE_PHOTO_MINIMUM
-          : true; // mục tùy chọn luôn đạt
+          : files.length > 0 || Boolean(note);
 
     return { ...meta, note, files, satisfied };
   });

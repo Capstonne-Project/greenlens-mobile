@@ -18,7 +18,7 @@ import {
   ArrivalConfirmCard,
   AudioEvidenceRecorder,
   ChecklistCategoryRow,
-  EvidenceCategorySheet,
+  EvidenceCategoryContent,
   InspectionCaseHeader,
   InspectionFeedbackBanner,
   StagePanel,
@@ -35,11 +35,7 @@ import { inspectionService } from '@/services/inspection.service';
 import { ReportMediaGallery } from '@/shared/components/ReportMediaGallery';
 import { colors } from '@/theme/colors';
 import type { EvidenceCategory, ViolationLevel } from '@/types/inspection.types';
-import {
-  buildChecklistState,
-  getMissingRequirements,
-  type ChecklistCategoryState,
-} from '@/utils/inspection-checklist';
+import { buildChecklistState, getMissingRequirements } from '@/utils/inspection-checklist';
 
 const VIOLATION_LEVELS: readonly ViolationLevel[] = [
   'Minor',
@@ -72,6 +68,42 @@ const STEP_META: Record<StepKey, { label: string; icon: keyof typeof Ionicons.gl
 const INPUT_CLASS = 'mb-3 h-12 rounded-2xl bg-surface px-4 text-sm text-textPrimary';
 const TEXTAREA_CLASS = 'mb-3 min-h-[84px] rounded-2xl bg-surface px-4 py-3 text-sm text-textPrimary';
 
+/** Nút hành động chính trong sticky footer — style đồng nhất cho mọi stage. */
+interface FooterButtonProps {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  disabled: boolean;
+  loading: boolean;
+  onPress: () => void;
+  tone?: 'primary' | 'neutral';
+}
+
+function FooterButton({ label, icon, disabled, loading, onPress, tone = 'primary' }: FooterButtonProps) {
+  const isPrimary = tone === 'primary';
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      className={`h-13 flex-row items-center justify-center gap-2 rounded-2xl ${!isPrimary ? 'bg-surface' : ''}`}
+      style={{
+        height: 52,
+        backgroundColor: isPrimary ? (disabled ? colors.textDisabled : colors.primary) : undefined,
+        opacity: !isPrimary && disabled ? 0.5 : 1,
+      }}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color={isPrimary ? colors.white : colors.textPrimary} />
+      ) : icon ? (
+        <Ionicons name={icon} size={17} color={isPrimary ? colors.white : colors.textPrimary} />
+      ) : null}
+      <Text className={`text-sm font-bold ${isPrimary ? 'text-white' : 'text-textPrimary'}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function InspectionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
@@ -93,7 +125,8 @@ export default function InspectionDetailScreen() {
 
   const [activeStep, setActiveStep] = useState<StepKey | null>(null);
   const [heroIndex, setHeroIndex] = useState(0);
-  const [activeCategory, setActiveCategory] = useState<ChecklistCategoryState | null>(null);
+  /** Category checklist đang giãn ra tại chỗ — bấm lại để thu gọn. */
+  const [expandedCategory, setExpandedCategory] = useState<EvidenceCategory | null>(null);
 
   // Form state
   const [arrivalNote, setArrivalNote] = useState('');
@@ -164,8 +197,7 @@ export default function InspectionDetailScreen() {
 
   const handleEvidencePick = useCallback(
     async (category: EvidenceCategory, source: 'camera' | 'library') => {
-      const ok = await upload(category, source);
-      if (ok) setActiveCategory(null);
+      await upload(category, source);
     },
     [upload],
   );
@@ -173,12 +205,11 @@ export default function InspectionDetailScreen() {
   const handleStopRecording = useCallback(async () => {
     const recorded = await audio.stop();
     if (!recorded) return;
-    const ok = await uploadFile('Audio', {
+    await uploadFile('Audio', {
       uri: recorded.uri,
       fileName: recorded.fileName,
       mimeType: recorded.mimeType,
     });
-    if (ok) setActiveCategory(null);
   }, [audio, uploadFile]);
 
   if (isLoading) {
@@ -237,6 +268,120 @@ export default function InspectionDetailScreen() {
 
   const currentStep = activeStep ?? 'accept';
 
+  // ---- Footer: nút hành động chính của stage đang xem — luôn sticky đáy màn hình. ----
+  const footerButtons: FooterButtonProps[] = [];
+
+  if (currentStep === 'accept' && detail.canAcceptTask) {
+    footerButtons.push({
+      label: 'Nhận hồ sơ',
+      icon: 'hand-left-outline',
+      disabled: submitting,
+      loading: submitting,
+      onPress: () => void run(() => inspectionService.accept(id!), 'Đã nhận hồ sơ.'),
+    });
+  }
+
+  if (currentStep === 'checklist' && !checklistLocked) {
+    footerButtons.push({
+      label: 'Lưu checklist',
+      disabled: submitting || !violationStatus.trim(),
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () =>
+            inspectionService.updateChecklist(id!, {
+              violationStatusText: violationStatus.trim(),
+              otherDescription: otherNote.trim() || undefined,
+            }),
+          'Đã lưu checklist.',
+        ),
+    });
+  }
+  if (currentStep === 'checklist' && !detail.fieldInvestigationSubmittedAt && detail.canSubmitFieldReport) {
+    footerButtons.push({
+      label: 'Chốt biên bản (Trưởng đoàn)',
+      icon: 'lock-closed-outline',
+      disabled: submitting || !canSubmitFieldReport,
+      loading: submitting,
+      onPress: () =>
+        void run(() => inspectionService.submitFieldReport(id!), 'Đã chốt biên bản hiện trường.'),
+    });
+  }
+
+  if (currentStep === 'decision' && detail.canIssuePenalty) {
+    footerButtons.push({
+      label: 'Ban hành quyết định',
+      disabled: submitting || Number(penaltyAmount) <= 0 || !decisionNumber.trim(),
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () =>
+            inspectionService.issuePenalty(id!, {
+              violationLevel,
+              penaltyAmount: Number(penaltyAmount),
+              decisionNumber: decisionNumber.trim(),
+              paymentDueDays: Number(paymentDueDays) || 10,
+              additionalMeasures: additionalMeasures.trim() || undefined,
+            }),
+          'Đã ban hành quyết định xử phạt.',
+        ),
+    });
+  }
+  if (currentStep === 'decision' && detail.canCloseNoViolation) {
+    footerButtons.push({
+      label: 'Đóng không vi phạm',
+      tone: 'neutral',
+      disabled: submitting || closeNoViolationReason.trim().length < MIN_CLOSE_REASON_LENGTH,
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () => inspectionService.closeNoViolation(id!, { reason: closeNoViolationReason.trim() }),
+          'Đã đóng hồ sơ — không đủ căn cứ.',
+        ),
+    });
+  }
+
+  if (currentStep === 'payment' && detail.canRecordPayment) {
+    footerButtons.push({
+      label: 'Ghi nhận nộp phạt',
+      disabled: submitting || Number(paidAmount) <= 0 || !receipt,
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () =>
+            inspectionService.recordPayment(id!, {
+              paidAmount: Number(paidAmount),
+              paidAt: new Date().toISOString(),
+              receipt: receipt!,
+              note: paymentNote.trim() || undefined,
+            }),
+          'Đã ghi nhận nộp phạt.',
+        ).then((ok) => {
+          if (ok) {
+            setPaidAmount('');
+            setPaymentNote('');
+            setReceipt(null);
+          }
+        }),
+    });
+  }
+  if (currentStep === 'payment' && detail.canClose) {
+    footerButtons.push({
+      label: 'Đóng hồ sơ',
+      disabled: submitting,
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () =>
+            inspectionService.close(
+              id!,
+              closeReason.trim() ? { reason: closeReason.trim() } : undefined,
+            ),
+          'Đã đóng hồ sơ.',
+        ),
+    });
+  }
+
   return (
     <View className="flex-1 bg-surface">
       <View
@@ -262,7 +407,7 @@ export default function InspectionDetailScreen() {
         </View>
       </View>
 
-      <View className="bg-white pb-3">
+      <View className="bg-white pb-3 pt-4">
         <StageTracker
           stages={stages}
           activeKey={currentStep}
@@ -277,7 +422,7 @@ export default function InspectionDetailScreen() {
         className="flex-1"
       >
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 48 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
         >
           <InspectionFeedbackBanner
@@ -319,26 +464,10 @@ export default function InspectionDetailScreen() {
           {currentStep === 'accept' ? (
             <StagePanel title={STEP_META.accept.title}>
               {detail.canAcceptTask ? (
-                <>
-                  <Text className="mb-4 text-xs leading-[18px] text-textSecondary">
-                    Nhận hồ sơ để bắt đầu điều tra. Sau khi nhận, hồ sơ chuyển sang trạng thái
-                    “Đang điều tra”.
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={submitting}
-                    onPress={() => void run(() => inspectionService.accept(id!), 'Đã nhận hồ sơ.')}
-                    className="h-13 flex-row items-center justify-center gap-2 rounded-2xl"
-                    style={{ backgroundColor: submitting ? colors.textDisabled : colors.primary, height: 52 }}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator size="small" color={colors.white} />
-                    ) : (
-                      <Ionicons name="hand-left-outline" size={18} color={colors.white} />
-                    )}
-                    <Text className="text-sm font-bold text-white">Nhận hồ sơ</Text>
-                  </Pressable>
-                </>
+                <Text className="text-xs leading-[18px] text-textSecondary">
+                  Nhận hồ sơ để bắt đầu điều tra. Sau khi nhận, hồ sơ chuyển sang trạng thái
+                  “Đang điều tra”.
+                </Text>
               ) : (
                 <Text className="text-xs leading-[18px] text-textSecondary">
                   Hồ sơ đã được nhận. Tiếp tục các bước tiếp theo.
@@ -405,18 +534,47 @@ export default function InspectionDetailScreen() {
               title={STEP_META.checklist.title}
               description="Hoàn thành các mục bắt buộc (*) trước khi chốt biên bản hiện trường."
             >
-              {checklistStates.map((state) => (
-                <ChecklistCategoryRow
-                  key={state.category}
-                  state={state}
-                  disabled={checklistLocked}
-                  onPress={(picked) => {
-                    if (picked.category === 'ViolationStatus') return;
-                    clearEvidenceError();
-                    setActiveCategory(picked);
-                  }}
-                />
-              ))}
+              {checklistStates.map((state) => {
+                if (state.category === 'ViolationStatus') {
+                  return <ChecklistCategoryRow key={state.category} state={state} disabled onPress={() => {}} />;
+                }
+                const category = state.category as EvidenceCategory;
+                const isExpanded = expandedCategory === category;
+                return (
+                  <ChecklistCategoryRow
+                    key={state.category}
+                    state={state}
+                    // Biên bản đã chốt vẫn phải xem lại được ảnh/video/ghi âm/tài liệu đã tải —
+                    // chỉ khoá phần thêm/sửa file (xem `readOnly` trong EvidenceCategoryContent).
+                    isExpanded={isExpanded}
+                    onPress={() => {
+                      clearEvidenceError();
+                      setExpandedCategory((current) => (current === category ? null : category));
+                    }}
+                  >
+                    <EvidenceCategoryContent
+                      state={state}
+                      uploading={isUploading && uploadingCategory === category}
+                      errorMessage={evidenceError ?? (category === 'Audio' ? audio.recordingError : null)}
+                      readOnly={checklistLocked}
+                      onPick={(pickedCategory, source) => void handleEvidencePick(pickedCategory, source)}
+                      recorderSlot={
+                        category === 'Audio' ? (
+                          <AudioEvidenceRecorder
+                            isRecording={audio.isRecording}
+                            durationSeconds={audio.durationSeconds}
+                            maxDurationSeconds={audio.maxDurationSeconds}
+                            reachedLimit={audio.reachedLimit}
+                            uploading={isUploading && uploadingCategory === 'Audio'}
+                            onStart={() => void audio.start()}
+                            onStop={() => void handleStopRecording()}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  </ChecklistCategoryRow>
+                );
+              })}
 
               {!checklistLocked ? (
                 <View className="mt-3 rounded-2xl bg-surface p-3.5">
@@ -443,27 +601,6 @@ export default function InspectionDetailScreen() {
                     style={{ backgroundColor: colors.white }}
                     textAlignVertical="top"
                   />
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={submitting || !violationStatus.trim()}
-                    onPress={() =>
-                      void run(
-                        () =>
-                          inspectionService.updateChecklist(id!, {
-                            violationStatusText: violationStatus.trim(),
-                            otherDescription: otherNote.trim() || undefined,
-                          }),
-                        'Đã lưu checklist.',
-                      )
-                    }
-                    className="h-12 items-center justify-center rounded-2xl"
-                    style={{
-                      backgroundColor:
-                        submitting || !violationStatus.trim() ? colors.textDisabled : colors.primary,
-                    }}
-                  >
-                    <Text className="text-sm font-bold text-white">Lưu checklist</Text>
-                  </Pressable>
                 </View>
               ) : null}
 
@@ -478,41 +615,21 @@ export default function InspectionDetailScreen() {
                   </Text>
                 </View>
               ) : detail.canSubmitFieldReport ? (
-                <View className="mt-3">
-                  {missingRequirements.length > 0 ? (
-                    <View
-                      className="mb-3 rounded-2xl px-3.5 py-3"
-                      style={{ backgroundColor: '#FFFBEB' }}
-                    >
-                      <Text className="text-xs font-bold" style={{ color: '#92400E' }}>
-                        Còn thiếu: {missingRequirements.join(' · ')}
-                      </Text>
-                    </View>
-                  ) : null}
-                  <Text className="mb-3 text-xs leading-[18px] text-textSecondary">
+                missingRequirements.length > 0 ? (
+                  <View
+                    className="mt-3 rounded-2xl px-3.5 py-3"
+                    style={{ backgroundColor: '#FFFBEB' }}
+                  >
+                    <Text className="text-xs font-bold" style={{ color: '#92400E' }}>
+                      Còn thiếu: {missingRequirements.join(' · ')}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text className="mt-3 text-xs leading-[18px] text-textSecondary">
                     Sau khi chốt, checklist bị khóa và mở bước ra quyết định. Chỉ trưởng đoàn thực
                     hiện được.
                   </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={submitting || !canSubmitFieldReport}
-                    onPress={() =>
-                      void run(
-                        () => inspectionService.submitFieldReport(id!),
-                        'Đã chốt biên bản hiện trường.',
-                      )
-                    }
-                    className="h-13 flex-row items-center justify-center gap-2 rounded-2xl"
-                    style={{
-                      backgroundColor:
-                        submitting || !canSubmitFieldReport ? colors.textDisabled : colors.primary,
-                      height: 52,
-                    }}
-                  >
-                    <Ionicons name="lock-closed-outline" size={17} color={colors.white} />
-                    <Text className="text-sm font-bold text-white">Chốt biên bản (Trưởng đoàn)</Text>
-                  </Pressable>
-                </View>
+                )
               ) : null}
             </StagePanel>
           ) : null}
@@ -587,35 +704,6 @@ export default function InspectionDetailScreen() {
                     className={TEXTAREA_CLASS}
                     textAlignVertical="top"
                   />
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={
-                      submitting || Number(penaltyAmount) <= 0 || !decisionNumber.trim()
-                    }
-                    onPress={() =>
-                      void run(
-                        () =>
-                          inspectionService.issuePenalty(id!, {
-                            violationLevel,
-                            penaltyAmount: Number(penaltyAmount),
-                            decisionNumber: decisionNumber.trim(),
-                            paymentDueDays: Number(paymentDueDays) || 10,
-                            additionalMeasures: additionalMeasures.trim() || undefined,
-                          }),
-                        'Đã ban hành quyết định xử phạt.',
-                      )
-                    }
-                    className="h-13 items-center justify-center rounded-2xl"
-                    style={{
-                      backgroundColor:
-                        submitting || Number(penaltyAmount) <= 0 || !decisionNumber.trim()
-                          ? colors.textDisabled
-                          : colors.primary,
-                      height: 52,
-                    }}
-                  >
-                    <Text className="text-sm font-bold text-white">Ban hành quyết định</Text>
-                  </Pressable>
                 </View>
               ) : null}
 
@@ -633,32 +721,9 @@ export default function InspectionDetailScreen() {
                     className={TEXTAREA_CLASS}
                     textAlignVertical="top"
                   />
-                  <Text className="mb-2 text-[11px] text-textSecondary">
+                  <Text className="text-[11px] text-textSecondary">
                     {closeNoViolationReason.trim().length}/{MIN_CLOSE_REASON_LENGTH} ký tự
                   </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={
-                      submitting ||
-                      closeNoViolationReason.trim().length < MIN_CLOSE_REASON_LENGTH
-                    }
-                    onPress={() =>
-                      void run(
-                        () =>
-                          inspectionService.closeNoViolation(id!, {
-                            reason: closeNoViolationReason.trim(),
-                          }),
-                        'Đã đóng hồ sơ — không đủ căn cứ.',
-                      )
-                    }
-                    className="h-12 items-center justify-center rounded-2xl bg-surface"
-                    style={{
-                      opacity:
-                        closeNoViolationReason.trim().length < MIN_CLOSE_REASON_LENGTH ? 0.5 : 1,
-                    }}
-                  >
-                    <Text className="text-sm font-bold text-textPrimary">Đóng không vi phạm</Text>
-                  </Pressable>
                 </View>
               ) : null}
             </StagePanel>
@@ -725,38 +790,6 @@ export default function InspectionDetailScreen() {
                     className={TEXTAREA_CLASS}
                     textAlignVertical="top"
                   />
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={submitting || Number(paidAmount) <= 0 || !receipt}
-                    onPress={() =>
-                      void run(
-                        () =>
-                          inspectionService.recordPayment(id!, {
-                            paidAmount: Number(paidAmount),
-                            paidAt: new Date().toISOString(),
-                            receipt: receipt!,
-                            note: paymentNote.trim() || undefined,
-                          }),
-                        'Đã ghi nhận nộp phạt.',
-                      ).then((ok) => {
-                        if (ok) {
-                          setPaidAmount('');
-                          setPaymentNote('');
-                          setReceipt(null);
-                        }
-                      })
-                    }
-                    className="h-13 items-center justify-center rounded-2xl"
-                    style={{
-                      backgroundColor:
-                        submitting || Number(paidAmount) <= 0 || !receipt
-                          ? colors.textDisabled
-                          : colors.primary,
-                      height: 52,
-                    }}
-                  >
-                    <Text className="text-sm font-bold text-white">Ghi nhận nộp phạt</Text>
-                  </Pressable>
                 </View>
               ) : null}
 
@@ -772,58 +805,23 @@ export default function InspectionDetailScreen() {
                     className={TEXTAREA_CLASS}
                     textAlignVertical="top"
                   />
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={submitting}
-                    onPress={() =>
-                      void run(
-                        () =>
-                          inspectionService.close(
-                            id!,
-                            closeReason.trim() ? { reason: closeReason.trim() } : undefined,
-                          ),
-                        'Đã đóng hồ sơ.',
-                      )
-                    }
-                    className="h-13 items-center justify-center rounded-2xl"
-                    style={{ backgroundColor: submitting ? colors.textDisabled : colors.primary, height: 52 }}
-                  >
-                    <Text className="text-sm font-bold text-white">Đóng hồ sơ</Text>
-                  </Pressable>
                 </View>
               ) : null}
             </StagePanel>
           ) : null}
         </ScrollView>
-      </KeyboardAvoidingView>
 
-      <EvidenceCategorySheet
-        state={activeCategory}
-        visible={activeCategory !== null}
-        uploading={isUploading && uploadingCategory === activeCategory?.category}
-        errorMessage={evidenceError ?? audio.recordingError}
-        readOnly={checklistLocked}
-        onClose={() => {
-          if (audio.isRecording) return; // không đóng giữa lúc đang ghi
-          setActiveCategory(null);
-          clearEvidenceError();
-          audio.clearRecordingError();
-        }}
-        onPick={(category, source) => void handleEvidencePick(category, source)}
-        recorderSlot={
-          activeCategory?.category === 'Audio' ? (
-            <AudioEvidenceRecorder
-              isRecording={audio.isRecording}
-              durationSeconds={audio.durationSeconds}
-              maxDurationSeconds={audio.maxDurationSeconds}
-              reachedLimit={audio.reachedLimit}
-              uploading={isUploading && uploadingCategory === 'Audio'}
-              onStart={() => void audio.start()}
-              onStop={() => void handleStopRecording()}
-            />
-          ) : undefined
-        }
-      />
+        {footerButtons.length > 0 ? (
+          <View
+            className="gap-2 border-t border-border bg-white px-4 pt-3"
+            style={{ paddingBottom: insets.bottom + 12 }}
+          >
+            {footerButtons.map((btn) => (
+              <FooterButton key={btn.label} {...btn} />
+            ))}
+          </View>
+        ) : null}
+      </KeyboardAvoidingView>
     </View>
   );
 }
