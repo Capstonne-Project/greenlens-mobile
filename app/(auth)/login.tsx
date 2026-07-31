@@ -46,9 +46,8 @@ export default function LoginScreen() {
     try {
       setIsSubmitting(true);
       const user = await login({ email, password });
-      // Nếu đang đứng trong nested stack của session cũ (vd. (inspector) restore
-      // từ refresh token trước đó), replace() đơn thuần không thoát ra được —
-      // phải dismiss hết trước khi sang shell mới theo role vừa login.
+      // Session cũ có thể đã được restore vào shell khác (vd. (inspector)) trước
+      // khi user login lại — dismiss stack đó rồi mới sang shell của role mới.
       if (router.canDismiss()) router.dismissAll();
       router.replace(getPostLoginHref(user.role));
     } catch (err) {

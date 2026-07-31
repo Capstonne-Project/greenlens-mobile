@@ -365,13 +365,13 @@ export default function InspectorProfileScreen() {
                 icon="document-text-outline"
                 label="Hồ sơ đang xử lý"
                 description="Danh sách hồ sơ được giao"
-                onPress={() => router.push('/(inspector)/(tabs)/queue' as Href)}
+                onPress={() => router.push('/(inspector)/(inspector-tabs)/queue' as Href)}
               />
               <SettingRow
                 icon="map-outline"
                 label="Bản đồ hiện trường"
                 description="Xem vị trí các hồ sơ trên bản đồ"
-                onPress={() => router.push('/(inspector)/(tabs)/map' as Href)}
+                onPress={() => router.push('/(inspector)/(inspector-tabs)/map' as Href)}
               />
             </SettingCard>
           </Animated.View>
@@ -384,7 +384,7 @@ export default function InspectorProfileScreen() {
                 icon="notifications-outline"
                 label="Thông báo"
                 description="Cập nhật về hồ sơ của bạn"
-                onPress={() => router.push('/(inspector)/(tabs)/notifications' as Href)}
+                onPress={() => router.push('/(inspector)/(inspector-tabs)/notifications' as Href)}
               />
             </SettingCard>
           </Animated.View>

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
 import MapView, { type Region } from 'react-native-maps';
@@ -105,7 +105,7 @@ export default function InspectorMapScreen() {
   }, []);
 
   const handleOpenDetail = useCallback((id: string) => {
-    router.push(`/(inspector)/inspection/${id}` as never);
+    router.push(`/(inspector)/inspection/${id}` as Href);
   }, []);
 
   return (

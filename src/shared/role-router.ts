@@ -13,15 +13,24 @@ export function getShellForRole(role: UserRole): AppShell {
   return 'citizen';
 }
 
+/**
+ * Href gốc của từng shell — LUÔN ghi đủ group segment.
+ *
+ * Group trong ngoặc bị xoá khỏi URL, nên `app/(tabs)/index` và
+ * `app/(inspector)/(inspector-tabs)/index` đều rút gọn về `/`. Nếu điều hướng
+ * bằng URL rút gọn, Expo Router có thể resolve sang shell sai (Citizen login
+ * xong lại vào UI Inspector). Href có đủ group là duy nhất nên không nhập nhằng.
+ *
+ * Lưu ý: `index.tsx` được chuẩn hoá thành chính group — KHÔNG thêm `/index`.
+ */
+const SHELL_ROOT_HREF: Record<AppShell, Href> = {
+  citizen: '/(tabs)' as Href,
+  fieldWorker: '/(staff)/home' as Href,
+  inspector: '/(inspector)/(inspector-tabs)' as Href,
+};
+
 export function getPostLoginHref(role: UserRole): Href {
-  switch (getShellForRole(role)) {
-    case 'citizen':
-      return '/(tabs)' as Href;
-    case 'fieldWorker':
-      return '/(staff)/home' as Href;
-    case 'inspector':
-      return '/(inspector)' as Href;
-  }
+  return SHELL_ROOT_HREF[getShellForRole(role)];
 }
 
 export function canAccessShell(role: UserRole, shell: AppShell): boolean {

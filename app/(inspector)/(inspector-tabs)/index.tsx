@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -64,8 +64,11 @@ export default function InspectorOverviewScreen() {
   const goToQueue = (status?: InspectionStatus) => {
     router.push(
       status
-        ? (`/(inspector)/queue?status=${status}` as never)
-        : ('/(inspector)/queue' as never),
+        ? ({
+            pathname: '/(inspector)/(inspector-tabs)/queue',
+            params: { status },
+          } as Href)
+        : ('/(inspector)/(inspector-tabs)/queue' as Href),
     );
   };
 

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -57,7 +57,7 @@ export default function InspectorQueueScreen() {
   const { status: statusParam } = useLocalSearchParams<{ status?: string }>();
   const [filter, setFilter] = useState<InspectionFilterValue>(null);
 
-  // Deep-link từ tab Tổng quan: /(inspector)/queue?status=Overdue
+  // Deep-link từ tab Tổng quan: /(inspector)/(inspector-tabs)/queue?status=Overdue
   useEffect(() => {
     if (statusParam) setFilter(statusParam as InspectionFilterValue);
   }, [statusParam]);
@@ -78,7 +78,7 @@ export default function InspectorQueueScreen() {
   );
 
   const handlePress = useCallback((id: string) => {
-    router.push(`/(inspector)/inspection/${id}` as never);
+    router.push(`/(inspector)/inspection/${id}` as Href);
   }, []);
 
   const renderItem = useCallback(

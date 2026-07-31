@@ -143,12 +143,12 @@ function resolveInspectorHref(type: string, ref: string | null): Href | null {
       if (ref) {
         return `/(inspector)/inspection/${ref}` as Href;
       }
-      return '/(inspector)/(tabs)/queue' as Href;
+      return '/(inspector)/(inspector-tabs)/queue' as Href;
 
     default:
       if (ref) {
         return `/(inspector)/inspection/${ref}` as Href;
       }
-      return '/(inspector)/(tabs)/notifications' as Href;
+      return '/(inspector)/(inspector-tabs)/notifications' as Href;
   }
 }
