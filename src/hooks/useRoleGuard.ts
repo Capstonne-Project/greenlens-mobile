@@ -15,6 +15,9 @@ export function useRoleGuard(expectedShell: AppShell): void {
   useEffect(() => {
     if (!isAuthenticated || !user) return;
     if (canAccessShell(user.role, expectedShell)) return;
+    // Sai shell (vd. token cũ của role khác được restore): dismiss hết stack lồng
+    // của shell hiện tại rồi replace bằng href đủ group của shell đúng role.
+    if (router.canDismiss()) router.dismissAll();
     router.replace(getPostLoginHref(user.role));
   }, [expectedShell, isAuthenticated, user]);
 }

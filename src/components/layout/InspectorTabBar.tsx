@@ -6,13 +6,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNotificationStore } from '@/stores/notification.store';
 import { colors } from '@/theme/colors';
 
-const TABS = ['queue', 'notifications', 'profile'] as const;
-
 const TAB_META = {
+  index: { label: 'Tổng quan', icon: 'home-outline', activeIcon: 'home' },
+  map: { label: 'Bản đồ', icon: 'map-outline', activeIcon: 'map' },
   queue: { label: 'Hồ sơ', icon: 'document-text-outline', activeIcon: 'document-text' },
   notifications: { label: 'Thông báo', icon: 'notifications-outline', activeIcon: 'notifications' },
   profile: { label: 'Cá nhân', icon: 'person-outline', activeIcon: 'person' },
 } as const;
+
+type TabName = keyof typeof TAB_META;
 
 export function InspectorTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -22,9 +24,9 @@ export function InspectorTabBar({ state, descriptors, navigation }: BottomTabBar
     <View className="border-t border-border bg-white" style={{ paddingBottom: Math.max(insets.bottom, 10) }}>
       <View className="flex-row justify-around px-2 pt-2">
         {state.routes.map((route, index) => {
-          const name = route.name as (typeof TABS)[number];
-          if (!TAB_META[name]) return null;
+          const name = route.name as TabName;
           const meta = TAB_META[name];
+          if (!meta) return null;
           const isFocused = state.index === index;
           const { options } = descriptors[route.key];
           const label = (options.title as string) ?? meta.label;
@@ -33,11 +35,13 @@ export function InspectorTabBar({ state, descriptors, navigation }: BottomTabBar
           return (
             <Pressable
               key={route.key}
+              accessibilityRole="button"
+              accessibilityState={isFocused ? { selected: true } : {}}
               onPress={() => {
                 const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
                 if (!isFocused && !event.defaultPrevented) navigation.navigate(route.name);
               }}
-              className="min-w-[80px] items-center gap-0.5 py-1"
+              className="min-w-[64px] items-center gap-0.5 py-1"
             >
               <View className="relative">
                 <Ionicons
@@ -56,7 +60,11 @@ export function InspectorTabBar({ state, descriptors, navigation }: BottomTabBar
                   </View>
                 ) : null}
               </View>
-              <Text className="text-[11px] font-medium" style={{ color: isFocused ? colors.primary : colors.textSecondary }}>
+              <Text
+                className="text-[11px] font-medium"
+                numberOfLines={1}
+                style={{ color: isFocused ? colors.primary : colors.textSecondary }}
+              >
                 {label}
               </Text>
             </Pressable>

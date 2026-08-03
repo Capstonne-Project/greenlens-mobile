@@ -213,18 +213,29 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
       return { ok: false as const, reason: 'validation' as SubmitFailureReason };
     }
 
-    const uploadedImages = useCreateReportDraftStore
-      .getState()
-      .images.filter(
-        (image) =>
-          image.uploadStatus === 'done' &&
-          Boolean(image.url) &&
-          Boolean(image.mimeType) &&
-          typeof image.sizeBytes === 'number',
-      );
+    const draftState = useCreateReportDraftStore.getState();
+    const uploadedImages = draftState.images.filter(
+      (image) =>
+        image.uploadStatus === 'done' &&
+        Boolean(image.url) &&
+        Boolean(image.mimeType) &&
+        typeof image.sizeBytes === 'number',
+    );
 
     if (!uploadedImages.length) {
       return { ok: false as const, reason: 'unknown' as SubmitFailureReason };
+    }
+
+    // BE verify tempImageId dựa vào images[0] — ảnh đã AI phân tích phải luôn đứng đầu,
+    // bất kể thứ tự user pick nhiều ảnh từ thư viện. Xem BR-AI-001 / SubmitPollutionReportCommandHandler.
+    if (draftState.tempImageId && draftState.analyzedImageLocalUri) {
+      const analyzedIndex = uploadedImages.findIndex(
+        (image) => image.localUri === draftState.analyzedImageLocalUri,
+      );
+      if (analyzedIndex > 0) {
+        const [analyzed] = uploadedImages.splice(analyzedIndex, 1);
+        uploadedImages.unshift(analyzed);
+      }
     }
 
     const payload: SubmitPollutionReportPayload = {
@@ -257,6 +268,8 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
         imageCount: payload.images.length,
         hideReporterName: payload.hideReporterName,
         descriptionLength: payload.description?.length ?? 0,
+        tempImageId: payload.tempImageId,
+        images: payload.images.map((img) => ({ url: img.url, key: img.key, sizeBytes: img.sizeBytes, mimeType: img.mimeType })),
       });
       const submitStartedAt = Date.now();
       const response = await pollutionReportService.submit(payload);

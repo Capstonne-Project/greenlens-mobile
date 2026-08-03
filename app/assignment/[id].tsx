@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -30,6 +30,7 @@ import { useReportComments } from '@/hooks/useReportComments';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { reportDetailService } from '@/services/reportDetail.service';
+import { useAuthStore } from '@/stores/auth.store';
 import { useFieldWorkerTaskStore } from '@/stores/fieldWorkerTask.store';
 import { colors } from '@/theme/colors';
 import { getApiErrorMessage } from '@/utils/api-error-message';
@@ -287,6 +288,7 @@ export default function AssignmentDetailScreen() {
   const reportIdParam = firstRouteParam(params.id);
   const assignmentIdParam = firstRouteParam(params.assignmentId);
   const insets  = useSafeAreaInsets();
+  const currentUserId = useAuthStore((s) => s.user?.id);
 
   const [task, setTask]           = useState<TaskDetail | null>(null);
   const [satisfaction, setSatisfaction] = useState<ReportSatisfaction | null>(null);
@@ -752,6 +754,11 @@ export default function AssignmentDetailScreen() {
                     }}
                     onToggleLike={toggleLike}
                     onRetry={() => void refetchComments()}
+                    onOpenUserProfile={(userId) => {
+                      // Staff shell không có màn hồ sơ cá nhân — bấm vào chính mình thì bỏ qua.
+                      if (userId === currentUserId) return;
+                      router.push({ pathname: '/user/[id]', params: { id: userId } } as Href);
+                    }}
                   />
                 </View>
               ) : null}

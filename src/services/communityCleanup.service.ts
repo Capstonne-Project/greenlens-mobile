@@ -36,8 +36,8 @@ export const communityCleanupService = {
   getMy: (params?: { page?: number; pageSize?: number }) =>
     api.get<ApiEnvelope<CommunityCleanupListResponse>>('/community-cleanups/my', { params }),
 
-  checkIn: (eventId: string, latitude: number, longitude: number) =>
-    api.post<void>(`/community-cleanups/${eventId}/check-in`, { latitude, longitude }),
+  checkIn: (eventId: string, latitude: number, longitude: number, reason?: string) =>
+    api.post<void>(`/community-cleanups/${eventId}/check-in`, { latitude, longitude, reason }),
 
   // ── Leader ──
   getLedByMe: (params?: { page?: number; pageSize?: number; status?: CommunityCleanupStatus }) =>

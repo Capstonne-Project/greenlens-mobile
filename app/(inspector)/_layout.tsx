@@ -1,6 +1,5 @@
-import { Stack, Tabs } from 'expo-router';
+import { Stack } from 'expo-router';
 
-import { InspectorTabBar } from '@/components/layout/InspectorTabBar';
 import { useRoleGuard } from '@/hooks/useRoleGuard';
 
 export default function InspectorRootLayout() {
@@ -8,7 +7,7 @@ export default function InspectorRootLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="(inspector-tabs)" />
       <Stack.Screen name="inspection/[id]" options={{ animation: 'slide_from_right' }} />
     </Stack>
   );

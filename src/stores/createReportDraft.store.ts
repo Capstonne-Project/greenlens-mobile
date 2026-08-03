@@ -13,6 +13,8 @@ interface CreateReportDraftState {
   source: ReportCaptureSource | null;
   images: ReportImageDraft[];
   location: ReportLocationDraft | null;
+  /** Toạ độ GPS gốc đọc từ EXIF ảnh — dùng để phát hiện khi user đổi vị trí báo cáo ra xa vị trí ảnh. */
+  exifLocation: { latitude: number; longitude: number } | null;
   categoryId: string | null;
   severity: PollutionSeverity | null;
   description: string;
@@ -24,6 +26,9 @@ interface CreateReportDraftState {
   // AI analysis
   useAi: boolean;
   tempImageId: string | null;
+  /** localUri của ảnh đã được AI phân tích (khớp tempImageId) — BE dùng images[0] để verify với tempImageId,
+   * nên ảnh này phải luôn đứng đầu payload submit, bất kể thứ tự user pick từ thư viện. */
+  analyzedImageLocalUri: string | null;
   aiResult: AiAnalyzeResult | null;
   aiSuggestedCategory: AiSuggestedCategory | null;
   setSource: (source: ReportCaptureSource) => void;
@@ -33,6 +38,7 @@ interface CreateReportDraftState {
   updateImage: (localUri: string, patch: Partial<ReportImageDraft>) => void;
   setLocation: (location: ReportLocationDraft | null) => void;
   patchLocation: (patch: Partial<ReportLocationDraft>) => void;
+  setExifLocation: (coords: { latitude: number; longitude: number } | null) => void;
   setCategoryId: (categoryId: string) => void;
   setSeverity: (severity: PollutionSeverity) => void;
   setDescription: (description: string) => void;
@@ -43,7 +49,12 @@ interface CreateReportDraftState {
   setIsAnonymous: (isAnonymous: boolean) => void;
   setSubmissionResult: (code: string, slaVerifyDueAt: string | null) => void;
   setUseAi: (useAi: boolean) => void;
-  setAiResult: (tempImageId: string, aiResult: AiAnalyzeResult, suggestedCategory?: AiSuggestedCategory | null) => void;
+  setAiResult: (
+    tempImageId: string,
+    aiResult: AiAnalyzeResult,
+    suggestedCategory?: AiSuggestedCategory | null,
+    analyzedImageLocalUri?: string | null,
+  ) => void;
   clearAiResult: () => void;
   reset: () => void;
 }
@@ -52,16 +63,19 @@ const initialState = {
   source: null as ReportCaptureSource | null,
   images: [] as ReportImageDraft[],
   location: null as ReportLocationDraft | null,
+  exifLocation: null as { latitude: number; longitude: number } | null,
   categoryId: null as string | null,
   severity: null as PollutionSeverity | null,
   description: '',
   tags: [] as string[],
   wasteTagIds: [] as string[],
-  isAnonymous: true,
+  // Mặc định TẮT ẩn danh — người dùng chủ động bật nếu muốn giấu danh tính.
+  isAnonymous: false,
   submittedReportCode: null as string | null,
   slaVerifyDueAt: null as string | null,
   useAi: true,
   tempImageId: null as string | null,
+  analyzedImageLocalUri: null as string | null,
   aiResult: null as AiAnalyzeResult | null,
   aiSuggestedCategory: null as AiSuggestedCategory | null,
 };
@@ -96,6 +110,8 @@ export const useCreateReportDraftStore = create<CreateReportDraftState>((set) =>
     set((state) => ({
       location: state.location ? { ...state.location, ...patch } : null,
     })),
+
+  setExifLocation: (coords) => set({ exifLocation: coords }),
 
   setCategoryId: (categoryId) => set({ categoryId }),
 
@@ -137,9 +153,10 @@ export const useCreateReportDraftStore = create<CreateReportDraftState>((set) =>
 
   setUseAi: (useAi) => set({ useAi }),
 
-  setAiResult: (tempImageId, aiResult, suggestedCategory = null) => set({ tempImageId, aiResult, aiSuggestedCategory: suggestedCategory }),
+  setAiResult: (tempImageId, aiResult, suggestedCategory = null, analyzedImageLocalUri = null) =>
+    set({ tempImageId, aiResult, aiSuggestedCategory: suggestedCategory, analyzedImageLocalUri }),
 
-  clearAiResult: () => set({ tempImageId: null, aiResult: null, aiSuggestedCategory: null }),
+  clearAiResult: () => set({ tempImageId: null, aiResult: null, aiSuggestedCategory: null, analyzedImageLocalUri: null }),
 
   reset: () => set({ ...initialState }),
 }));

@@ -62,6 +62,9 @@ export interface ReportDetail {
   id: string;
   code: string;
   reporterId: string | null;
+  /** Null khi báo cáo ẩn danh hoặc người gửi đã xóa tài khoản */
+  reporterName?: string | null;
+  reporterAvatarUrl?: string | null;
   status: ReportWorkflowStatus;
   categoryName: string;
   categoryCode?: string;

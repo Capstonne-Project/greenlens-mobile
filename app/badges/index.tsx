@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { BadgeDetailModal } from '@/components/badges/BadgeDetailModal';
 import { TapScale } from '@/components/layout/TapScale';
 import { Text } from '@/components/ui/text';
 import { gamificationService } from '@/services/gamification.service';
@@ -50,7 +51,7 @@ function BadgeCell({
 
   return (
     <View className="w-1/3 px-1.5 py-2">
-      <Pressable disabled={locked || isUpdating} onPress={onPress}>
+      <Pressable disabled={isUpdating} onPress={onPress}>
         <View
           className="items-center rounded-2xl px-2 py-3.5"
           style={[
@@ -145,11 +146,15 @@ function BadgeCell({
             </Text>
           ) : item.requiredPoints ? (
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
-              Cần {item.requiredPoints} điểm
+              {item.currentProgressValue ?? 0}/{item.requiredPoints} điểm
             </Text>
           ) : item.requiredReportCount ? (
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
-              Cần {item.requiredReportCount} báo cáo
+              {item.currentProgressValue ?? 0}/{item.requiredReportCount} báo cáo
+            </Text>
+          ) : item.requiredStreakDays ? (
+            <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
+              {item.currentProgressValue ?? 0}/{item.requiredStreakDays} ngày
             </Text>
           ) : (
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
@@ -181,6 +186,7 @@ export default function BadgesScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [detailBadge, setDetailBadge] = useState<BadgeCatalogItem | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -317,13 +323,19 @@ export default function BadgesScreen() {
                   key={badge.badgeId}
                   item={badge}
                   isUpdating={updatingId === badge.badgeId}
-                  onPress={() => void applyFeatured(badge.isFeatured ? null : badge, badge.badgeId)}
+                  onPress={() =>
+                    badge.isUnlocked
+                      ? void applyFeatured(badge.isFeatured ? null : badge, badge.badgeId)
+                      : setDetailBadge(badge)
+                  }
                 />
               ))}
             </View>
           </>
         )}
       </ScrollView>
+
+      <BadgeDetailModal badge={detailBadge} onClose={() => setDetailBadge(null)} />
     </View>
   );
 }

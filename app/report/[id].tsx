@@ -82,6 +82,18 @@ export default function ReportDetailScreen() {
     [detailSource],
   );
 
+  const openUserProfile = useCallback(
+    (userId: string) => {
+      // Bấm vào chính mình → về tab hồ sơ của mình, không mở màn hồ sơ người khác.
+      if (userId === currentUserId) {
+        router.push('/(tabs)/profile');
+        return;
+      }
+      router.push({ pathname: '/user/[id]', params: { id: userId } } as Href);
+    },
+    [currentUserId],
+  );
+
   return (
     <ReportDetailView
       detail={detail}
@@ -106,6 +118,7 @@ export default function ReportDetailScreen() {
       onOpenMergedReport={(reportId, imageUrl) => {
         openReportById(reportId, { seedImageUrl: imageUrl });
       }}
+      onOpenUserProfile={openUserProfile}
       onClose={async () => {
         await closeReport();
       }}

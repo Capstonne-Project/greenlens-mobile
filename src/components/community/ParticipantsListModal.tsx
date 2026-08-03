@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, FlatList, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -18,6 +18,13 @@ const STATUS_CONFIG: Record<CommunityCleanupParticipantStatus, { label: string; 
   NoShow: { label: 'Vắng mặt', color: '#991B1B', bg: '#FEE2E2' },
 };
 
+const STATUS_SORT_ORDER: Record<CommunityCleanupParticipantStatus, number> = {
+  CheckedIn: 0,
+  Joined: 1,
+  NoShow: 2,
+  Withdrawn: 3,
+};
+
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
   const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
@@ -27,21 +34,32 @@ function formatDateTime(iso: string): string {
 
 function ParticipantRow({ participant }: { participant: CommunityCleanupParticipant }) {
   const statusCfg = STATUS_CONFIG[participant.status];
+  const isCheckedIn = participant.status === 'CheckedIn';
   return (
     <View className="flex-row items-center gap-3 border-b border-border py-3">
-      {participant.avatarUrl ? (
-        <Image
-          source={{ uri: participant.avatarUrl }}
-          className="h-10 w-10 rounded-full bg-surface"
-          contentFit="cover"
-        />
-      ) : (
-        <View className="h-10 w-10 items-center justify-center rounded-full bg-surface">
-          <Text className="text-sm font-bold text-textSecondary">
-            {participant.fullName.trim().charAt(0).toUpperCase() || '?'}
-          </Text>
-        </View>
-      )}
+      <View>
+        {participant.avatarUrl ? (
+          <Image
+            source={{ uri: participant.avatarUrl }}
+            className="h-10 w-10 rounded-full bg-surface"
+            contentFit="cover"
+          />
+        ) : (
+          <View className="h-10 w-10 items-center justify-center rounded-full bg-surface">
+            <Text className="text-sm font-bold text-textSecondary">
+              {participant.fullName.trim().charAt(0).toUpperCase() || '?'}
+            </Text>
+          </View>
+        )}
+        {isCheckedIn ? (
+          <View
+            className="absolute -bottom-0.5 -right-0.5 items-center justify-center rounded-full border-2 border-white"
+            style={{ width: 16, height: 16, backgroundColor: colors.primary }}
+          >
+            <Ionicons name="checkmark" size={10} color="#fff" />
+          </View>
+        ) : null}
+      </View>
       <View className="flex-1">
         <View className="flex-row items-center gap-1.5">
           <Text className="text-sm font-bold text-textPrimary" numberOfLines={1}>
@@ -94,6 +112,20 @@ export function ParticipantsListModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
+  const sortedParticipants = useMemo(
+    () => [...participants].sort((a, b) => STATUS_SORT_ORDER[a.status] - STATUS_SORT_ORDER[b.status]),
+    [participants],
+  );
+
+  const checkedInCount = useMemo(
+    () => participants.filter((p) => p.status === 'CheckedIn').length,
+    [participants],
+  );
+  const activeCount = useMemo(
+    () => participants.filter((p) => p.status === 'Joined' || p.status === 'CheckedIn').length,
+    [participants],
+  );
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable className="flex-1 bg-black/40" onPress={onClose} />
@@ -101,17 +133,27 @@ export function ParticipantsListModal({
         className="rounded-t-2xl bg-white"
         style={{ maxHeight: '75%', paddingBottom: insets.bottom + 16 }}
       >
-        <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
-          <Text className="text-base font-bold text-textPrimary">
-            Người tham gia ({participants.length})
-          </Text>
-          <Pressable
-            onPress={onClose}
-            hitSlop={8}
-            className="h-8 w-8 items-center justify-center rounded-full bg-surface"
-          >
-            <Ionicons name="close" size={18} color={colors.textPrimary} />
-          </Pressable>
+        <View className="border-b border-border px-4 py-3">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-base font-bold text-textPrimary">
+              Người tham gia ({participants.length})
+            </Text>
+            <Pressable
+              onPress={onClose}
+              hitSlop={8}
+              className="h-8 w-8 items-center justify-center rounded-full bg-surface"
+            >
+              <Ionicons name="close" size={18} color={colors.textPrimary} />
+            </Pressable>
+          </View>
+          {activeCount > 0 ? (
+            <View className="mt-1 flex-row items-center gap-1.5">
+              <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+              <Text className="text-xs font-semibold" style={{ color: colors.primary }}>
+                {checkedInCount}/{activeCount} đã check-in
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {isLoading ? (
@@ -137,7 +179,7 @@ export function ParticipantsListModal({
           </View>
         ) : (
           <FlatList
-            data={participants}
+            data={sortedParticipants}
             keyExtractor={(item) => item.userId}
             renderItem={({ item }) => <ParticipantRow participant={item} />}
             contentContainerStyle={{ paddingHorizontal: 16 }}

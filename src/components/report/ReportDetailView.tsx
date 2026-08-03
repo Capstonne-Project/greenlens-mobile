@@ -61,6 +61,8 @@ interface ReportDetailViewProps {
   seedImageUrl?: string | null;
   onOpenPrimaryReport?: (primaryReportId: string) => void;
   onOpenMergedReport?: (reportId: string, imageUrl?: string | null) => void;
+  /** Mở hồ sơ công khai người gửi báo cáo / tác giả bình luận */
+  onOpenUserProfile: (userId: string) => void;
 }
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -273,6 +275,7 @@ export function ReportDetailView({
   seedImageUrl,
   onOpenPrimaryReport,
   onOpenMergedReport,
+  onOpenUserProfile,
 }: ReportDetailViewProps) {
   const insets = useSafeAreaInsets();
   const [heroIndex, setHeroIndex] = useState(0);
@@ -636,6 +639,7 @@ export function ReportDetailView({
               fromMergedReportImageUrl={fromMergedReportImageUrl}
               onOpenPrimaryReport={onOpenPrimaryReport}
               onOpenMergedReport={onOpenMergedReport}
+              onOpenUserProfile={onOpenUserProfile}
               comments={{
                 threads,
                 isLoading: isCommentsLoading,

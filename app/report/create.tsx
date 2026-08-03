@@ -1,6 +1,7 @@
 import { SafeScreen } from "@/components/layout/SafeScreen";
 import { TapScale } from "@/components/layout/TapScale";
 import { AiAnalysisBanner } from "@/components/report-create/AiAnalysisBanner";
+import { AiImagePickModal } from "@/components/report-create/AiImagePickModal";
 import { AiImageScanOverlay } from "@/components/report-create/AiImageScanOverlay";
 import { CategoryOptionGrid } from "@/components/report-create/CategoryOptionGrid";
 import { ReportFormHeader } from "@/components/report-create/ReportFormHeader";
@@ -10,6 +11,7 @@ import {
 } from "@/components/report-create/ReportFormSection";
 import { ReportFormSubmitBar } from "@/components/report-create/ReportFormSubmitBar";
 import { ReportLocationPanel } from "@/components/report-create/ReportLocationPanel";
+import { LocationOverrideDialog } from "@/components/report-create/LocationOverrideDialog";
 import { ReportCapturePanel } from "@/components/report-create/ReportCapturePanel";
 import { SeverityPillGroup } from "@/components/report-create/SeverityPillGroup";
 import { SubmitProgressOverlay, type SubmitStep, type SubmitStepStatus } from "@/components/report-create/SubmitProgressOverlay";
@@ -38,6 +40,7 @@ import {
   parseLocationFromPickerAssets,
 } from "@/utils/exif-location";
 import { enrichLocationWithGoong } from "@/utils/goong-admin-match";
+import { haversineKm } from "@/utils/geo";
 import { validatePinAgainstBoundary } from "@/utils/validate-pin-boundary";
 import {
   REPORT_DESCRIPTION_MAX_LENGTH,
@@ -64,6 +67,17 @@ type SubmitPhase = "idle" | "validate" | "upload" | "submit" | "done";
 
 const SUBMIT_PHASE_ORDER: SubmitPhase[] = ["validate", "upload", "submit"];
 
+// Ngưỡng lệch vị trí (so với GPS EXIF ảnh) để hỏi lại người dùng — tránh false positive từ sai số GPS thông thường.
+const LOCATION_OVERRIDE_THRESHOLD_KM = 0.5;
+
+function isFarFromExif(
+  exif: { latitude: number; longitude: number } | null,
+  point: { latitude: number; longitude: number },
+): boolean {
+  if (!exif) return false;
+  return haversineKm(exif.latitude, exif.longitude, point.latitude, point.longitude) > LOCATION_OVERRIDE_THRESHOLD_KM;
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -86,9 +100,18 @@ export default function ReportCreateWizardScreen() {
   const [wasteTagLimitMessage, setWasteTagLimitMessage] = useState<string | null>(null);
   const [showAiResult, setShowAiResult] = useState(false);
   const [pendingAiOutcome, setPendingAiOutcome] = useState<"accepted" | "review" | null>(null);
+  // Nhiều ảnh được chọn cùng lúc + AI bật → chờ user chọn 1 ảnh để phân tích
+  const [pendingAiPick, setPendingAiPick] = useState<
+    { localUri: string; mimeType: string; fileName: string }[] | null
+  >(null);
   // Local selections inside AI dialog — chỉ apply khi user bấm "Áp dụng"
   const [dialogCategoryId, setDialogCategoryId] = useState<string | null>(null);
   const [dialogSeverity, setDialogSeverity] = useState<PollutionSeverity | null>(null);
+  // Vị trí mới cách xa vị trí EXIF ảnh — chờ user xác nhận giữ hay phục hồi vị trí ảnh
+  const [pendingLocationOverride, setPendingLocationOverride] = useState<{
+    newLocation: { latitude: number; longitude: number };
+    apply: () => void;
+  } | null>(null);
   const mapRef = useRef<MapView>(null);
   const mapRegion: Region = {
     latitude: 10.7769,
@@ -99,6 +122,7 @@ export default function ReportCreateWizardScreen() {
 
   const images = useCreateReportDraftStore((s) => s.images);
   const location = useCreateReportDraftStore((s) => s.location);
+  const exifLocation = useCreateReportDraftStore((s) => s.exifLocation);
   const categoryId = useCreateReportDraftStore((s) => s.categoryId);
   const severity = useCreateReportDraftStore((s) => s.severity);
   const description = useCreateReportDraftStore((s) => s.description);
@@ -111,6 +135,7 @@ export default function ReportCreateWizardScreen() {
   const removeImage = useCreateReportDraftStore((s) => s.removeImage);
   const setLocation = useCreateReportDraftStore((s) => s.setLocation);
   const patchLocation = useCreateReportDraftStore((s) => s.patchLocation);
+  const setExifLocation = useCreateReportDraftStore((s) => s.setExifLocation);
   const setCategoryId = useCreateReportDraftStore((s) => s.setCategoryId);
   const setSeverity = useCreateReportDraftStore((s) => s.setSeverity);
   const setDescription = useCreateReportDraftStore((s) => s.setDescription);
@@ -362,8 +387,18 @@ export default function ReportCreateWizardScreen() {
       }
       if (submitResult.reason === "timeout" || submitResult.reason === "network") {
         Alert.alert(
-          "Không nhận được phản hồi",
-          "Máy chủ có thể đã tạo báo cáo rồi (check mục Báo cáo của tôi trước khi gửi lại). Nếu chưa có thì thử lại.",
+          "Oops, mạng hơi đuối rồi 😅",
+          "Báo cáo có thể đã được gửi thành công, chỉ là phản hồi chưa kịp về máy bạn. Kiểm tra mục Báo cáo của tôi để chắc chắn nhé.",
+          [
+            { text: "Để sau", style: "cancel" },
+            {
+              text: "Đến Báo cáo của tôi",
+              onPress: () => {
+                reset();
+                router.replace("/(tabs)/reports" as Href);
+              },
+            },
+          ],
         );
         return;
       }
@@ -381,6 +416,7 @@ export default function ReportCreateWizardScreen() {
     imagesComplete,
     locationComplete,
     openIncompleteSection,
+    reset,
     submitReport,
     uploadAllImages,
   ]);
@@ -441,6 +477,7 @@ export default function ReportCreateWizardScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSource("camera");
       setLocation(resolved);
+      setExifLocation(exifCoords ?? null);
       let compressed;
       try {
         // compressImage encode JPEG mới → EXIF bị xóa trước khi upload R2.
@@ -557,47 +594,57 @@ export default function ReportCreateWizardScreen() {
         return;
       }
 
-      const base = {
-        latitude: coordinate.latitude,
-        longitude: coordinate.longitude,
-        capturedAt: current?.capturedAt ?? new Date().toISOString(),
+      const commit = async () => {
+        const base = {
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
+          capturedAt: current?.capturedAt ?? new Date().toISOString(),
+        };
+        const preserveAdmin = Boolean(current?.wardCode);
+
+        if (current) {
+          patchLocation(base);
+        } else {
+          setLocation({ ...base });
+        }
+
+        if (provinces.length === 0) return;
+
+        const enriched = await enrichLocationWithGoong(
+          { ...(current ?? {}), ...base } as ReportLocationDraft,
+          provinces,
+          { preserveAdminCodes: preserveAdmin },
+        );
+
+        if (current) {
+          patchLocation({
+            latitude: enriched.latitude,
+            longitude: enriched.longitude,
+            address: enriched.address,
+            ...(preserveAdmin
+              ? {}
+              : {
+                  provinceCode: enriched.provinceCode ?? current.provinceCode,
+                  wardCode: enriched.wardCode ?? current.wardCode,
+                }),
+          });
+        } else {
+          setLocation(enriched);
+        }
       };
-      const preserveAdmin = Boolean(current?.wardCode);
 
-      if (current) {
-        patchLocation(base);
-      } else {
-        setLocation({ ...base });
+      const exif = useCreateReportDraftStore.getState().exifLocation;
+      if (isFarFromExif(exif, coordinate)) {
+        setPendingLocationOverride({ newLocation: coordinate, apply: () => void commit() });
+        return;
       }
 
-      if (provinces.length === 0) return;
-
-      const enriched = await enrichLocationWithGoong(
-        { ...(current ?? {}), ...base } as ReportLocationDraft,
-        provinces,
-        { preserveAdminCodes: preserveAdmin },
-      );
-
-      if (current) {
-        patchLocation({
-          latitude: enriched.latitude,
-          longitude: enriched.longitude,
-          address: enriched.address,
-          ...(preserveAdmin
-            ? {}
-            : {
-                provinceCode: enriched.provinceCode ?? current.provinceCode,
-                wardCode: enriched.wardCode ?? current.wardCode,
-              }),
-        });
-      } else {
-        setLocation(enriched);
-      }
+      await commit();
     },
     [assertPinInsideBoundary, patchLocation, provinces, setLocation, showInvalidPinAlert],
   );
 
-  const applyGpsLocation = useCallback(
+  const commitGpsLocation = useCallback(
     async (coords: { latitude: number; longitude: number }) => {
       const base = {
         latitude: coords.latitude,
@@ -655,6 +702,18 @@ export default function ReportCreateWizardScreen() {
     [loadProvinceBoundary, loadWardBoundary, patchLocation, provinces, refetchWards, setLocation],
   );
 
+  const applyGpsLocation = useCallback(
+    async (coords: { latitude: number; longitude: number }) => {
+      const exif = useCreateReportDraftStore.getState().exifLocation;
+      if (isFarFromExif(exif, coords)) {
+        setPendingLocationOverride({ newLocation: coords, apply: () => void commitGpsLocation(coords) });
+        return;
+      }
+      await commitGpsLocation(coords);
+    },
+    [commitGpsLocation],
+  );
+
   const handleLocatePress = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const coords = await refreshLocation();
@@ -706,6 +765,7 @@ export default function ReportCreateWizardScreen() {
 
       // Parse GPS từ ảnh gốc trước khi compress strip EXIF.
       const exifCoords = parseLocationFromPickerAssets(result.assets);
+      setExifLocation(exifCoords ?? null);
       if (exifCoords) {
         const fromExif = await buildLocationDraftFromCoords(exifCoords);
         const resolved =
@@ -743,6 +803,22 @@ export default function ReportCreateWizardScreen() {
         await ensureLocationSeed();
       }
 
+      // Nhiều ảnh + AI bật → không tự đoán ảnh nào, để user chọn ảnh detect.
+      if (useAi && drafted.length > 1) {
+        const uploadResults = await Promise.all(
+          drafted.map((img) => uploadDraftImage(img.localUri, img.mimeType, img.fileName)),
+        );
+        if (uploadResults.some((ok) => !ok)) {
+          Alert.alert(
+            "Không tải được ảnh",
+            "Upload lên kho ảnh (R2) thất bại hoặc quá chậm. Kiểm tra mạng (Wi‑Fi/4G) rồi chọn lại ảnh.",
+          );
+          return;
+        }
+        setPendingAiPick(drafted);
+        return;
+      }
+
       // Step 1: upload all now (extras || first+optional AI in parallel).
       const [first, ...rest] = drafted;
       const restPromise = Promise.all(
@@ -768,6 +844,32 @@ export default function ReportCreateWizardScreen() {
       setIsPicking(false);
     }
   }, [prepareImage, uploadDraftImage, ensureLocationSeed, provinces, setImages, setLocation, setSource, useAi]);
+
+  const handleAiPickSelect = useCallback(
+    async (index: number) => {
+      const drafted = pendingAiPick;
+      setPendingAiPick(null);
+      if (!drafted?.[index]) return;
+
+      const picked = drafted[index];
+      const outcome = await prepareImage(picked.localUri, picked.mimeType, picked.fileName, {
+        runAi: true,
+      });
+      if (outcome === "error") {
+        Alert.alert("Không phân tích được ảnh", "Vui lòng thử lại hoặc tắt AI.");
+      } else if (outcome === "rejected") {
+        Alert.alert("Ảnh không phù hợp", "Ảnh này bị hệ thống AI đánh dấu là không liên quan. Vui lòng chọn ảnh khác.");
+      } else if (outcome === "accepted" || outcome === "review") {
+        setPendingAiOutcome(outcome);
+        setShowAiResult(true);
+      }
+    },
+    [pendingAiPick, prepareImage],
+  );
+
+  const handleAiPickSkip = useCallback(() => {
+    setPendingAiPick(null);
+  }, []);
 
   const handleProvinceSelect = useCallback(
     async (code: string | null) => {
@@ -806,15 +908,26 @@ export default function ReportCreateWizardScreen() {
         centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
       }
 
-      enrichedRef.current = null;
-      void loadWardBoundary(null, null);
+      const commit = () => {
+        enrichedRef.current = null;
+        void loadWardBoundary(null, null);
 
-      const current = useCreateReportDraftStore.getState().location;
-      if (current) {
-        patchLocation({ provinceCode: code, wardCode: undefined, address: undefined, latitude: centerLat, longitude: centerLng });
-      } else {
-        setLocation({ latitude: centerLat, longitude: centerLng, provinceCode: code, capturedAt: new Date().toISOString() });
+        const current = useCreateReportDraftStore.getState().location;
+        if (current) {
+          patchLocation({ provinceCode: code, wardCode: undefined, address: undefined, latitude: centerLat, longitude: centerLng });
+        } else {
+          setLocation({ latitude: centerLat, longitude: centerLng, provinceCode: code, capturedAt: new Date().toISOString() });
+        }
+      };
+
+      const exif = useCreateReportDraftStore.getState().exifLocation;
+      const centroid = { latitude: centerLat, longitude: centerLng };
+      if (isFarFromExif(exif, centroid)) {
+        setPendingLocationOverride({ newLocation: centroid, apply: commit });
+        return;
       }
+
+      commit();
     },
     [loadProvinceBoundary, loadWardBoundary, patchLocation, provinces, refetchWards, setLocation, userLocation],
   );
@@ -863,6 +976,34 @@ export default function ReportCreateWizardScreen() {
   const submitOverlaySubtitle =
     images.length > 0 ? `${uploadDone}/${images.length} ảnh đã tải lên` : undefined;
 
+  const handleKeepNewLocation = useCallback(() => {
+    pendingLocationOverride?.apply();
+    setPendingLocationOverride(null);
+  }, [pendingLocationOverride]);
+
+  const handleRestoreExifLocation = useCallback(async () => {
+    const exif = useCreateReportDraftStore.getState().exifLocation;
+    setPendingLocationOverride(null);
+    if (!exif) return;
+
+    const fromExif = await buildLocationDraftFromCoords(exif);
+    const resolved = provinces.length > 0 ? await enrichLocationWithGoong(fromExif, provinces) : fromExif;
+    setLocation(resolved);
+
+    if (resolved.provinceCode) {
+      const province = provinces.find((item) => item.code === resolved.provinceCode);
+      await loadProvinceBoundary(province?.boundaryUrl ?? null);
+      await refetchWards(resolved.provinceCode);
+      if (resolved.wardCode) {
+        const wardsResponse = await catalogService.getWardsByProvince(resolved.provinceCode);
+        const ward = wardsResponse.data.data.items.find((item) => item.code === resolved.wardCode);
+        await loadWardBoundary(ward?.boundaryUrl ?? null, resolved.wardCode);
+      } else {
+        void loadWardBoundary(null, null);
+      }
+    }
+  }, [loadProvinceBoundary, loadWardBoundary, provinces, refetchWards, setLocation]);
+
   return (
     <SafeScreen className="bg-surface" edges={["bottom"]}>
       <SubmitProgressOverlay
@@ -894,7 +1035,7 @@ export default function ReportCreateWizardScreen() {
           onToggle={() => toggleSection("images")}
         >
           <View className="gap-5">
-            <View className="flex-row items-center justify-between rounded-2xl bg-surface px-3 py-3">
+            <View className="flex-row items-center justify-between rounded-2xl border border-border px-3 py-3">
               <View className="flex-row items-center gap-2.5 flex-1 pr-4">
                 <Ionicons name="sparkles" size={20} color={useAi ? colors.primary : colors.textDisabled} />
                 <View className="flex-1">
@@ -1137,6 +1278,13 @@ export default function ReportCreateWizardScreen() {
         mode="ai"
       />
 
+      <AiImagePickModal
+        visible={pendingAiPick !== null}
+        items={(pendingAiPick ?? []).map((img) => ({ uri: img.localUri }))}
+        onSelect={(index) => void handleAiPickSelect(index)}
+        onSkip={handleAiPickSkip}
+      />
+
       {/* AI Result dialog */}
       <Modal
         visible={showAiResult && !isAnalyzing && aiResult !== null}
@@ -1299,6 +1447,14 @@ export default function ReportCreateWizardScreen() {
           </View>
         </View>
       </Modal>
+
+      <LocationOverrideDialog
+        visible={pendingLocationOverride !== null}
+        exifLocation={exifLocation}
+        newLocation={pendingLocationOverride?.newLocation ?? null}
+        onKeepNew={handleKeepNewLocation}
+        onRestoreExif={() => void handleRestoreExifLocation()}
+      />
     </SafeScreen>
   );
 }

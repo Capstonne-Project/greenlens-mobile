@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   TextInput,
@@ -12,16 +14,35 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  ArrivalConfirmCard,
+  AudioEvidenceRecorder,
+  ChecklistCategoryRow,
+  EvidenceCategoryContent,
+  InspectionCaseHeader,
+  InspectionFeedbackBanner,
+  StagePanel,
+  StageTracker,
+  type StageDef,
+} from '@/components/inspection';
 import { Text } from '@/components/ui/text';
+import { useArrivalDistance } from '@/hooks/useArrivalDistance';
+import { useEvidenceAudioRecorder } from '@/hooks/useEvidenceAudioRecorder';
+import { useInspectionActions } from '@/hooks/useInspectionActions';
+import { useInspectionDetail } from '@/hooks/useInspectionDetail';
+import { useInspectionEvidence } from '@/hooks/useInspectionEvidence';
 import { inspectionService } from '@/services/inspection.service';
-import { reportDetailService } from '@/services/reportDetail.service';
 import { ReportMediaGallery } from '@/shared/components/ReportMediaGallery';
-import { StatusBadge } from '@/shared/components/StatusBadge';
-import { SlaCountdown } from '@/shared/components/SlaCountdown';
 import { colors } from '@/theme/colors';
-import type { InspectionDetail, ViolationLevel } from '@/types/inspection.types';
+import type { EvidenceCategory, ViolationLevel } from '@/types/inspection.types';
+import { buildChecklistState, getMissingRequirements } from '@/utils/inspection-checklist';
 
-const VIOLATION_LEVELS: ViolationLevel[] = ['Minor', 'Moderate', 'Severe', 'Critical'];
+const VIOLATION_LEVELS: readonly ViolationLevel[] = [
+  'Minor',
+  'Moderate',
+  'Severe',
+  'Critical',
+] as const;
 
 const VIOLATION_LEVEL_LABELS: Record<ViolationLevel, string> = {
   Minor: 'Nhẹ',
@@ -30,320 +51,777 @@ const VIOLATION_LEVEL_LABELS: Record<ViolationLevel, string> = {
   Critical: 'Đặc biệt nghiêm trọng',
 };
 
+const MIN_CLOSE_REASON_LENGTH = 50;
+
+type StepKey = 'accept' | 'arrival' | 'checklist' | 'decision' | 'payment';
+
+const STEP_ORDER: readonly StepKey[] = ['accept', 'arrival', 'checklist', 'decision', 'payment'];
+
+const STEP_META: Record<StepKey, { label: string; icon: keyof typeof Ionicons.glyphMap; title: string }> = {
+  accept: { label: 'Nhận việc', icon: 'hand-left-outline', title: 'Nhận việc' },
+  arrival: { label: 'Hiện trường', icon: 'navigate-outline', title: 'Xác nhận đến hiện trường' },
+  checklist: { label: 'Checklist', icon: 'list-outline', title: 'Checklist hiện trường' },
+  decision: { label: 'Quyết định', icon: 'document-text-outline', title: 'Quyết định xử lý' },
+  payment: { label: 'Nộp phạt', icon: 'cash-outline', title: 'Nộp phạt & đóng hồ sơ' },
+};
+
+const INPUT_CLASS = 'mb-3 h-12 rounded-2xl bg-surface px-4 text-sm text-textPrimary';
+const TEXTAREA_CLASS = 'mb-3 min-h-[84px] rounded-2xl bg-surface px-4 py-3 text-sm text-textPrimary';
+
+/** Nút hành động chính trong sticky footer — style đồng nhất cho mọi stage. */
+interface FooterButtonProps {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  disabled: boolean;
+  loading: boolean;
+  onPress: () => void;
+  tone?: 'primary' | 'neutral';
+}
+
+function FooterButton({ label, icon, disabled, loading, onPress, tone = 'primary' }: FooterButtonProps) {
+  const isPrimary = tone === 'primary';
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      className={`h-13 flex-row items-center justify-center gap-2 rounded-2xl ${!isPrimary ? 'bg-surface' : ''}`}
+      style={{
+        height: 52,
+        backgroundColor: isPrimary ? (disabled ? colors.textDisabled : colors.primary) : undefined,
+        opacity: !isPrimary && disabled ? 0.5 : 1,
+      }}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color={isPrimary ? colors.white : colors.textPrimary} />
+      ) : icon ? (
+        <Ionicons name={icon} size={17} color={isPrimary ? colors.white : colors.textPrimary} />
+      ) : null}
+      <Text className={`text-sm font-bold ${isPrimary ? 'text-white' : 'text-textPrimary'}`}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function InspectionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
 
-  const [detail, setDetail] = useState<InspectionDetail | null>(null);
-  const [reportMedia, setReportMedia] = useState<{ url: string; mimeType?: string }[]>([]);
-  const [isLoading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [violatorName, setViolatorName] = useState('');
-  const [violatorAddress, setViolatorAddress] = useState('');
-  const [violatorIdentity, setViolatorIdentity] = useState('');
-  const [violationDescription, setViolationDescription] = useState('');
+  const { detail, reportMedia, sceneCoords, isLoading, errorMessage, refetch } =
+    useInspectionDetail(id);
+  const { run, submitting, actionError, successMessage, dismissFeedback } = useInspectionActions({
+    onRefresh: refetch,
+  });
+  const {
+    upload,
+    uploadFile,
+    uploadingCategory,
+    isUploading,
+    evidenceError,
+    clearEvidenceError,
+  } = useInspectionEvidence({ inspectionId: id, onUploaded: refetch });
+  const audio = useEvidenceAudioRecorder();
+
+  const [activeStep, setActiveStep] = useState<StepKey | null>(null);
+  const [heroIndex, setHeroIndex] = useState(0);
+  /** Category checklist đang giãn ra tại chỗ — bấm lại để thu gọn. */
+  const [expandedCategory, setExpandedCategory] = useState<EvidenceCategory | null>(null);
+
+  // Form state
+  const [arrivalNote, setArrivalNote] = useState('');
+  const [violationStatus, setViolationStatus] = useState('');
+  const [otherNote, setOtherNote] = useState('');
   const [violationLevel, setViolationLevel] = useState<ViolationLevel>('Moderate');
   const [penaltyAmount, setPenaltyAmount] = useState('');
   const [decisionNumber, setDecisionNumber] = useState('');
   const [paymentDueDays, setPaymentDueDays] = useState('10');
   const [additionalMeasures, setAdditionalMeasures] = useState('');
   const [paidAmount, setPaidAmount] = useState('');
-  const [closeReason, setCloseReason] = useState('');
-  const [closeFinalReason, setCloseFinalReason] = useState('');
-  const [heroIndex, setHeroIndex] = useState(0);
-
-  const loadDetail = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await inspectionService.getDetail(id);
-      const data = res.data.data;
-      setDetail(data);
-      setViolatorName(data.violatorName ?? '');
-      setViolatorAddress(data.violatorAddress ?? '');
-      setViolatorIdentity(data.violatorIdentity ?? '');
-      setViolationDescription(data.violationDescription ?? '');
-      if (data.violationLevel) setViolationLevel(data.violationLevel);
-
-      const reportRes = await reportDetailService.getById(data.reportId);
-      setReportMedia(
-        reportRes.data.data.media.map((m) => ({ url: m.url, mimeType: m.mediaType })),
-      );
-    } catch {
-      setError('Không tải được chi tiết hồ sơ.');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => { void loadDetail(); }, [loadDetail]);
-
-  const runAction = useCallback(
-    async (action: () => Promise<unknown>, successMessage: string) => {
-      setSubmitting(true);
-      try {
-        await action();
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('Thành công', successMessage);
-        await loadDetail();
-      } catch {
-        Alert.alert('Lỗi', 'Không thể thực hiện thao tác. Kiểm tra quyền và trạng thái hồ sơ.');
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [loadDetail],
+  const [paymentNote, setPaymentNote] = useState('');
+  const [receipt, setReceipt] = useState<{ uri: string; fileName: string; mimeType: string } | null>(
+    null,
   );
+  const [closeNoViolationReason, setCloseNoViolationReason] = useState('');
+  const [closeReason, setCloseReason] = useState('');
+
+  const checklistStates = useMemo(
+    () => buildChecklistState(detail?.checklistEvidence),
+    [detail?.checklistEvidence],
+  );
+  const missingRequirements = useMemo(
+    () => getMissingRequirements(checklistStates),
+    [checklistStates],
+  );
+
+  const arrival = useArrivalDistance({
+    latitude: sceneCoords?.latitude,
+    longitude: sceneCoords?.longitude,
+    enabled: activeStep === 'arrival' && Boolean(detail?.canConfirmArrival),
+  });
+
+  // Prefill từ server + tự chọn stage đang cần xử lý.
+  useEffect(() => {
+    if (!detail) return;
+    const states = buildChecklistState(detail.checklistEvidence);
+    setViolationStatus(states.find((s) => s.category === 'ViolationStatus')?.note ?? '');
+    setOtherNote(states.find((s) => s.category === 'Other')?.note ?? '');
+    if (detail.violationLevel) setViolationLevel(detail.violationLevel);
+
+    setActiveStep((current) => {
+      if (current) return current;
+      if (detail.canAcceptTask) return 'accept';
+      if (detail.canConfirmArrival && !detail.arrivalConfirmedAt) return 'arrival';
+      if (detail.canEditChecklist) return 'checklist';
+      if (detail.canIssuePenalty || detail.canCloseNoViolation) return 'decision';
+      if (detail.canRecordPayment || detail.canClose) return 'payment';
+      return null;
+    });
+  }, [detail]);
+
+  const handlePickReceipt = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 1,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    setReceipt({
+      uri: asset.uri,
+      fileName: asset.fileName ?? 'receipt.jpg',
+      mimeType: asset.mimeType ?? 'image/jpeg',
+    });
+  }, []);
+
+  const handleEvidencePick = useCallback(
+    async (category: EvidenceCategory, source: 'camera' | 'library') => {
+      await upload(category, source);
+    },
+    [upload],
+  );
+
+  const handleStopRecording = useCallback(async () => {
+    const recorded = await audio.stop();
+    if (!recorded) return;
+    await uploadFile('Audio', {
+      uri: recorded.uri,
+      fileName: recorded.fileName,
+      mimeType: recorded.mimeType,
+    });
+  }, [audio, uploadFile]);
 
   if (isLoading) {
     return (
-      <View className="flex-1 items-center justify-center bg-background">
+      <View className="flex-1 items-center justify-center bg-surface">
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
-  if (error || !detail) {
+  if (errorMessage || !detail) {
     return (
-      <View className="flex-1 items-center justify-center bg-background px-6">
-        <Text className="text-center text-textSecondary">{error ?? 'Không có dữ liệu'}</Text>
-        <Pressable onPress={() => router.back()} className="mt-4">
-          <Text className="font-semibold text-primary">Quay lại</Text>
+      <View className="flex-1 items-center justify-center bg-surface px-6">
+        <Ionicons name="alert-circle-outline" size={44} color={colors.textDisabled} />
+        <Text className="mt-3 text-center text-sm text-textSecondary">
+          {errorMessage ?? 'Không có dữ liệu hồ sơ.'}
+        </Text>
+        <Pressable onPress={() => void refetch()} hitSlop={8} className="mt-4">
+          <Text className="text-sm font-bold text-primary">Tải lại</Text>
+        </Pressable>
+        <Pressable onPress={() => router.back()} hitSlop={8} className="mt-3">
+          <Text className="text-sm font-semibold text-textSecondary">Quay lại</Text>
         </Pressable>
       </View>
     );
   }
 
+  const checklistLocked = !detail.canEditChecklist;
+  const canSubmitFieldReport = detail.canSubmitFieldReport && missingRequirements.length === 0;
+
+  // Trạng thái từng stage — done/active/pending/locked — điều khiển StageTracker.
+  const stepStatus: Record<StepKey, 'done' | 'locked'> = {
+    accept: !detail.canAcceptTask ? 'done' : 'locked',
+    arrival: detail.arrivalConfirmedAt ? 'done' : detail.canConfirmArrival ? 'locked' : 'locked',
+    checklist: detail.fieldInvestigationSubmittedAt ? 'done' : 'locked',
+    decision:
+      Boolean(detail.penaltyIssuedAt) || detail.status === 'ClosedNoViolation' ? 'done' : 'locked',
+    payment: detail.status === 'Closed' ? 'done' : 'locked',
+  };
+
+  // Một stage "mở khoá" (bấm được) khi nó đã done, hoặc BE cho phép hành động ở đó.
+  const stepUnlocked: Record<StepKey, boolean> = {
+    accept: true,
+    arrival: stepStatus.arrival === 'done' || detail.canConfirmArrival,
+    checklist: stepStatus.checklist === 'done' || detail.canEditChecklist || detail.canSubmitFieldReport,
+    decision: stepStatus.decision === 'done' || detail.canIssuePenalty || detail.canCloseNoViolation,
+    payment: stepStatus.payment === 'done' || detail.canRecordPayment || detail.canClose,
+  };
+
+  const stages: StageDef<StepKey>[] = STEP_ORDER.map((key) => ({
+    key,
+    label: STEP_META[key].label,
+    icon: STEP_META[key].icon,
+    status: stepStatus[key] === 'done' ? 'done' : stepUnlocked[key] ? 'pending' : 'locked',
+  }));
+
+  const currentStep = activeStep ?? 'accept';
+
+  // ---- Footer: nút hành động chính của stage đang xem — luôn sticky đáy màn hình. ----
+  const footerButtons: FooterButtonProps[] = [];
+
+  if (currentStep === 'accept' && detail.canAcceptTask) {
+    footerButtons.push({
+      label: 'Nhận hồ sơ',
+      icon: 'hand-left-outline',
+      disabled: submitting,
+      loading: submitting,
+      onPress: () => void run(() => inspectionService.accept(id!), 'Đã nhận hồ sơ.'),
+    });
+  }
+
+  if (currentStep === 'checklist' && !checklistLocked) {
+    footerButtons.push({
+      label: 'Lưu checklist',
+      disabled: submitting || !violationStatus.trim(),
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () =>
+            inspectionService.updateChecklist(id!, {
+              violationStatusText: violationStatus.trim(),
+              otherDescription: otherNote.trim() || undefined,
+            }),
+          'Đã lưu checklist.',
+        ),
+    });
+  }
+  if (currentStep === 'checklist' && !detail.fieldInvestigationSubmittedAt && detail.canSubmitFieldReport) {
+    footerButtons.push({
+      label: 'Chốt biên bản (Trưởng đoàn)',
+      icon: 'lock-closed-outline',
+      disabled: submitting || !canSubmitFieldReport,
+      loading: submitting,
+      onPress: () =>
+        void run(() => inspectionService.submitFieldReport(id!), 'Đã chốt biên bản hiện trường.'),
+    });
+  }
+
+  if (currentStep === 'decision' && detail.canIssuePenalty) {
+    footerButtons.push({
+      label: 'Ban hành quyết định',
+      disabled: submitting || Number(penaltyAmount) <= 0 || !decisionNumber.trim(),
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () =>
+            inspectionService.issuePenalty(id!, {
+              violationLevel,
+              penaltyAmount: Number(penaltyAmount),
+              decisionNumber: decisionNumber.trim(),
+              paymentDueDays: Number(paymentDueDays) || 10,
+              additionalMeasures: additionalMeasures.trim() || undefined,
+            }),
+          'Đã ban hành quyết định xử phạt.',
+        ),
+    });
+  }
+  if (currentStep === 'decision' && detail.canCloseNoViolation) {
+    footerButtons.push({
+      label: 'Đóng không vi phạm',
+      tone: 'neutral',
+      disabled: submitting || closeNoViolationReason.trim().length < MIN_CLOSE_REASON_LENGTH,
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () => inspectionService.closeNoViolation(id!, { reason: closeNoViolationReason.trim() }),
+          'Đã đóng hồ sơ — không đủ căn cứ.',
+        ),
+    });
+  }
+
+  if (currentStep === 'payment' && detail.canRecordPayment) {
+    footerButtons.push({
+      label: 'Ghi nhận nộp phạt',
+      disabled: submitting || Number(paidAmount) <= 0 || !receipt,
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () =>
+            inspectionService.recordPayment(id!, {
+              paidAmount: Number(paidAmount),
+              paidAt: new Date().toISOString(),
+              receipt: receipt!,
+              note: paymentNote.trim() || undefined,
+            }),
+          'Đã ghi nhận nộp phạt.',
+        ).then((ok) => {
+          if (ok) {
+            setPaidAmount('');
+            setPaymentNote('');
+            setReceipt(null);
+          }
+        }),
+    });
+  }
+  if (currentStep === 'payment' && detail.canClose) {
+    footerButtons.push({
+      label: 'Đóng hồ sơ',
+      disabled: submitting,
+      loading: submitting,
+      onPress: () =>
+        void run(
+          () =>
+            inspectionService.close(
+              id!,
+              closeReason.trim() ? { reason: closeReason.trim() } : undefined,
+            ),
+          'Đã đóng hồ sơ.',
+        ),
+    });
+  }
+
   return (
-    <View className="flex-1 bg-background">
-      <View className="absolute left-0 right-0 z-10 px-4" style={{ top: insets.top + 8 }}>
-        <Pressable onPress={() => router.back()} className="h-9 w-9 items-center justify-center rounded-full bg-white">
-          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
+    <View className="flex-1 bg-surface">
+      <View
+        className="flex-row items-center gap-3 bg-white px-4 pb-3"
+        style={{ paddingTop: insets.top + 8, borderBottomWidth: 1, borderBottomColor: colors.border }}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Quay lại"
+          onPress={() => router.back()}
+          hitSlop={8}
+          className="h-9 w-9 items-center justify-center rounded-full bg-surface"
+        >
+          <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
         </Pressable>
+        <View className="flex-1">
+          <Text className="text-[11px] font-bold uppercase tracking-widest text-textSecondary">
+            Hồ sơ thanh tra
+          </Text>
+          <Text className="font-mono text-sm font-bold text-textPrimary" numberOfLines={1}>
+            {detail.reportCode}
+          </Text>
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}>
-        <ReportMediaGallery
-          media={reportMedia}
-          heroIndex={heroIndex}
-          onSelectIndex={setHeroIndex}
+      <View className="bg-white pb-3 pt-4">
+        <StageTracker
+          stages={stages}
+          activeKey={currentStep}
+          onSelect={(key) => {
+            if (stepUnlocked[key]) setActiveStep(key);
+          }}
         />
+      </View>
 
-        <View className="px-4 pt-4">
-          <View className="mb-2 flex-row flex-wrap items-center gap-2">
-            <Text className="text-xs text-textSecondary">{detail.reportCode}</Text>
-            <StatusBadge kind="inspection" status={detail.status} />
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        className="flex-1"
+      >
+        <ScrollView
+          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <InspectionFeedbackBanner
+            errorMessage={actionError}
+            successMessage={successMessage}
+            onDismiss={dismissFeedback}
+          />
+
+          <View className="mb-4">
+            <InspectionCaseHeader detail={detail} />
           </View>
-          <Text className="mb-1 text-xl font-bold text-textPrimary">{detail.violatorName ?? 'Chưa có tên vi phạm'}</Text>
-          <Text className="mb-1 text-sm text-textSecondary">{detail.assignedTeamName}</Text>
-          {detail.violatorAddress ? (
-            <Text className="mb-2 text-sm text-textSecondary">{detail.violatorAddress}</Text>
-          ) : null}
-          {detail.slaInspectionDueAt ? (
-            <View className="mb-3"><SlaCountdown dueAt={detail.slaInspectionDueAt} /></View>
-          ) : null}
-          {detail.penaltyAmount != null ? (
-            <Text className="mb-1 text-sm text-textSecondary">
-              QĐ phạt: {detail.penaltyAmount.toLocaleString('vi-VN')} VND
-              {detail.paidAmount != null ? ` · Đã nộp: ${detail.paidAmount.toLocaleString('vi-VN')}` : ''}
-            </Text>
-          ) : null}
 
-          {detail.canEditDetails && (
-            <View className="mb-4 rounded-2xl bg-white p-4">
-              <Text className="mb-2 text-sm font-bold text-textPrimary">Biên bản hiện trường</Text>
-              <TextInput
-                value={violatorName}
-                onChangeText={setViolatorName}
-                placeholder="Tên đối tượng vi phạm"
-                className="mb-3 h-11 rounded-xl border border-border px-3 text-sm text-textPrimary"
-              />
-              <TextInput
-                value={violatorAddress}
-                onChangeText={setViolatorAddress}
-                placeholder="Địa chỉ hiện trường"
-                className="mb-3 h-11 rounded-xl border border-border px-3 text-sm text-textPrimary"
-              />
-              <TextInput
-                value={violatorIdentity}
-                onChangeText={setViolatorIdentity}
-                placeholder="Mã số / CCCD / MST"
-                className="mb-3 h-11 rounded-xl border border-border px-3 text-sm text-textPrimary"
-              />
-              <TextInput
-                value={violationDescription}
-                onChangeText={setViolationDescription}
-                multiline
-                placeholder="Mô tả vi phạm sau điều tra"
-                className="mb-3 min-h-[80px] rounded-xl border border-border px-3 py-2 text-sm text-textPrimary"
-              />
-              <Pressable
-                disabled={submitting}
-                onPress={() =>
-                  void runAction(
-                    () =>
-                      inspectionService.updateDetails(id!, {
-                        violatorName: violatorName.trim() || undefined,
-                        violatorAddress: violatorAddress.trim() || undefined,
-                        violatorIdentity: violatorIdentity.trim() || undefined,
-                        violationDescription: violationDescription.trim() || undefined,
-                      }),
-                    'Đã lưu biên bản.',
-                  )
-                }
-                className="h-11 items-center justify-center rounded-xl bg-primary"
-              >
-                <Text className="font-bold text-white">Lưu biên bản</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {detail.canIssuePenalty && (
-            <View className="mb-4 rounded-2xl bg-white p-4">
-              <Text className="mb-2 text-sm font-bold text-textPrimary">Ban hành quyết định phạt</Text>
-              <View className="mb-3 flex-row flex-wrap gap-2">
-                {VIOLATION_LEVELS.map((level) => (
-                  <Pressable
-                    key={level}
-                    onPress={() => setViolationLevel(level)}
-                    className={`rounded-full px-3 py-1.5 ${violationLevel === level ? 'bg-primary' : 'bg-surface'}`}
-                  >
-                    <Text className={`text-xs font-semibold ${violationLevel === level ? 'text-white' : 'text-textSecondary'}`}>
-                      {VIOLATION_LEVEL_LABELS[level]}
-                    </Text>
-                  </Pressable>
-                ))}
+          {reportMedia.length > 0 ? (
+            <View className="mb-4 overflow-hidden rounded-3xl bg-white">
+              <View className="px-4 pt-4">
+                <Text className="text-sm font-bold text-textPrimary">Ảnh báo cáo gốc</Text>
+                <Text className="mt-0.5 text-xs text-textSecondary">
+                  Do người dân gửi — chỉ để tham chiếu
+                </Text>
               </View>
-              <TextInput
-                value={penaltyAmount}
-                onChangeText={setPenaltyAmount}
-                keyboardType="numeric"
-                placeholder="Số tiền phạt (VND)"
-                className="mb-3 h-11 rounded-xl border border-border px-3 text-sm text-textPrimary"
+              <ReportMediaGallery
+                media={reportMedia}
+                heroIndex={heroIndex}
+                onSelectIndex={setHeroIndex}
               />
-              <TextInput
-                value={decisionNumber}
-                onChangeText={setDecisionNumber}
-                placeholder="Số quyết định (QĐ-XP-2026-001)"
-                className="mb-3 h-11 rounded-xl border border-border px-3 text-sm text-textPrimary"
-              />
-              <TextInput
-                value={paymentDueDays}
-                onChangeText={setPaymentDueDays}
-                keyboardType="numeric"
-                placeholder="Số ngày nộp phạt"
-                className="mb-3 h-11 rounded-xl border border-border px-3 text-sm text-textPrimary"
-              />
-              <TextInput
-                value={additionalMeasures}
-                onChangeText={setAdditionalMeasures}
-                multiline
-                placeholder="Biện pháp bổ sung (tùy chọn)"
-                className="mb-3 min-h-[64px] rounded-xl border border-border px-3 py-2 text-sm text-textPrimary"
-              />
-              <Pressable
-                disabled={submitting || !penaltyAmount || !decisionNumber.trim()}
-                onPress={() =>
-                  void runAction(
-                    () =>
-                      inspectionService.issuePenalty(id!, {
-                        violationLevel,
-                        penaltyAmount: Number(penaltyAmount),
-                        decisionNumber: decisionNumber.trim(),
-                        paymentDueDays: Number(paymentDueDays) || 10,
-                        additionalMeasures: additionalMeasures.trim() || undefined,
-                      }),
-                    'Đã ban hành QĐ phạt.',
-                  )
-                }
-                className="h-11 items-center justify-center rounded-xl bg-primary"
-              >
-                <Text className="font-bold text-white">Ban hành phạt</Text>
-              </Pressable>
             </View>
-          )}
+          ) : null}
 
-          {detail.canRecordPayment && (
-            <View className="mb-4 rounded-2xl bg-white p-4">
-              <Text className="mb-2 text-sm font-bold text-textPrimary">Ghi nhận nộp phạt</Text>
-              <TextInput
-                value={paidAmount}
-                onChangeText={setPaidAmount}
-                keyboardType="numeric"
-                placeholder="Số tiền đã nộp"
-                className="mb-3 h-11 rounded-xl border border-border px-3 text-sm text-textPrimary"
-              />
-              <Pressable
-                disabled={submitting}
-                onPress={() =>
-                  void runAction(
-                    () => inspectionService.recordPayment(id!, { paidAmount: Number(paidAmount) }),
-                    'Đã ghi nhận thanh toán.',
-                  )
-                }
-                className="h-11 items-center justify-center rounded-xl bg-primary"
-              >
-                <Text className="font-bold text-white">Ghi nhận nộp phạt</Text>
-              </Pressable>
+          {detail.violationDescription ? (
+            <View className="mb-4 rounded-3xl bg-white p-4">
+              <Text className="mb-1.5 text-sm font-bold text-textPrimary">Nội dung vi phạm</Text>
+              <Text className="text-sm leading-5 text-textSecondary">
+                {detail.violationDescription}
+              </Text>
             </View>
-          )}
+          ) : null}
 
-          {detail.canCloseNoViolation && (
-            <View className="mb-4 rounded-2xl bg-white p-4">
-              <Text className="mb-2 text-sm font-bold text-textPrimary">Đóng — không đủ căn cứ</Text>
-              <TextInput
-                value={closeReason}
-                onChangeText={setCloseReason}
-                multiline
-                placeholder="Lý do (≥ 50 ký tự)"
-                className="mb-3 min-h-[88px] rounded-xl border border-border px-3 py-2 text-sm text-textPrimary"
-              />
-              <Pressable
-                disabled={submitting || closeReason.trim().length < 50}
-                onPress={() =>
-                  void runAction(
-                    () => inspectionService.closeNoViolation(id!, { reason: closeReason.trim() }),
-                    'Đã đóng hồ sơ.',
-                  )
-                }
-                className="h-11 items-center justify-center rounded-xl border border-border"
-              >
-                <Text className="font-semibold text-textSecondary">Đóng không vi phạm</Text>
-              </Pressable>
-            </View>
-          )}
+          {/* ---- Nhận việc ---- */}
+          {currentStep === 'accept' ? (
+            <StagePanel title={STEP_META.accept.title}>
+              {detail.canAcceptTask ? (
+                <Text className="text-xs leading-[18px] text-textSecondary">
+                  Nhận hồ sơ để bắt đầu điều tra. Sau khi nhận, hồ sơ chuyển sang trạng thái
+                  “Đang điều tra”.
+                </Text>
+              ) : (
+                <Text className="text-xs leading-[18px] text-textSecondary">
+                  Hồ sơ đã được nhận. Tiếp tục các bước tiếp theo.
+                </Text>
+              )}
+            </StagePanel>
+          ) : null}
 
-          {detail.canClose && (
-            <View className="mb-4 rounded-2xl bg-white p-4">
-              <TextInput
-                value={closeFinalReason}
-                onChangeText={setCloseFinalReason}
-                multiline
-                placeholder="Lý do đóng hồ sơ (tùy chọn)"
-                className="mb-3 min-h-[64px] rounded-xl border border-border px-3 py-2 text-sm text-textPrimary"
-              />
-              <Pressable
-                disabled={submitting}
-                onPress={() =>
-                  void runAction(
-                    () =>
-                      inspectionService.close(
-                        id!,
-                        closeFinalReason.trim() ? { reason: closeFinalReason.trim() } : undefined,
-                      ),
-                    'Đã đóng hồ sơ.',
-                  )
+          {/* ---- Xác nhận đến hiện trường ---- */}
+          {currentStep === 'arrival' ? (
+            <StagePanel title={STEP_META.arrival.title}>
+              {detail.arrivalConfirmedAt ? (
+                <View>
+                  <Text className="text-xs text-textSecondary">
+                    Đã xác nhận lúc{' '}
+                    {new Date(detail.arrivalConfirmedAt).toLocaleString('vi-VN')}
+                  </Text>
+                  {detail.arrivalNote?.trim() ? (
+                    <Text className="mt-1 text-xs leading-[18px] text-textSecondary">
+                      Giải trình: {detail.arrivalNote.trim()}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : detail.canConfirmArrival ? (
+                <ArrivalConfirmCard
+                  distanceMeters={arrival.distanceMeters}
+                  hasCoords={Boolean(arrival.coords ?? sceneCoords)}
+                  isLocating={arrival.isLocating}
+                  locationError={arrival.locationError}
+                  note={arrivalNote}
+                  onChangeNote={setArrivalNote}
+                  onRetryLocation={() => void arrival.retryLocation()}
+                  submitting={submitting}
+                  onConfirm={() => {
+                    // Không có GPS thật → gửi toạ độ hiện trường kèm note giải trình.
+                    const coords = arrival.coords ?? sceneCoords;
+                    if (!coords) {
+                      return;
+                    }
+                    void run(
+                      () =>
+                        inspectionService.confirmArrival(id!, {
+                          latitude: coords.latitude,
+                          longitude: coords.longitude,
+                          note: arrivalNote.trim() || undefined,
+                        }),
+                      'Đã xác nhận có mặt tại hiện trường.',
+                    ).then((ok) => {
+                      if (ok) setArrivalNote('');
+                    });
+                  }}
+                />
+              ) : (
+                <Text className="text-xs leading-[18px] text-textSecondary">
+                  Bước này chỉ khả dụng khi hồ sơ đang được điều tra. Đây là bước tùy chọn.
+                </Text>
+              )}
+            </StagePanel>
+          ) : null}
+
+          {/* ---- Checklist hiện trường ---- */}
+          {currentStep === 'checklist' ? (
+            <StagePanel
+              title={STEP_META.checklist.title}
+              description="Hoàn thành các mục bắt buộc (*) trước khi chốt biên bản hiện trường."
+            >
+              {checklistStates.map((state) => {
+                if (state.category === 'ViolationStatus') {
+                  return <ChecklistCategoryRow key={state.category} state={state} disabled onPress={() => {}} />;
                 }
-                className="h-12 items-center justify-center rounded-xl bg-primary"
-              >
-                <Text className="font-bold text-white">Đóng hồ sơ</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      </ScrollView>
+                const category = state.category as EvidenceCategory;
+                const isExpanded = expandedCategory === category;
+                return (
+                  <ChecklistCategoryRow
+                    key={state.category}
+                    state={state}
+                    // Biên bản đã chốt vẫn phải xem lại được ảnh/video/ghi âm/tài liệu đã tải —
+                    // chỉ khoá phần thêm/sửa file (xem `readOnly` trong EvidenceCategoryContent).
+                    isExpanded={isExpanded}
+                    onPress={() => {
+                      clearEvidenceError();
+                      setExpandedCategory((current) => (current === category ? null : category));
+                    }}
+                  >
+                    <EvidenceCategoryContent
+                      state={state}
+                      uploading={isUploading && uploadingCategory === category}
+                      errorMessage={evidenceError ?? (category === 'Audio' ? audio.recordingError : null)}
+                      readOnly={checklistLocked}
+                      onPick={(pickedCategory, source) => void handleEvidencePick(pickedCategory, source)}
+                      recorderSlot={
+                        category === 'Audio' ? (
+                          <AudioEvidenceRecorder
+                            isRecording={audio.isRecording}
+                            durationSeconds={audio.durationSeconds}
+                            maxDurationSeconds={audio.maxDurationSeconds}
+                            reachedLimit={audio.reachedLimit}
+                            uploading={isUploading && uploadingCategory === 'Audio'}
+                            onStart={() => void audio.start()}
+                            onStop={() => void handleStopRecording()}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  </ChecklistCategoryRow>
+                );
+              })}
+
+              {!checklistLocked ? (
+                <View className="mt-3 rounded-2xl bg-surface p-3.5">
+                  <Text className="mb-2 text-sm font-bold text-textPrimary">
+                    Tình trạng vi phạm <Text style={{ color: colors.error }}>*</Text>
+                  </Text>
+                  <TextInput
+                    value={violationStatus}
+                    onChangeText={setViolationStatus}
+                    multiline
+                    placeholder="Mô tả tình trạng vi phạm quan sát được tại hiện trường"
+                    placeholderTextColor={colors.textSecondary}
+                    className={TEXTAREA_CLASS}
+                    style={{ backgroundColor: colors.white }}
+                    textAlignVertical="top"
+                  />
+                  <TextInput
+                    value={otherNote}
+                    onChangeText={setOtherNote}
+                    multiline
+                    placeholder="Ghi chú khác (tùy chọn)"
+                    placeholderTextColor={colors.textSecondary}
+                    className={TEXTAREA_CLASS}
+                    style={{ backgroundColor: colors.white }}
+                    textAlignVertical="top"
+                  />
+                </View>
+              ) : null}
+
+              {detail.fieldInvestigationSubmittedAt ? (
+                <View
+                  className="mt-3 rounded-2xl px-3.5 py-3"
+                  style={{ backgroundColor: colors.primaryLight }}
+                >
+                  <Text className="text-xs font-semibold" style={{ color: colors.primaryDark }}>
+                    Biên bản đã chốt lúc{' '}
+                    {new Date(detail.fieldInvestigationSubmittedAt).toLocaleString('vi-VN')}
+                  </Text>
+                </View>
+              ) : detail.canSubmitFieldReport ? (
+                missingRequirements.length > 0 ? (
+                  <View
+                    className="mt-3 rounded-2xl px-3.5 py-3"
+                    style={{ backgroundColor: '#FFFBEB' }}
+                  >
+                    <Text className="text-xs font-bold" style={{ color: '#92400E' }}>
+                      Còn thiếu: {missingRequirements.join(' · ')}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text className="mt-3 text-xs leading-[18px] text-textSecondary">
+                    Sau khi chốt, checklist bị khóa và mở bước ra quyết định. Chỉ trưởng đoàn thực
+                    hiện được.
+                  </Text>
+                )
+              ) : null}
+            </StagePanel>
+          ) : null}
+
+          {/* ---- Quyết định xử lý ---- */}
+          {currentStep === 'decision' ? (
+            <StagePanel title={STEP_META.decision.title}>
+              {!detail.canIssuePenalty && !detail.canCloseNoViolation ? (
+                <Text className="text-xs leading-[18px] text-textSecondary">
+                  {detail.penaltyIssuedAt || detail.status === 'ClosedNoViolation'
+                    ? 'Đã có quyết định xử lý cho hồ sơ này.'
+                    : 'Cần chốt biên bản hiện trường trước khi ra quyết định.'}
+                </Text>
+              ) : null}
+
+              {detail.canIssuePenalty ? (
+                <View className="mb-4">
+                  <Text className="mb-2 text-sm font-bold text-textPrimary">
+                    Ban hành quyết định xử phạt
+                  </Text>
+                  <View className="mb-3 flex-row flex-wrap gap-2">
+                    {VIOLATION_LEVELS.map((level) => {
+                      const isActive = violationLevel === level;
+                      return (
+                        <Pressable
+                          key={level}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: isActive }}
+                          onPress={() => setViolationLevel(level)}
+                          className={`rounded-full px-3.5 py-2 ${isActive ? 'bg-primary' : 'bg-surface'}`}
+                        >
+                          <Text
+                            className={`text-xs font-semibold ${
+                              isActive ? 'text-white' : 'text-textSecondary'
+                            }`}
+                          >
+                            {VIOLATION_LEVEL_LABELS[level]}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <TextInput
+                    value={penaltyAmount}
+                    onChangeText={setPenaltyAmount}
+                    keyboardType="number-pad"
+                    placeholder="Số tiền phạt (VND)"
+                    placeholderTextColor={colors.textSecondary}
+                    className={INPUT_CLASS}
+                  />
+                  <TextInput
+                    value={decisionNumber}
+                    onChangeText={setDecisionNumber}
+                    placeholder="Số quyết định (VD: QĐ-XP-2026-001)"
+                    placeholderTextColor={colors.textSecondary}
+                    className={INPUT_CLASS}
+                  />
+                  <TextInput
+                    value={paymentDueDays}
+                    onChangeText={setPaymentDueDays}
+                    keyboardType="number-pad"
+                    placeholder="Số ngày được nộp phạt"
+                    placeholderTextColor={colors.textSecondary}
+                    className={INPUT_CLASS}
+                  />
+                  <TextInput
+                    value={additionalMeasures}
+                    onChangeText={setAdditionalMeasures}
+                    multiline
+                    placeholder="Biện pháp bổ sung (tùy chọn)"
+                    placeholderTextColor={colors.textSecondary}
+                    className={TEXTAREA_CLASS}
+                    textAlignVertical="top"
+                  />
+                </View>
+              ) : null}
+
+              {detail.canCloseNoViolation ? (
+                <View style={detail.canIssuePenalty ? { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 } : undefined}>
+                  <Text className="mb-2 text-sm font-bold text-textPrimary">
+                    Đóng hồ sơ — không đủ căn cứ
+                  </Text>
+                  <TextInput
+                    value={closeNoViolationReason}
+                    onChangeText={setCloseNoViolationReason}
+                    multiline
+                    placeholder={`Lý do (tối thiểu ${MIN_CLOSE_REASON_LENGTH} ký tự)`}
+                    placeholderTextColor={colors.textSecondary}
+                    className={TEXTAREA_CLASS}
+                    textAlignVertical="top"
+                  />
+                  <Text className="text-[11px] text-textSecondary">
+                    {closeNoViolationReason.trim().length}/{MIN_CLOSE_REASON_LENGTH} ký tự
+                  </Text>
+                </View>
+              ) : null}
+            </StagePanel>
+          ) : null}
+
+          {/* ---- Nộp phạt & đóng hồ sơ ---- */}
+          {currentStep === 'payment' ? (
+            <StagePanel title={STEP_META.payment.title}>
+              {!detail.canRecordPayment && !detail.canClose ? (
+                <Text className="text-xs leading-[18px] text-textSecondary">
+                  {detail.status === 'Closed'
+                    ? 'Hồ sơ đã đóng.'
+                    : 'Bước này khả dụng sau khi có quyết định xử phạt.'}
+                </Text>
+              ) : null}
+
+              {detail.canRecordPayment ? (
+                <View className="mb-4">
+                  <Text className="mb-2 text-sm font-bold text-textPrimary">Ghi nhận nộp phạt</Text>
+                  <TextInput
+                    value={paidAmount}
+                    onChangeText={setPaidAmount}
+                    keyboardType="number-pad"
+                    placeholder="Số tiền đã nộp (VND)"
+                    placeholderTextColor={colors.textSecondary}
+                    className={INPUT_CLASS}
+                  />
+
+                  <Text className="mb-1.5 text-xs font-semibold text-textPrimary">
+                    Biên lai <Text style={{ color: colors.error }}>*</Text>
+                  </Text>
+                  {receipt ? (
+                    <View className="mb-3 flex-row items-center gap-3 rounded-2xl bg-surface p-2.5">
+                      <Image
+                        source={{ uri: receipt.uri }}
+                        style={{ width: 52, height: 52, borderRadius: 12 }}
+                      />
+                      <Text className="flex-1 text-xs text-textSecondary" numberOfLines={1}>
+                        {receipt.fileName}
+                      </Text>
+                      <Pressable onPress={() => setReceipt(null)} hitSlop={8}>
+                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => void handlePickReceipt()}
+                      className="mb-3 items-center rounded-2xl bg-surface py-6"
+                    >
+                      <Ionicons name="receipt-outline" size={24} color={colors.textSecondary} />
+                      <Text className="mt-1.5 text-xs font-semibold text-textPrimary">
+                        Chọn ảnh biên lai
+                      </Text>
+                    </Pressable>
+                  )}
+
+                  <TextInput
+                    value={paymentNote}
+                    onChangeText={setPaymentNote}
+                    multiline
+                    placeholder="Ghi chú (tùy chọn)"
+                    placeholderTextColor={colors.textSecondary}
+                    className={TEXTAREA_CLASS}
+                    textAlignVertical="top"
+                  />
+                </View>
+              ) : null}
+
+              {detail.canClose ? (
+                <View style={detail.canRecordPayment ? { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 } : undefined}>
+                  <Text className="mb-2 text-sm font-bold text-textPrimary">Đóng hồ sơ</Text>
+                  <TextInput
+                    value={closeReason}
+                    onChangeText={setCloseReason}
+                    multiline
+                    placeholder="Lý do đóng hồ sơ (tùy chọn)"
+                    placeholderTextColor={colors.textSecondary}
+                    className={TEXTAREA_CLASS}
+                    textAlignVertical="top"
+                  />
+                </View>
+              ) : null}
+            </StagePanel>
+          ) : null}
+        </ScrollView>
+
+        {footerButtons.length > 0 ? (
+          <View
+            className="gap-2 border-t border-border bg-white px-4 pt-3"
+            style={{ paddingBottom: insets.bottom + 12 }}
+          >
+            {footerButtons.map((btn) => (
+              <FooterButton key={btn.label} {...btn} />
+            ))}
+          </View>
+        ) : null}
+      </KeyboardAvoidingView>
     </View>
   );
 }

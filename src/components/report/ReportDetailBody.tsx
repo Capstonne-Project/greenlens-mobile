@@ -2,6 +2,7 @@ import { MergedReportsSection } from '@/components/report/MergedReportsSection';
 import { ReportCommentsSection } from '@/components/report/ReportCommentsSection';
 import { ReportCommunityCleanupSection } from '@/components/report/ReportCommunityCleanupSection';
 import { ReportLocationMap } from '@/components/report/ReportLocationMap';
+import { ReportReporterRow } from '@/components/report/ReportReporterRow';
 import { ReportSatisfactionCard } from '@/components/report/ReportSatisfactionCard';
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
@@ -41,6 +42,8 @@ export interface ReportDetailBodyProps {
   fromMergedReportImageUrl?: string | null;
   onOpenPrimaryReport?: (primaryReportId: string) => void;
   onOpenMergedReport?: (reportId: string, imageUrl?: string | null) => void;
+  /** Mở hồ sơ công khai của người gửi báo cáo hoặc tác giả bình luận */
+  onOpenUserProfile: (userId: string) => void;
   comments: {
     threads: CommentThread[];
     isLoading: boolean;
@@ -290,6 +293,7 @@ export function ReportDetailBody({
   fromMergedReportImageUrl,
   onOpenPrimaryReport,
   onOpenMergedReport,
+  onOpenUserProfile,
   comments,
 }: ReportDetailBodyProps) {
   const severity = SEVERITY_CONFIG[detail.severity] ?? SEVERITY_CONFIG.Medium;
@@ -330,6 +334,16 @@ export function ReportDetailBody({
             {detail.reporterCount} người báo cáo
           </Text>
         </View>
+      </View>
+
+      <View className="mb-4 border-b pb-3" style={{ borderColor: colors.border }}>
+        <ReportReporterRow
+          reporterId={detail.reporterId}
+          reporterName={detail.reporterName}
+          reporterAvatarUrl={detail.reporterAvatarUrl}
+          createdAt={detail.createdAt}
+          onPress={onOpenUserProfile}
+        />
       </View>
 
       {detail.description ? (
@@ -464,6 +478,7 @@ export function ReportDetailBody({
           onSubmit={comments.onSubmit}
           onToggleLike={comments.onToggleLike}
           onRetry={comments.onRetry}
+          onOpenUserProfile={onOpenUserProfile}
         />
       ) : null}
 

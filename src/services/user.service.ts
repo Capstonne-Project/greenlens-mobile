@@ -1,6 +1,6 @@
 import { api } from './api';
 import type { ApiEnvelope } from '@/types/api.types';
-import type { User } from '@/types/user.types';
+import type { PublicUserProfile, PublicUserReportsResponse, User } from '@/types/user.types';
 
 interface UpdateProfileResult {
   userId: string;
@@ -20,6 +20,14 @@ interface UploadAvatarInput {
 
 export const userService = {
   getProfile: () => api.get<ApiEnvelope<User>>('/users/profile'),
+
+  /** Hồ sơ công khai của người dùng khác — không trả email/SĐT */
+  getPublicProfile: (userId: string) =>
+    api.get<ApiEnvelope<PublicUserProfile>>(`/users/${userId}/public-profile`),
+
+  /** Báo cáo công khai của người dùng khác — hiển thị lưới trên hồ sơ */
+  getPublicReports: (userId: string, params: { page?: number; pageSize?: number } = {}) =>
+    api.get<ApiEnvelope<PublicUserReportsResponse>>(`/users/${userId}/reports`, { params }),
 
   /** BE chỉ hỗ trợ đổi `fullName` — không có address/dateOfBirth/gender/email */
   updateProfile: (fullName: string) =>

@@ -13,7 +13,9 @@
       "supportsTablet": true,
       "jsEngine": "jsc",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["comgooglemaps"]
+        "LSApplicationQueriesSchemes": [
+          "comgooglemaps"
+        ]
       }
     },
     "android": {
@@ -31,6 +33,7 @@
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_MEDIA_LOCATION",
         "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.POST_NOTIFICATIONS"
@@ -78,6 +81,12 @@
           "icon": "./assets/images/icon.png",
           "color": "#10B981",
           "defaultChannel": "default"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "GreenLens cần micro để thanh tra ghi âm bằng chứng tại hiện trường."
         }
       ]
     ],
