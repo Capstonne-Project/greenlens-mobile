@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -7,6 +8,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   TextInput,
@@ -16,9 +19,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AssignmentActionButton } from '@/components/assignment/AssignmentActionButton';
 import { EvidencePhotoPicker } from '@/components/assignment/EvidencePhotoPicker';
-import { AccordionStepSection } from '@/components/common/AccordionStepSection';
+import { ImageViewerModal } from '@/components/common/ImageViewerModal';
+import { StepTimeline } from '@/components/common/StepTimeline';
+import { CheckInOverrideDialog } from '@/components/community/CheckInOverrideDialog';
 import { ParticipantsListModal } from '@/components/community/ParticipantsListModal';
 import { ParticipantsSummaryCard } from '@/components/community/ParticipantsSummaryCard';
+import { PercentSlider } from '@/components/community/PercentSlider';
 import { ReportLocationMap } from '@/components/report/ReportLocationMap';
 import { Text } from '@/components/ui/text';
 import { Toast, useToast } from '@/components/common/Toast';
@@ -28,6 +34,7 @@ import { communityCleanupService } from '@/services/communityCleanup.service';
 import { colors } from '@/theme/colors';
 import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
 import { getApiErrorMessage } from '@/utils/api-error-message';
+import { isCheckInTooFarError } from '@/utils/community-checkin-error';
 import { firstRouteParam } from '@/utils/field-worker-task';
 import type {
   CommunityCleanupEventDetail,
@@ -115,13 +122,23 @@ export default function CommunityLeadWorkspaceScreen() {
   const [isActing, setActing] = useState(false);
 
   const [beforeImages, setBeforeImages] = useState<PickedImage[]>([]);
+  const [progressImages, setProgressImages] = useState<PickedImage[]>([]);
   const [afterImages, setAfterImages] = useState<PickedImage[]>([]);
   const [percentInput, setPercentInput] = useState('0');
   const [progressNote, setProgressNote] = useState('');
   const [processingPhotos, setProcessingPhotos] = useState(false);
   const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
+  const [pendingCheckIn, setPendingCheckIn] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [isOverrideSubmitting, setOverrideSubmitting] = useState(false);
   const [expandedStep, setExpandedStep] = useState<CleanupStepKey>('before');
   const stepInitializedRef = useRef(false);
+  const [viewerImages, setViewerImages] = useState<string[] | null>(null);
+  const [viewerIndex, setViewerIndex] = useState(0);
+
+  const openViewer = useCallback((images: string[], index: number) => {
+    setViewerImages(images);
+    setViewerIndex(index);
+  }, []);
 
   const participants = useCommunityParticipants(eventId);
 
@@ -185,6 +202,7 @@ export default function CommunityLeadWorkspaceScreen() {
   const handleCheckIn = useCallback(async () => {
     if (!eventId || isActing || !guardStartTime()) return;
     setActing(true);
+    let coords: { latitude: number; longitude: number } | null = null;
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -192,21 +210,50 @@ export default function CommunityLeadWorkspaceScreen() {
         return;
       }
       const position = await Location.getCurrentPositionAsync({});
-      await communityCleanupService.checkIn(eventId, position.coords.latitude, position.coords.longitude);
+      coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+      await communityCleanupService.checkIn(eventId, coords.latitude, coords.longitude);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast('Check-in thành công!', 'success');
       await load();
     } catch (err) {
+      if (coords && isCheckInTooFarError(err)) {
+        setPendingCheckIn(coords);
+        return;
+      }
       showToast(getApiErrorMessage(err, 'Không thể check-in.'), 'error');
     } finally {
       setActing(false);
     }
   }, [eventId, isActing, guardStartTime, load, showToast]);
 
+  const handleOverrideConfirm = useCallback(
+    async (reason: string) => {
+      if (!eventId || !pendingCheckIn) return;
+      setOverrideSubmitting(true);
+      try {
+        await communityCleanupService.checkIn(
+          eventId,
+          pendingCheckIn.latitude,
+          pendingCheckIn.longitude,
+          reason,
+        );
+        setPendingCheckIn(null);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        showToast('Check-in thành công!', 'success');
+        await load();
+      } catch (err) {
+        showToast(getApiErrorMessage(err, 'Không thể check-in. Vui lòng thử lại.'), 'error');
+      } finally {
+        setOverrideSubmitting(false);
+      }
+    },
+    [eventId, pendingCheckIn, load, showToast],
+  );
+
   const addImages = useCallback(
-    async (target: 'before' | 'after', source: 'camera' | 'library') => {
-      const setter = target === 'before' ? setBeforeImages : setAfterImages;
-      const current = target === 'before' ? beforeImages : afterImages;
+    async (target: 'before' | 'progress' | 'after', source: 'camera' | 'library') => {
+      const setter = target === 'before' ? setBeforeImages : target === 'progress' ? setProgressImages : setAfterImages;
+      const current = target === 'before' ? beforeImages : target === 'progress' ? progressImages : afterImages;
       setProcessingPhotos(true);
       try {
         const picked = await pickAndCompress(source, target, 5, current.length);
@@ -219,11 +266,11 @@ export default function CommunityLeadWorkspaceScreen() {
         setProcessingPhotos(false);
       }
     },
-    [beforeImages, afterImages, showToast],
+    [beforeImages, progressImages, afterImages, showToast],
   );
 
-  const removeImage = useCallback((target: 'before' | 'after', index: number) => {
-    const setter = target === 'before' ? setBeforeImages : setAfterImages;
+  const removeImage = useCallback((target: 'before' | 'progress' | 'after', index: number) => {
+    const setter = target === 'before' ? setBeforeImages : target === 'progress' ? setProgressImages : setAfterImages;
     setter((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
@@ -250,12 +297,17 @@ export default function CommunityLeadWorkspaceScreen() {
     const percent = Math.min(100, Math.max(0, parseInt(percentInput, 10) || 0));
     setActing(true);
     try {
+      const imageUrls = progressImages.length > 0
+        ? await uploadAll(progressImages, 'Progress', event?.reportId ?? '')
+        : undefined;
       await communityCleanupService.updateProgress(eventId, {
         percent,
         note: progressNote.trim() || undefined,
+        imageUrls,
       });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast('Đã cập nhật tiến độ.', 'success');
+      setProgressImages([]);
       if (percent === 100) setExpandedStep('after');
       await load();
     } catch (err) {
@@ -263,7 +315,7 @@ export default function CommunityLeadWorkspaceScreen() {
     } finally {
       setActing(false);
     }
-  }, [eventId, isActing, percentInput, progressNote, load, showToast]);
+  }, [eventId, isActing, percentInput, progressNote, progressImages, event?.reportId, load, showToast]);
 
   const handleSubmitVerification = useCallback(async () => {
     if (!eventId || isActing || afterImages.length < 2) return;
@@ -286,6 +338,12 @@ export default function CommunityLeadWorkspaceScreen() {
   const severityCfg = event ? (SEVERITY_CONFIG[event.severity] ?? null) : null;
   const hasBeforeMedia = (event?.mediaSummary.beforeCount ?? 0) > 0;
   const canSubmitVerification = event?.progressPercent === 100 && hasBeforeMedia && afterImages.length >= 2;
+  const targetLocation = event
+    ? {
+        latitude: event.meetingLatitude ?? event.reportLatitude,
+        longitude: event.meetingLongitude ?? event.reportLongitude,
+      }
+    : null;
 
   return (
     <View className="flex-1 bg-background">
@@ -328,7 +386,16 @@ export default function CommunityLeadWorkspaceScreen() {
           </Pressable>
         </View>
       ) : event ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={insets.top}
+          className="flex-1"
+        >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+        >
           <Text className="text-xs text-textSecondary">{event.reportCode}</Text>
           <Text className="mb-2 text-xl font-bold text-textPrimary">{event.title}</Text>
 
@@ -349,6 +416,34 @@ export default function CommunityLeadWorkspaceScreen() {
           {event.description ? (
             <Text className="mb-4 text-sm leading-5 text-textSecondary">{event.description}</Text>
           ) : null}
+
+          <View className="mb-4">
+            <Text className="mb-2 text-[11px] font-bold uppercase tracking-widest text-textSecondary">
+              Hiện trạng ô nhiễm (báo cáo gốc)
+            </Text>
+            {event.reportImageUrls.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {event.reportImageUrls.map((url, index) => (
+                  <Pressable key={url} onPress={() => openViewer(event.reportImageUrls, index)}>
+                    <Image
+                      source={{ uri: url }}
+                      style={{ width: 140, height: 140, borderRadius: 12 }}
+                      contentFit="cover"
+                      accessibilityLabel={`Ảnh hiện trạng ${index + 1}`}
+                    />
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : (
+              <View className="items-center justify-center rounded-xl bg-surface py-6">
+                <Ionicons name="image-outline" size={28} color={colors.textSecondary} />
+                <Text className="mt-1.5 text-xs text-textSecondary">Báo cáo chưa có ảnh</Text>
+              </View>
+            )}
+            {event.reportDescription ? (
+              <Text className="mt-2 text-sm leading-5 text-textSecondary">{event.reportDescription}</Text>
+            ) : null}
+          </View>
 
           <ReportLocationMap
             latitude={event.reportLatitude}
@@ -393,110 +488,132 @@ export default function CommunityLeadWorkspaceScreen() {
           ) : null}
 
           {event.status === 'InProgress' ? (
-            <View className="mt-2">
-              <AccordionStepSection
-                stepNumber={1}
-                title="Ảnh trước khi dọn"
-                completed={hasBeforeMedia}
-                expanded={expandedStep === 'before'}
-                onToggle={() => setExpandedStep('before')}
-              >
-                {hasBeforeMedia ? (
-                  <Text className="text-sm text-textSecondary">
-                    Đã lưu {event.mediaSummary.beforeCount} ảnh trước khi dọn.
-                  </Text>
-                ) : (
-                  <>
-                    <EvidencePhotoPicker
-                      images={beforeImages}
-                      minimum={1}
-                      maximum={5}
-                      onTakePhoto={() => void addImages('before', 'camera')}
-                      onChooseLibrary={() => void addImages('before', 'library')}
-                      onRemove={(i) => removeImage('before', i)}
-                      processing={processingPhotos}
-                    />
-                    <View className="mt-3">
-                      <AssignmentActionButton
-                        label="Lưu ảnh trước khi dọn" icon="checkmark" variant="primary"
-                        onPress={handleSubmitBeforeImages}
-                        disabled={isActing || beforeImages.length === 0}
-                        loading={isActing}
-                      />
-                    </View>
-                  </>
-                )}
-              </AccordionStepSection>
-
-              <AccordionStepSection
-                stepNumber={2}
-                title="Cập nhật tiến độ"
-                completed={event.progressPercent === 100}
-                expanded={expandedStep === 'progress'}
-                onToggle={() => setExpandedStep('progress')}
-              >
-                <View className="mb-2 flex-row items-end gap-1">
-                  <TextInput
-                    value={percentInput}
-                    onChangeText={setPercentInput}
-                    keyboardType="number-pad"
-                    maxLength={3}
-                    style={{ fontSize: 40, fontWeight: '800', color: colors.textPrimary, minWidth: 70 }}
-                  />
-                  <Text className="mb-1 text-xl font-bold" style={{ color: colors.textSecondary }}>%</Text>
-                </View>
-                <View className="mb-3 h-2 overflow-hidden rounded-full bg-surface">
-                  <View className="h-full rounded-full" style={{
-                    width: `${Math.min(100, Math.max(0, parseInt(percentInput, 10) || 0))}%` as `${number}%`,
-                    backgroundColor: colors.primary,
-                  }} />
-                </View>
-                <TextInput
-                  value={progressNote}
-                  onChangeText={setProgressNote}
-                  placeholder="Ghi chú tiến độ..."
-                  placeholderTextColor={colors.textDisabled}
-                  multiline
-                  style={{ fontSize: 14, color: colors.textPrimary, minHeight: 60, borderBottomWidth: 2, borderBottomColor: colors.primary, marginBottom: 12 }}
-                />
-                <AssignmentActionButton
-                  label="Cập nhật tiến độ" icon="refresh" variant="secondary"
-                  onPress={handleUpdateProgress}
-                  disabled={isActing}
-                  loading={isActing}
-                />
-              </AccordionStepSection>
-
-              <AccordionStepSection
-                stepNumber={3}
-                title="Ảnh sau khi dọn"
-                completed={false}
-                expanded={expandedStep === 'after'}
-                onToggle={() => setExpandedStep('after')}
-              >
-                <EvidencePhotoPicker
-                  images={afterImages}
-                  minimum={2}
-                  maximum={5}
-                  onTakePhoto={() => void addImages('after', 'camera')}
-                  onChooseLibrary={() => void addImages('after', 'library')}
-                  onRemove={(i) => removeImage('after', i)}
-                  processing={processingPhotos}
-                />
-                <View className="mt-3">
-                  <AssignmentActionButton
-                    label="Nộp xác thực hoàn thành" icon="checkmark-done" variant="primary"
-                    onPress={handleSubmitVerification}
-                    disabled={isActing || !canSubmitVerification}
-                    loading={isActing}
-                  />
-                </View>
-                {!canSubmitVerification ? (
-                  <Text className="mt-2 text-xs text-textSecondary">
-                    Cần tiến độ 100%, đã có ảnh before, và ít nhất 2 ảnh after để nộp xác thực.
-                  </Text>
-                ) : null}
-              </AccordionStepSection>
+            <View className="mt-4">
+              <StepTimeline
+                activeKey={expandedStep}
+                onSelect={(key) => setExpandedStep(key as CleanupStepKey)}
+                steps={[
+                  {
+                    key: 'before',
+                    stepNumber: 1,
+                    title: 'Ảnh trước khi dọn',
+                    completed: hasBeforeMedia,
+                    content: hasBeforeMedia ? (
+                      <View>
+                        <Text className="mb-2 text-sm text-textSecondary">
+                          Đã lưu {event.mediaSummary.beforeCount} ảnh trước khi dọn.
+                        </Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                          {event.media.beforeImageUrls.map((url, index) => (
+                            <Pressable key={url} onPress={() => openViewer(event.media.beforeImageUrls, index)}>
+                              <Image
+                                source={{ uri: url }}
+                                style={{ width: 100, height: 100, borderRadius: 12 }}
+                                contentFit="cover"
+                                accessibilityLabel={`Ảnh trước khi dọn ${index + 1}`}
+                              />
+                            </Pressable>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    ) : (
+                      <>
+                        <EvidencePhotoPicker
+                          images={beforeImages}
+                          minimum={1}
+                          maximum={5}
+                          onTakePhoto={() => void addImages('before', 'camera')}
+                          onChooseLibrary={() => void addImages('before', 'library')}
+                          onRemove={(i) => removeImage('before', i)}
+                          processing={processingPhotos}
+                        />
+                        <View className="mt-3">
+                          <AssignmentActionButton
+                            label="Lưu ảnh trước khi dọn" icon="checkmark" variant="primary"
+                            onPress={handleSubmitBeforeImages}
+                            disabled={isActing || beforeImages.length === 0}
+                            loading={isActing}
+                          />
+                        </View>
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'progress',
+                    stepNumber: 2,
+                    title: 'Cập nhật tiến độ',
+                    completed: event.progressPercent === 100,
+                    progress: event.progressPercent,
+                    content: (
+                      <>
+                        <PercentSlider
+                          value={parseInt(percentInput, 10) || 0}
+                          onChange={(v) => setPercentInput(String(v))}
+                          minValue={event.progressPercent}
+                          disabled={isActing}
+                        />
+                        <TextInput
+                          value={progressNote}
+                          onChangeText={setProgressNote}
+                          placeholder="Ghi chú tiến độ..."
+                          placeholderTextColor={colors.textDisabled}
+                          multiline
+                          style={{ fontSize: 14, color: colors.textPrimary, minHeight: 60, borderBottomWidth: 2, borderBottomColor: colors.primary, marginTop: 16, marginBottom: 12 }}
+                        />
+                        <EvidencePhotoPicker
+                          images={progressImages}
+                          minimum={0}
+                          maximum={5}
+                          onTakePhoto={() => void addImages('progress', 'camera')}
+                          onChooseLibrary={() => void addImages('progress', 'library')}
+                          onRemove={(i) => removeImage('progress', i)}
+                          processing={processingPhotos}
+                        />
+                        <View className="mt-3">
+                          <AssignmentActionButton
+                            label="Cập nhật tiến độ" icon="refresh" variant="secondary"
+                            onPress={handleUpdateProgress}
+                            disabled={isActing}
+                            loading={isActing}
+                          />
+                        </View>
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'after',
+                    stepNumber: 3,
+                    title: 'Ảnh sau khi dọn',
+                    completed: false,
+                    content: (
+                      <>
+                        <EvidencePhotoPicker
+                          images={afterImages}
+                          minimum={2}
+                          maximum={5}
+                          onTakePhoto={() => void addImages('after', 'camera')}
+                          onChooseLibrary={() => void addImages('after', 'library')}
+                          onRemove={(i) => removeImage('after', i)}
+                          processing={processingPhotos}
+                        />
+                        <View className="mt-3">
+                          <AssignmentActionButton
+                            label="Nộp xác thực hoàn thành" icon="checkmark-done" variant="primary"
+                            onPress={handleSubmitVerification}
+                            disabled={isActing || !canSubmitVerification}
+                            loading={isActing}
+                          />
+                        </View>
+                        {!canSubmitVerification ? (
+                          <Text className="mt-2 text-xs text-textSecondary">
+                            Cần tiến độ 100%, đã có ảnh before, và ít nhất 2 ảnh after để nộp xác thực.
+                          </Text>
+                        ) : null}
+                      </>
+                    ),
+                  },
+                ]}
+              />
             </View>
           ) : null}
 
@@ -521,6 +638,7 @@ export default function CommunityLeadWorkspaceScreen() {
             </View>
           ) : null}
         </ScrollView>
+        </KeyboardAvoidingView>
       ) : null}
 
       <ParticipantsListModal
@@ -533,6 +651,22 @@ export default function CommunityLeadWorkspaceScreen() {
       />
 
       <Toast visible={toastState.visible} type={toastState.type} message={toastState.message} onHide={hideToast} />
+
+      <CheckInOverrideDialog
+        visible={!!pendingCheckIn}
+        isSubmitting={isOverrideSubmitting}
+        userLocation={pendingCheckIn}
+        targetLocation={targetLocation}
+        onCancel={() => setPendingCheckIn(null)}
+        onConfirm={handleOverrideConfirm}
+      />
+
+      <ImageViewerModal
+        visible={!!viewerImages}
+        images={viewerImages ?? []}
+        initialIndex={viewerIndex}
+        onClose={() => setViewerImages(null)}
+      />
     </View>
   );
 }

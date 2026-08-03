@@ -1,24 +1,21 @@
-import { SafeScreen } from '@/components/layout/SafeScreen';
-import { TapScale } from '@/components/layout/TapScale';
-import { MyReportListCard } from '@/components/report/MyReportListCard';
-import { MyReportsEmptyState } from '@/components/report/MyReportsEmptyState';
-import { MyReportsFilterBar } from '@/components/report/MyReportsFilterBar';
-import {
-  MyReportsHubHeader,
-  type MyReportsTabCounts,
-} from '@/components/report/MyReportsHubHeader';
-import { Text } from '@/components/ui/text';
-import { useAuth } from '@/hooks/useAuth';
-import { useMyReports } from '@/hooks/useMyReports';
-import { colors } from '@/theme/colors';
-import type { MyReportItem, MyReportsFilterKey } from '@/types/my-reports.types';
-import { MY_REPORTS_FILTERS } from '@/types/my-reports.types';
-import { resolveMyReportDetailTarget } from '@/utils/report-merge';
-import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-import * as Haptics from 'expo-haptics';
-import { Redirect, router, type Href } from 'expo-router';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SafeScreen } from "@/components/layout/SafeScreen";
+import { TapScale } from "@/components/layout/TapScale";
+import { MyReportListCard } from "@/components/report/MyReportListCard";
+import { MyReportsEmptyState } from "@/components/report/MyReportsEmptyState";
+import { MyReportsFilterBar } from "@/components/report/MyReportsFilterBar";
+import { MyReportsHubHeader, type MyReportsTabCounts } from "@/components/report/MyReportsHubHeader";
+import { Text } from "@/components/ui/text";
+import { useAuth } from "@/hooks/useAuth";
+import { useMyReports } from "@/hooks/useMyReports";
+import { colors } from "@/theme/colors";
+import type { MyReportItem, MyReportsFilterKey } from "@/types/my-reports.types";
+import { MY_REPORTS_FILTERS } from "@/types/my-reports.types";
+import { resolveMyReportDetailTarget } from "@/utils/report-merge";
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+import * as Haptics from "expo-haptics";
+import { Redirect, router, type Href } from "expo-router";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -29,7 +26,7 @@ import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-} from 'react-native';
+} from "react-native";
 
 const LIST_CONTENT_STYLE = { paddingTop: 8, paddingBottom: 100, flexGrow: 1 as const };
 
@@ -117,10 +114,7 @@ const ReportsFilterPage = memo(function ReportsFilterPage({
   const { items, totalCount, isLoading, isRefreshing, isFetchingMore, hasNextPage, errorMessage, refetch, loadMore } =
     useMyReports({ filterKey, pageSize: 20, enabled: isAuthenticated });
 
-  const filteredItems = useMemo(
-    () => items.filter((item) => matchesSearch(item, searchQuery)),
-    [items, searchQuery],
-  );
+  const filteredItems = useMemo(() => items.filter((item) => matchesSearch(item, searchQuery)), [items, searchQuery]);
 
   useEffect(() => {
     onRegisterRefetch(filterKey, refetch);
@@ -132,11 +126,7 @@ const ReportsFilterPage = memo(function ReportsFilterPage({
 
   const renderItem = useCallback(
     ({ item }: { item: MyReportItem }) => (
-      <MyReportListCard
-        item={item}
-        onPress={() => onOpenDetail(item)}
-        onOpenPrimary={() => onOpenDetail(item)}
-      />
+      <MyReportListCard item={item} onPress={() => onOpenDetail(item)} onOpenPrimary={() => onOpenDetail(item)} />
     ),
     [onOpenDetail],
   );
@@ -195,10 +185,10 @@ const ReportsFilterPage = memo(function ReportsFilterPage({
 export default function ReportsTabScreen() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { width: pageWidth } = useWindowDimensions();
-  const [activeFilter, setActiveFilter] = useState<MyReportsFilterKey>('ALL');
+  const [activeFilter, setActiveFilter] = useState<MyReportsFilterKey>("ALL");
   const [activeTabMeta, setActiveTabMeta] = useState({ count: 0, isLoading: true });
   const [tabCounts, setTabCounts] = useState<MyReportsTabCounts>({});
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [pagerHeight, setPagerHeight] = useState(0);
 
   const pagerRef = useRef<ScrollView>(null);
@@ -258,10 +248,10 @@ export default function ReportsTabScreen() {
     const target = resolveMyReportDetailTarget(item);
     const mergedThumb = item.imageUrl?.trim();
     router.push({
-      pathname: '/report/[id]',
+      pathname: "/report/[id]",
       params: {
         id: target.id,
-        source: 'tab',
+        source: "tab",
         ...(target.fromMergedReportId
           ? {
               fromMergedReportId: target.fromMergedReportId,
@@ -298,12 +288,12 @@ export default function ReportsTabScreen() {
   }
 
   return (
-    <SafeScreen className="bg-surface" edges={['top']}>
+    <SafeScreen className="bg-surface" edges={["top"]}>
       <View className="bg-white">
         <MyReportsHubHeader
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
-          onCreatePress={() => router.push('/report/create')}
+          onCreatePress={() => router.push("/report/create")}
         />
 
         <MyReportsFilterBar
@@ -314,18 +304,15 @@ export default function ReportsTabScreen() {
           onSelectIndex={goToFilterIndex}
         />
 
-        <NeedsConfirmBanner
-          count={tabCounts.NEEDS_CONFIRM ?? 0}
-          onPress={() => goToFilterKey('NEEDS_CONFIRM')}
-        />
+        <NeedsConfirmBanner count={tabCounts.NEEDS_CONFIRM ?? 0} onPress={() => goToFilterKey("NEEDS_CONFIRM")} />
 
-        <TapScale onPress={() => router.push('/community')}>
-          <View className="mx-0 flex-row items-center justify-between border-b border-border bg-white px-4 py-2.5">
+        <TapScale onPress={() => router.push("/community")}>
+          <View className="mx-0 flex-row items-center justify-between border-b border-border bg-primary px-6 py-2.5">
             <View className="flex-row items-center gap-2">
-              <Ionicons name="leaf-outline" size={15} color={colors.primary} />
-              <Text className="text-[12px] text-textPrimary">Chương trình dọn cộng đồng</Text>
+              <Ionicons name="leaf-outline" size={18} color={colors.white} />
+              <Text className="text-[18px] font-semibold  text-white bg-primary">Chương trình dọn cộng đồng</Text>
             </View>
-            <Ionicons name="chevron-forward" size={15} color={colors.textSecondary} />
+            <Ionicons name="chevron-forward" size={15} color={colors.white} />
           </View>
         </TapScale>
       </View>
