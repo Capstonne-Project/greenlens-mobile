@@ -25,6 +25,12 @@ export interface CommunityCleanupMediaSummary {
   afterCount: number;
 }
 
+export interface CommunityCleanupMedia {
+  beforeImageUrls: string[];
+  progressImageUrls: string[];
+  afterImageUrls: string[];
+}
+
 export interface CommunityCleanupMyParticipation {
   status: CommunityCleanupParticipantStatus;
   joinedAt: string;
@@ -38,6 +44,8 @@ export interface CommunityCleanupEventDetail {
   status: CommunityCleanupStatus;
   title: string;
   description: string | null;
+  reportDescription: string | null;
+  reportImageUrls: string[];
   leader: CommunityCleanupLeader;
   joinOpensAt: string;
   joinClosesAt: string | null;
@@ -60,6 +68,7 @@ export interface CommunityCleanupEventDetail {
   myParticipation: CommunityCleanupMyParticipation | null;
   isLeader: boolean;
   mediaSummary: CommunityCleanupMediaSummary;
+  media: CommunityCleanupMedia;
 }
 
 export interface CommunityCleanupListItem {

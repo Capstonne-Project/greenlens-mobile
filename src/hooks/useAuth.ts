@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useNotificationStore } from '@/stores/notification.store';
 import { authService } from '@/services/auth.service';
@@ -79,10 +80,24 @@ export function useAuth() {
   );
 
   const logout = useCallback(async () => {
-    await clearPushTokenSafe();
-    useNotificationStore.getState().clearUnread();
+    // Clear auth state trước — tránh network call bên dưới (bị 401 do token cũ)
+    // trigger auto-refresh và ghi đè state của phiên đăng nhập kế tiếp.
     await clearAuth();
+    useNotificationStore.getState().clearUnread();
+    await clearPushTokenSafe();
   }, [clearAuth]);
+
+  /**
+   * Dùng cho mọi nút "Đăng xuất" (citizen/staff/inspector).
+   * dismissAll() trước để đóng hết stack lồng nhau của shell hiện tại —
+   * nếu chỉ replace, nested Tabs của shell cũ vẫn mounted và có thể
+   * hiện lại sau khi login bằng role khác.
+   */
+  const logoutAndRedirectToLogin = useCallback(async () => {
+    await logout();
+    if (router.canDismiss()) router.dismissAll();
+    router.replace('/(auth)/login');
+  }, [logout]);
 
   /** §4 — khôi phục phiên bằng refresh token (rotation), không dùng GET /me */
   const restoreSession = useCallback(async () => {
@@ -137,6 +152,7 @@ export function useAuth() {
     signUp,
     loginWithGoogle,
     logout,
+    logoutAndRedirectToLogin,
     restoreSession,
     requestOtp,
     verifyOtp,

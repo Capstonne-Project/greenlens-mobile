@@ -14,16 +14,20 @@ export default function ReportSuccessScreen() {
   const reset = useCreateReportDraftStore((state) => state.reset);
 
   useEffect(() => {
+    // Chỉ check lúc mount — tránh tự redirect về /create khi reset() xóa
+    // submittedReportCode sau khi user đã bấm rời màn hình success.
     if (!submittedReportCode) {
       router.replace('/(tabs)/create' as Href);
     }
-  }, [submittedReportCode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const leaveSuccess = useCallback(
-    (destination: '/(tabs)/index' | '/(tabs)/reports') => {
-      reset();
-      // replace → không back lại stack create/form
+    (destination: '/(tabs)' | '/(tabs)/reports') => {
+      // replace trước — reset() xóa submittedReportCode sẽ trigger effect redirect
+      // về /create nếu chạy trước khi màn hình success đã rời đi.
       router.replace(destination as Href);
+      reset();
     },
     [reset],
   );
@@ -57,7 +61,7 @@ export default function ReportSuccessScreen() {
         <Button
           variant="outline"
           className="h-12 rounded-2xl"
-          onPress={() => leaveSuccess('/(tabs)/index')}
+          onPress={() => leaveSuccess('/(tabs)')}
         >
           <Text className="font-semibold text-textPrimary">Về trang chủ</Text>
         </Button>

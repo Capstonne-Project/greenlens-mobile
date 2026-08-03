@@ -7,7 +7,8 @@ export interface StatusMeta {
 }
 
 const INSPECTION_STATUS_META: Record<InspectionStatus, StatusMeta> = {
-  Draft: { label: 'Nháp', textColor: '#374151', bgColor: '#F3F4F6' },
+  Draft: { label: 'Chờ nhận việc', textColor: '#374151', bgColor: '#F3F4F6' },
+  InProgress: { label: 'Đang điều tra', textColor: '#1D4ED8', bgColor: '#DBEAFE' },
   PenaltyIssued: { label: 'Đã ban hành QĐ phạt', textColor: '#92400E', bgColor: '#FEF3C7' },
   Paid: { label: 'Đã nộp phạt', textColor: '#065F46', bgColor: '#D1FAE5' },
   PartiallyPaid: { label: 'Nộp một phần', textColor: '#1D4ED8', bgColor: '#DBEAFE' },

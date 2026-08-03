@@ -22,3 +22,13 @@ export interface GoongReverseGeocodeResult {
   provinceName?: string;
   communeName?: string;
 }
+
+export interface GoongDirectionsRoute {
+  overview_polyline?: { points?: string };
+  legs?: { distance?: { value?: number }; duration?: { value?: number } }[];
+}
+
+export interface GoongDirectionsResponse {
+  routes?: GoongDirectionsRoute[];
+  status?: string;
+}
