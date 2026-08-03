@@ -9,7 +9,10 @@ export interface BadgeCatalogItem {
   awardedAt?: string | null;
   requiredPoints?: number | null;
   requiredReportCount?: number | null;
+  requiredStreakDays?: number | null;
   isFeatured: boolean;
+  /** Giá trị hiện tại của user trên trục tiến độ badge (điểm/số báo cáo/streak...). Null nếu badge không có thang đo số hoặc đã unlock. */
+  currentProgressValue?: number | null;
 }
 
 /** Huy hiệu người dùng chọn hiển thị nổi bật trên hồ sơ (BR-GAM-004) */
