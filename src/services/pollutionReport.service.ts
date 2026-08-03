@@ -68,7 +68,9 @@ async function readLocalFile(uri: string): Promise<{ body: R2PutBody; sizeBytes:
     return { body: bytes, sizeBytes: bytes.byteLength };
   }
 
-  // Last resort: PUT Blob as-is (works on many RN builds).
+  // Last resort: PUT Blob as-is. blob.size có thể không khớp bytes thực sự gửi lên
+  // trên một số Hermes runtime → nguồn gốc UPLOAD_METADATA_MISMATCH khi BE verify size qua HeadObject.
+  console.warn('[R2_UPLOAD] readLocalFile fallback to raw Blob — sizeBytes may be unreliable', { uri, sizeBytes });
   return { body: blob, sizeBytes };
 }
 

@@ -34,7 +34,7 @@ export function connectNotificationHub(onNotification: () => void): HubConnectio
       accessTokenFactory: async () => (await SecureStore.getItemAsync('accessToken')) ?? '',
     })
     .withAutomaticReconnect([0, 2000, 5000, 10_000, 30_000])
-    .configureLogging(__DEV__ ? LogLevel.Warning : LogLevel.None)
+    .configureLogging(__DEV__ ? LogLevel.Error : LogLevel.None)
     .build();
 
   connection.on('ReceiveNotification', () => onNotification());
