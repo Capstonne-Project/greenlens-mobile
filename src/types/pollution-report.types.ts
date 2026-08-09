@@ -92,7 +92,9 @@ export type MediaUploadPurpose =
   | 'Progress'
   | 'After'
   | 'Comment'
-  | 'Avatar';
+  | 'Avatar'
+  | 'ReopenEvidence'
+  | 'InspectionEvidence';
 
 export interface PresignMediaUploadResult {
   uploadUrl: string;

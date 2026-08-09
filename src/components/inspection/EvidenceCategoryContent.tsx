@@ -1,19 +1,42 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 
+import { EvidenceThumb, type EvidenceThumbKind } from '@/components/inspection/EvidenceThumb';
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
-import { SCENE_PHOTO_MINIMUM, type EvidenceCategory } from '@/types/inspection.types';
+import {
+  SCENE_PHOTO_MINIMUM,
+  type EvidenceCategory,
+  type InspectionEvidenceItem,
+} from '@/types/inspection.types';
 import type { ChecklistCategoryState } from '@/utils/inspection-checklist';
+
+/** Category → kiểu ô hiển thị. `Other` là ảnh tài liệu nên vẫn xem như ảnh. */
+const THUMB_KIND: Record<EvidenceCategory, EvidenceThumbKind> = {
+  ScenePhoto: 'image',
+  Other: 'image',
+  Video: 'video',
+  Audio: 'audio',
+};
+
+function formatDuration(seconds?: number | null): string | null {
+  if (!seconds || seconds <= 0) return null;
+  const mm = Math.floor(seconds / 60);
+  const ss = seconds % 60;
+  return `${mm}:${String(ss).padStart(2, '0')}`;
+}
 
 interface EvidenceCategoryContentProps {
   state: ChecklistCategoryState;
   uploading: boolean;
+  /** 0–100 khi đang nén video, null khi không nén. */
+  compressProgress?: number | null;
   errorMessage: string | null;
   readOnly: boolean;
   onPick: (category: EvidenceCategory, source: 'camera' | 'library') => void;
+  /** Mở trình phát khi tap video/ghi âm đã upload. */
+  onPreview?: (item: InspectionEvidenceItem) => void;
   /** Khối ghi âm — chỉ truyền cho category Audio. */
   recorderSlot?: ReactNode;
 }
@@ -25,12 +48,15 @@ interface EvidenceCategoryContentProps {
 export function EvidenceCategoryContent({
   state,
   uploading,
+  compressProgress = null,
   errorMessage,
   readOnly,
   onPick,
+  onPreview,
   recorderSlot,
 }: EvidenceCategoryContentProps) {
   const category = state.category as EvidenceCategory;
+  const thumbKind = THUMB_KIND[category];
   const isImageCategory = category === 'ScenePhoto';
   const canUseCamera = category === 'ScenePhoto' || category === 'Video';
   const needMore = isImageCategory ? Math.max(0, SCENE_PHOTO_MINIMUM - state.files.length) : 0;
@@ -58,30 +84,39 @@ export function EvidenceCategoryContent({
         </View>
       ) : (
         <View className="mb-3 flex-row flex-wrap gap-2">
-          {state.files.map((item, index) =>
-            isImageCategory ? (
-              <Image
-                key={item.id}
-                source={{ uri: item.mediaUrl! }}
-                className="rounded-xl bg-surface"
-                style={{ width: 84, height: 84 }}
-                contentFit="cover"
-                cachePolicy="memory-disk"
-              />
-            ) : (
-              <View
-                key={item.id}
-                className="flex-row items-center gap-2 rounded-xl border border-border bg-white px-3 py-2.5"
-              >
-                <Ionicons name={state.icon} size={16} color={colors.textSecondary} />
-                <Text className="text-xs text-textPrimary" numberOfLines={1}>
-                  {item.description?.trim() || `${state.label} ${index + 1}`}
-                </Text>
-              </View>
-            ),
-          )}
+          {state.files.map((item) => (
+            <EvidenceThumb
+              key={item.id}
+              kind={thumbKind}
+              uri={item.mediaUrl!}
+              caption={formatDuration(item.durationSeconds)}
+              onPress={
+                thumbKind === 'video' || thumbKind === 'audio'
+                  ? () => onPreview?.(item)
+                  : undefined
+              }
+            />
+          ))}
         </View>
       )}
+
+      {compressProgress !== null ? (
+        <View
+          className="mb-2 rounded-xl px-3 py-2.5"
+          style={{ backgroundColor: '#F0FDF4' }}
+        >
+          <View className="mb-1.5 flex-row items-center justify-between">
+            <Text className="text-xs font-semibold text-textPrimary">Đang nén video…</Text>
+            <Text className="text-xs font-bold text-primary">{compressProgress}%</Text>
+          </View>
+          <View className="h-1.5 overflow-hidden rounded-full bg-white">
+            <View
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${Math.min(Math.max(compressProgress, 0), 100)}%` }}
+            />
+          </View>
+        </View>
+      ) : null}
 
       {readOnly ? (
         <View className="rounded-xl bg-white px-3 py-3">
