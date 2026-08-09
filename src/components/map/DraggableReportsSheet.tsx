@@ -38,6 +38,12 @@ const SNAP_HEIGHTS: Record<SheetSnapPoint, number> = {
   full: FULL_HEIGHT,
 };
 
+/**
+ * Chiều cao thật của sheet — cố định để có thể trượt bằng `translateY` thay vì animate
+ * `height`. Cộng thêm dư ra dưới đáy màn cho `bottomInset` và hiệu ứng bounce.
+ */
+const SHEET_CONTAINER_HEIGHT = FULL_HEIGHT + Math.round(SCREEN_HEIGHT * 0.12);
+
 interface DraggableReportsSheetProps {
   pins: CitizenMapPin[];
   reportCount: number;
@@ -142,6 +148,16 @@ export function DraggableReportsSheet({
     },
   });
 
+  // Tham chiếu ổn định — arrow inline trong `renderItem` làm FlatList dựng lại toàn bộ
+  // item mỗi lần component re-render (sheet re-render liên tục khi kéo).
+  const keyExtractor = useCallback((item: CitizenMapPin) => item.id, []);
+  const renderCard = useCallback(
+    ({ item }: { item: CitizenMapPin }) => (
+      <MapReportListCard pin={item} onPress={onOpenDetail} />
+    ),
+    [onOpenDetail],
+  );
+
   const panGesture = useMemo(
     () =>
       Gesture.Pan()
@@ -200,14 +216,22 @@ export function DraggableReportsSheet({
     [panGesture, nativeGesture],
   );
 
-  const animatedSheetStyle = useAnimatedStyle(() => ({
+  /**
+   * Sheet cao cố định `FULL_HEIGHT` rồi trượt xuống bằng `translateY` — animate `height`
+   * bắt RN tính lại layout mỗi frame trên JS thread nên kéo bị giật; `transform` chỉ
+   * compose trên UI thread, giữ được 60fps.
+   */
+  const animatedSheetStyle = useAnimatedStyle(() => {
     // Focus: không cộng bottomInset — tránh khoảng trắng dưới card
-    height: sheetHeight.value + (isFocusMode.value ? 0 : bottomInset),
-  }));
+    const visibleHeight = sheetHeight.value + (isFocusMode.value ? 0 : bottomInset);
+    return {
+      transform: [{ translateY: SHEET_CONTAINER_HEIGHT - visibleHeight }],
+    };
+  });
 
   return (
     <Animated.View
-      style={animatedSheetStyle}
+      style={[animatedSheetStyle, { height: SHEET_CONTAINER_HEIGHT }]}
       className="absolute bottom-0 left-0 right-0 z-10 overflow-hidden rounded-t-3xl border border-border bg-white shadow-lg shadow-black/10"
     >
       {focusedPin ? (
@@ -219,10 +243,7 @@ export function DraggableReportsSheet({
           </GestureDetector>
           {/* -mb-4 hủy margin dưới của card để sheet khít sát mép dưới */}
           <View className="-mb-4">
-            <MapReportListCard
-              pin={focusedPin}
-              onPress={() => onOpenDetail(focusedPin)}
-            />
+            <MapReportListCard pin={focusedPin} onPress={onOpenDetail} />
           </View>
         </View>
       ) : (
@@ -250,10 +271,8 @@ export function DraggableReportsSheet({
             <GestureDetector gesture={composedGesture}>
               <AnimatedFlatList
                 data={displayPins}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <MapReportListCard pin={item} onPress={() => onOpenDetail(item)} />
-                )}
+                keyExtractor={keyExtractor}
+                renderItem={renderCard}
                 contentContainerStyle={{
                   paddingTop: 4,
                   paddingBottom: bottomInset + 24,
@@ -261,6 +280,12 @@ export function DraggableReportsSheet({
                 showsVerticalScrollIndicator={false}
                 onScroll={scrollHandler}
                 scrollEventThrottle={16}
+                // Card có ảnh lớn — giới hạn số item dựng mỗi batch để không nghẽn
+                // JS thread giữa lúc đang kéo sheet.
+                removeClippedSubviews
+                initialNumToRender={4}
+                maxToRenderPerBatch={4}
+                windowSize={7}
               />
             </GestureDetector>
           )}
