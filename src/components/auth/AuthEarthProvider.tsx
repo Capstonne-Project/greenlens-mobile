@@ -1,8 +1,9 @@
 import { RotatingEarth } from '@/components/onboarding/RotatingEarth';
 import {
-  AUTH_LOGIN_DIALOG_TOP_RATIO,
   AUTH_LOGIN_HEADER_EARTH_MAX,
+  getAuthDialogTopMetrics,
 } from '@/components/auth/auth-layout';
+import { usePathname } from 'expo-router';
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,16 +43,28 @@ export function AuthEarthProvider({ children, initialMode = 'hero' }: AuthEarthP
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  const pathname = usePathname();
+
   const heroSize = Math.min(width * 0.72, height < 700 ? 240 : 300);
-  const headerSize = Math.min(width * 0.48, AUTH_LOGIN_HEADER_EARTH_MAX);
 
   const heroTop = height * 0.1;
 
   // Band between status bar and dialog top — earth sits in the middle.
   // Login SafeScreen already insets top, so dialog edge ≈ insets.top + contentSpacer.
-  const dialogTopFromScreen = insets.top + height * AUTH_LOGIN_DIALOG_TOP_RATIO;
+  // Mỗi màn kéo dialog cao thấp khác nhau, nên lấy ratio theo route đang hiển thị.
+  const { ratio, min } = getAuthDialogTopMetrics(pathname);
+  const dialogTopFromScreen = insets.top + Math.max(height * ratio, min);
   const bandTop = insets.top + 8;
   const bandBottom = dialogTopFromScreen;
+  const bandHeight = Math.max(bandBottom - bandTop, 0);
+
+  // Co quả đất cho vừa dải trống (chừa 16px đệm) — dialog cao lên thì đất nhỏ lại
+  // thay vì tràn xuống che nội dung.
+  const headerSize = Math.max(
+    Math.min(width * 0.48, AUTH_LOGIN_HEADER_EARTH_MAX, bandHeight - 16),
+    72,
+  );
+
   const headerCenterY = (bandTop + bandBottom) / 2;
   const headerTop = headerCenterY - headerSize / 2;
 
@@ -92,7 +105,6 @@ export function AuthEarthProvider({ children, initialMode = 'hero' }: AuthEarthP
       height: heroSize,
       left: centerX - heroSize / 2,
       top: centerY - heroSize / 2,
-      zIndex: 8,
       transform: [{ scale }],
     };
   });
@@ -117,6 +129,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    zIndex: 1,
+    // Quả đất là nền — luôn nằm dưới dialog. Trước đây earth có zIndex 8 nên đè lên
+    // dialog ở những màn kéo dialog cao (OTP, đặt mật khẩu mới).
+    zIndex: 2,
   },
 });
