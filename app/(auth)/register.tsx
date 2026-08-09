@@ -1,5 +1,5 @@
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
-import { AUTH_LOGIN_DIALOG_TOP_RATIO } from '@/components/auth/auth-layout';
+import { getAuthDialogTop } from '@/components/auth/auth-layout';
 import { TapScale } from '@/components/layout/TapScale';
 import { SafeScreen } from '@/components/layout/SafeScreen';
 import { Text } from '@/components/ui/text';
@@ -87,8 +87,9 @@ export default function RegisterScreen() {
     }
   };
 
-  // Slightly tighter top band so more fields fit while keeping earth visible.
-  const dialogTop = Math.max(height * Math.min(AUTH_LOGIN_DIALOG_TOP_RATIO, 0.32), 190);
+  // Form đăng ký nhiều field hơn login — kéo dialog lên cao để đủ chỗ, hạn chế phải cuộn.
+  // Vẫn chừa một dải trên cho nút Back và phần đỉnh quả đất.
+  const dialogTop = getAuthDialogTop('register', height);
 
   return (
     <SafeScreen edges={['top']} className="bg-transparent">
