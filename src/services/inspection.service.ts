@@ -9,12 +9,14 @@ import type {
   InspectionQueueResponse,
   IssuePenaltyDto,
   PaymentHistoryResponse,
-  RecordPaymentInput,
   ReportInspectionsResponse,
+  EvidenceUploadItem,
   UpdateChecklistDto,
   UpdateInspectionDetailsDto,
   UploadEvidenceInput,
+  UploadEvidenceResult,
 } from '@/types/inspection.types';
+import { uploadReportImage } from '@/services/pollutionReport.service';
 
 /** Video evidence tới 30MB — axios default 15s quá ngắn cho mạng 4G. */
 const EVIDENCE_UPLOAD_TIMEOUT_MS = 120_000;
@@ -50,20 +52,40 @@ export const inspectionService = {
     api.put<void>(`/inspections/${id}/checklist`, dto),
 
   /**
-   * File evidence — BE nhận `category`, `files[]`, `description` qua form field
-   * (`[FromForm]`), KHÔNG phải query param.
+   * File evidence — BE đã đổi sang JSON (`[Consumes("application/json")]`).
+   * Luồng: presign (purpose=InspectionEvidence) → PUT thẳng R2 → POST publicUrl.
+   * BE validate URL phải nằm trong `reports/{reportId}/inspection/{id}/{category}` nên
+   * bắt buộc presign kèm `inspectionId` + `evidenceCategory`.
    */
-  uploadEvidence: (
+  uploadEvidence: async (
     id: string,
-    { category, uri, fileName, mimeType, description }: UploadEvidenceInput,
+    { category, files, description }: UploadEvidenceInput,
   ) => {
-    const formData = new FormData();
-    formData.append('category', category);
-    formData.append('files', { uri, name: fileName, type: mimeType } as unknown as Blob);
-    if (description) formData.append('description', description);
-    return api.post<void>(`/inspections/${id}/evidence`, formData, {
-      timeout: EVIDENCE_UPLOAD_TIMEOUT_MS,
-    });
+    const items: EvidenceUploadItem[] = [];
+
+    // Tuần tự — mạng 4G ngoài hiện trường, tránh nghẽn khi có video 30MB.
+    for (const file of files) {
+      const uploaded = await uploadReportImage({
+        uri: file.uri,
+        fileName: file.fileName,
+        mimeType: file.mimeType,
+        purpose: 'InspectionEvidence',
+        inspectionId: id,
+        evidenceCategory: category,
+      });
+      items.push({
+        url: uploaded.url,
+        contentType: uploaded.mimeType,
+        sizeBytes: uploaded.sizeBytes,
+        ...(file.durationSeconds ? { durationSeconds: file.durationSeconds } : {}),
+      });
+    }
+
+    return api.post<ApiEnvelope<UploadEvidenceResult>>(
+      `/inspections/${id}/evidence`,
+      { category, items, description: description ?? null },
+      { timeout: EVIDENCE_UPLOAD_TIMEOUT_MS },
+    );
   },
 
   /** Chỉ Team Leader — mở gate cho issue-penalty / close-no-violation. Không có body. */
@@ -75,21 +97,7 @@ export const inspectionService = {
   closeNoViolation: (id: string, dto: CloseNoViolationDto) =>
     api.put<void>(`/inspections/${id}/close-no-violation`, dto),
 
-  /** multipart/form-data — `receipt` (biên lai) bắt buộc theo BR-INS-033. */
-  recordPayment: (id: string, { paidAmount, paidAt, receipt, note }: RecordPaymentInput) => {
-    const formData = new FormData();
-    formData.append('paidAmount', String(paidAmount));
-    formData.append('paidAt', paidAt);
-    formData.append('receipt', {
-      uri: receipt.uri,
-      name: receipt.fileName,
-      type: receipt.mimeType,
-    } as unknown as Blob);
-    if (note) formData.append('note', note);
-    return api.put<void>(`/inspections/${id}/record-payment`, formData, {
-      timeout: EVIDENCE_UPLOAD_TIMEOUT_MS,
-    });
-  },
+  // record-payment: chuyển sang LEO trên web portal — Inspector không còn quyền ghi nhận nộp phạt.
 
   close: (id: string, dto?: CloseInspectionDto) =>
     api.put<void>(`/inspections/${id}/close`, dto ?? {}),
