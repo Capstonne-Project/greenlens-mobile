@@ -1,9 +1,10 @@
 import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
-import { AUTH_LOGIN_DIALOG_TOP_RATIO } from '@/components/auth/auth-layout';
+import { getAuthDialogTop } from '@/components/auth/auth-layout';
 import { TapScale } from '@/components/layout/TapScale';
 import { SafeScreen } from '@/components/layout/SafeScreen';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/hooks/useAuth';
+import { useGoogleSignIn } from '@/hooks/useGoogleSignIn';
 import { onboardingColors } from '@/components/onboarding/constants';
 import { getApiErrorMessage } from '@/utils/api-error-message';
 import { getPostLoginHref } from '@/utils/post-login-route';
@@ -11,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -24,6 +26,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
   const { login } = useAuth();
+  const {
+    isAvailable: isGoogleAvailable,
+    isSigningIn: isGoogleSigningIn,
+    errorMessage: googleError,
+    clearError: clearGoogleError,
+    signIn: signInWithGoogle,
+  } = useGoogleSignIn();
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
@@ -49,6 +58,10 @@ export default function LoginScreen() {
       // Session cũ có thể đã được restore vào shell khác (vd. (inspector)) trước
       // khi user login lại — dismiss stack đó rồi mới sang shell của role mới.
       if (router.canDismiss()) router.dismissAll();
+      if (user.mustChangePassword) {
+        router.replace('/(auth)/force-change-password');
+        return;
+      }
       router.replace(getPostLoginHref(user.role));
     } catch (err) {
       const message = getApiErrorMessage(
@@ -61,7 +74,15 @@ export default function LoginScreen() {
     }
   };
 
-  const dialogTop = Math.max(height * AUTH_LOGIN_DIALOG_TOP_RATIO, 220);
+  const handleGoogleLogin = async () => {
+    clearGoogleError();
+    const user = await signInWithGoogle();
+    if (!user) return; // huỷ hoặc lỗi — hook đã set errorMessage
+    if (router.canDismiss()) router.dismissAll();
+    router.replace(getPostLoginHref(user.role));
+  };
+
+  const dialogTop = getAuthDialogTop('login', height);
 
   return (
     // Only top safe-area — dialog paints into bottom inset so nền không lộ.
@@ -179,15 +200,35 @@ export default function LoginScreen() {
                 <View className="h-px flex-1 bg-border" />
               </View>
 
-              <View className="mt-5 items-center">
+              <View
+                className="mt-5 items-center"
+                style={{ opacity: isGoogleSigningIn || isSubmitting ? 0.5 : 1 }}
+              >
                 <TapScale
-                  onPress={() =>
-                    Alert.alert('Sắp có', 'Tính năng đăng nhập Google sẽ được cập nhật sau.')
-                  }
+                  onPress={() => {
+                    if (!isGoogleAvailable) {
+                      Alert.alert(
+                        'Chưa khả dụng',
+                        'Đăng nhập Google chưa được cấu hình. Vui lòng dùng email và mật khẩu.',
+                      );
+                      return;
+                    }
+                    void handleGoogleLogin();
+                  }}
                   className="h-14 w-14 items-center justify-center rounded-full border border-border bg-white"
                 >
-                  <Ionicons name="logo-google" size={24} color="#EA4335" />
+                  {isGoogleSigningIn ? (
+                    <ActivityIndicator size="small" color="#EA4335" />
+                  ) : (
+                    <Ionicons name="logo-google" size={24} color="#EA4335" />
+                  )}
                 </TapScale>
+
+                {googleError ? (
+                  <Text className="mt-3 px-4 text-center text-sm" style={{ color: '#EF4444' }}>
+                    {googleError}
+                  </Text>
+                ) : null}
               </View>
 
               <View className="mt-8 flex-row items-center justify-center gap-1">

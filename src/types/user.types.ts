@@ -24,6 +24,8 @@ export interface User {
   createdAt?: string;
   teamId?: string;
   teamName?: string;
+  /** BE: account tạo bởi Company (mật khẩu tạm) — bắt đổi mật khẩu trước khi vào app */
+  mustChangePassword?: boolean;
 }
 
 /**

@@ -6,6 +6,9 @@ import {
   type InspectionEvidenceItem,
 } from '@/types/inspection.types';
 
+/** Đánh số mục theo kiểu văn bản biên bản — dùng chung cho form nhập lẫn bản xem lại. */
+export const ROMAN_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'] as const;
+
 export interface ChecklistCategoryMeta {
   category: ChecklistCategory;
   label: string;

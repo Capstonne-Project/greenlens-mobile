@@ -7,6 +7,7 @@ import { ReportSatisfactionCard } from '@/components/report/ReportSatisfactionCa
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
 import type { CommentThread } from '@/types/comment.types';
+import { REOPEN_MAX_APPROVED } from '@/types/report-detail.types';
 import type {
   RateReportDto,
   ReportDetail,
@@ -450,7 +451,9 @@ export function ReportDetailBody({
       ) : null}
 
       {detail.reopenedCount > 0 && !hideOpsProgress ? (
-        <Text className="mb-4 text-xs text-textSecondary">Đã mở lại {detail.reopenedCount}/2 lần</Text>
+        <Text className="mb-4 text-xs text-textSecondary">
+          Đã mở lại {detail.reopenedCount}/{REOPEN_MAX_APPROVED} lần
+        </Text>
       ) : null}
 
       {onRate && isOwner && canRateStatus ? (

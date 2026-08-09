@@ -1,10 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,13 +15,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrivalConfirmCard,
   AudioEvidenceRecorder,
-  ChecklistCategoryRow,
+  ChecklistSectionBlock,
   EvidenceCategoryContent,
+  EvidencePlayerModal,
   InspectionCaseHeader,
   InspectionFeedbackBanner,
   StagePanel,
   StageTracker,
   type StageDef,
+  ViolationReportDocument,
 } from '@/components/inspection';
 import { Text } from '@/components/ui/text';
 import { useArrivalDistance } from '@/hooks/useArrivalDistance';
@@ -34,8 +34,24 @@ import { useInspectionEvidence } from '@/hooks/useInspectionEvidence';
 import { inspectionService } from '@/services/inspection.service';
 import { ReportMediaGallery } from '@/shared/components/ReportMediaGallery';
 import { colors } from '@/theme/colors';
-import type { EvidenceCategory, ViolationLevel } from '@/types/inspection.types';
-import { buildChecklistState, getMissingRequirements } from '@/utils/inspection-checklist';
+import type {
+  EvidenceCategory,
+  InspectionEvidenceItem,
+  ViolationLevel,
+} from '@/types/inspection.types';
+import { formatVndDigits, parseVndDigits, vndToWords } from '@/utils/currency';
+import {
+  buildChecklistState,
+  getMissingRequirements,
+  ROMAN_NUMERALS,
+} from '@/utils/inspection-checklist';
+import {
+  EMPTY_VIOLATION_REPORT_VALUES,
+  parseViolationReport,
+  serializeViolationReport,
+  VIOLATION_REPORT_SECTIONS,
+  type ViolationReportValues,
+} from '@/utils/violation-report-template';
 
 const VIOLATION_LEVELS: readonly ViolationLevel[] = [
   'Minor',
@@ -67,6 +83,9 @@ const STEP_META: Record<StepKey, { label: string; icon: keyof typeof Ionicons.gl
 
 const INPUT_CLASS = 'mb-3 h-12 rounded-2xl bg-surface px-4 text-sm text-textPrimary';
 const TEXTAREA_CLASS = 'mb-3 min-h-[84px] rounded-2xl bg-surface px-4 py-3 text-sm text-textPrimary';
+/** Ô nhập kiểu "điền vào dòng kẻ" của biên bản giấy — gạch chân đơn, không nền, không bo góc. */
+const PAPER_INPUT_CLASS = 'mb-3 h-9 border-b border-textDisabled px-0.5 text-sm text-textPrimary';
+const PAPER_TEXTAREA_CLASS = 'mb-3 min-h-[56px] border-b border-textDisabled px-0.5 text-sm text-textPrimary';
 
 /** Nút hành động chính trong sticky footer — style đồng nhất cho mọi stage. */
 interface FooterButtonProps {
@@ -118,6 +137,7 @@ export default function InspectionDetailScreen() {
     uploadFile,
     uploadingCategory,
     isUploading,
+    compressProgress,
     evidenceError,
     clearEvidenceError,
   } = useInspectionEvidence({ inspectionId: id, onUploaded: refetch });
@@ -125,23 +145,23 @@ export default function InspectionDetailScreen() {
 
   const [activeStep, setActiveStep] = useState<StepKey | null>(null);
   const [heroIndex, setHeroIndex] = useState(0);
-  /** Category checklist đang giãn ra tại chỗ — bấm lại để thu gọn. */
-  const [expandedCategory, setExpandedCategory] = useState<EvidenceCategory | null>(null);
+  /** Bằng chứng video/ghi âm đang mở trong trình phát. */
+  const [previewItem, setPreviewItem] = useState<InspectionEvidenceItem | null>(null);
 
   // Form state
   const [arrivalNote, setArrivalNote] = useState('');
-  const [violationStatus, setViolationStatus] = useState('');
+  const [violatorName, setViolatorName] = useState('');
+  const [violatorAddress, setViolatorAddress] = useState('');
+  const [violatorIdentity, setViolatorIdentity] = useState('');
+  const [violationReport, setViolationReport] = useState<ViolationReportValues>(
+    EMPTY_VIOLATION_REPORT_VALUES,
+  );
   const [otherNote, setOtherNote] = useState('');
   const [violationLevel, setViolationLevel] = useState<ViolationLevel>('Moderate');
   const [penaltyAmount, setPenaltyAmount] = useState('');
   const [decisionNumber, setDecisionNumber] = useState('');
   const [paymentDueDays, setPaymentDueDays] = useState('10');
   const [additionalMeasures, setAdditionalMeasures] = useState('');
-  const [paidAmount, setPaidAmount] = useState('');
-  const [paymentNote, setPaymentNote] = useState('');
-  const [receipt, setReceipt] = useState<{ uri: string; fileName: string; mimeType: string } | null>(
-    null,
-  );
   const [closeNoViolationReason, setCloseNoViolationReason] = useState('');
   const [closeReason, setCloseReason] = useState('');
 
@@ -164,7 +184,12 @@ export default function InspectionDetailScreen() {
   useEffect(() => {
     if (!detail) return;
     const states = buildChecklistState(detail.checklistEvidence);
-    setViolationStatus(states.find((s) => s.category === 'ViolationStatus')?.note ?? '');
+    setViolatorName(detail.violatorName ?? '');
+    setViolatorAddress(detail.violatorAddress ?? '');
+    setViolatorIdentity(detail.violatorIdentity ?? '');
+    setViolationReport(
+      parseViolationReport(states.find((s) => s.category === 'ViolationStatus')?.note),
+    );
     setOtherNote(states.find((s) => s.category === 'Other')?.note ?? '');
     if (detail.violationLevel) setViolationLevel(detail.violationLevel);
 
@@ -174,26 +199,10 @@ export default function InspectionDetailScreen() {
       if (detail.canConfirmArrival && !detail.arrivalConfirmedAt) return 'arrival';
       if (detail.canEditChecklist) return 'checklist';
       if (detail.canIssuePenalty || detail.canCloseNoViolation) return 'decision';
-      if (detail.canRecordPayment || detail.canClose) return 'payment';
+      if (detail.canClose) return 'payment';
       return null;
     });
   }, [detail]);
-
-  const handlePickReceipt = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 1,
-    });
-    if (result.canceled || !result.assets[0]) return;
-    const asset = result.assets[0];
-    setReceipt({
-      uri: asset.uri,
-      fileName: asset.fileName ?? 'receipt.jpg',
-      mimeType: asset.mimeType ?? 'image/jpeg',
-    });
-  }, []);
 
   const handleEvidencePick = useCallback(
     async (category: EvidenceCategory, source: 'camera' | 'library') => {
@@ -209,6 +218,10 @@ export default function InspectionDetailScreen() {
       uri: recorded.uri,
       fileName: recorded.fileName,
       mimeType: recorded.mimeType,
+      // BE từ chối durationSeconds = 0 — bản ghi < 1s bỏ qua field này.
+      ...(recorded.durationSeconds >= 1
+        ? { durationSeconds: recorded.durationSeconds }
+        : {}),
     });
   }, [audio, uploadFile]);
 
@@ -256,7 +269,7 @@ export default function InspectionDetailScreen() {
     arrival: stepStatus.arrival === 'done' || detail.canConfirmArrival,
     checklist: stepStatus.checklist === 'done' || detail.canEditChecklist || detail.canSubmitFieldReport,
     decision: stepStatus.decision === 'done' || detail.canIssuePenalty || detail.canCloseNoViolation,
-    payment: stepStatus.payment === 'done' || detail.canRecordPayment || detail.canClose,
+    payment: stepStatus.payment === 'done' || detail.canClose,
   };
 
   const stages: StageDef<StepKey>[] = STEP_ORDER.map((key) => ({
@@ -284,15 +297,21 @@ export default function InspectionDetailScreen() {
   if (currentStep === 'checklist' && !checklistLocked) {
     footerButtons.push({
       label: 'Lưu checklist',
-      disabled: submitting || !violationStatus.trim(),
+      disabled: submitting || !violationReport.severity.trim(),
       loading: submitting,
       onPress: () =>
         void run(
-          () =>
-            inspectionService.updateChecklist(id!, {
-              violationStatusText: violationStatus.trim(),
+          async () => {
+            await inspectionService.updateDetails(id!, {
+              violatorName: violatorName.trim() || undefined,
+              violatorAddress: violatorAddress.trim() || undefined,
+              violatorIdentity: violatorIdentity.trim() || undefined,
+            });
+            await inspectionService.updateChecklist(id!, {
+              violationStatusText: serializeViolationReport(violationReport),
               otherDescription: otherNote.trim() || undefined,
-            }),
+            });
+          },
           'Đã lưu checklist.',
         ),
     });
@@ -311,14 +330,14 @@ export default function InspectionDetailScreen() {
   if (currentStep === 'decision' && detail.canIssuePenalty) {
     footerButtons.push({
       label: 'Ban hành quyết định',
-      disabled: submitting || Number(penaltyAmount) <= 0 || !decisionNumber.trim(),
+      disabled: submitting || parseVndDigits(penaltyAmount) <= 0 || !decisionNumber.trim(),
       loading: submitting,
       onPress: () =>
         void run(
           () =>
             inspectionService.issuePenalty(id!, {
               violationLevel,
-              penaltyAmount: Number(penaltyAmount),
+              penaltyAmount: parseVndDigits(penaltyAmount),
               decisionNumber: decisionNumber.trim(),
               paymentDueDays: Number(paymentDueDays) || 10,
               additionalMeasures: additionalMeasures.trim() || undefined,
@@ -341,30 +360,6 @@ export default function InspectionDetailScreen() {
     });
   }
 
-  if (currentStep === 'payment' && detail.canRecordPayment) {
-    footerButtons.push({
-      label: 'Ghi nhận nộp phạt',
-      disabled: submitting || Number(paidAmount) <= 0 || !receipt,
-      loading: submitting,
-      onPress: () =>
-        void run(
-          () =>
-            inspectionService.recordPayment(id!, {
-              paidAmount: Number(paidAmount),
-              paidAt: new Date().toISOString(),
-              receipt: receipt!,
-              note: paymentNote.trim() || undefined,
-            }),
-          'Đã ghi nhận nộp phạt.',
-        ).then((ok) => {
-          if (ok) {
-            setPaidAmount('');
-            setPaymentNote('');
-            setReceipt(null);
-          }
-        }),
-    });
-  }
   if (currentStep === 'payment' && detail.canClose) {
     footerButtons.push({
       label: 'Đóng hồ sơ',
@@ -528,81 +523,132 @@ export default function InspectionDetailScreen() {
             </StagePanel>
           ) : null}
 
-          {/* ---- Checklist hiện trường ---- */}
+          {/* ---- Checklist hiện trường — trình bày như 1 tờ biên bản, mọi mục luôn hiện ---- */}
           {currentStep === 'checklist' ? (
             <StagePanel
               title={STEP_META.checklist.title}
               description="Hoàn thành các mục bắt buộc (*) trước khi chốt biên bản hiện trường."
             >
-              {checklistStates.map((state) => {
-                if (state.category === 'ViolationStatus') {
-                  return <ChecklistCategoryRow key={state.category} state={state} disabled onPress={() => {}} />;
-                }
-                const category = state.category as EvidenceCategory;
-                const isExpanded = expandedCategory === category;
-                return (
-                  <ChecklistCategoryRow
-                    key={state.category}
-                    state={state}
-                    // Biên bản đã chốt vẫn phải xem lại được ảnh/video/ghi âm/tài liệu đã tải —
-                    // chỉ khoá phần thêm/sửa file (xem `readOnly` trong EvidenceCategoryContent).
-                    isExpanded={isExpanded}
-                    onPress={() => {
-                      clearEvidenceError();
-                      setExpandedCategory((current) => (current === category ? null : category));
-                    }}
-                  >
-                    <EvidenceCategoryContent
-                      state={state}
-                      uploading={isUploading && uploadingCategory === category}
-                      errorMessage={evidenceError ?? (category === 'Audio' ? audio.recordingError : null)}
-                      readOnly={checklistLocked}
-                      onPick={(pickedCategory, source) => void handleEvidencePick(pickedCategory, source)}
-                      recorderSlot={
-                        category === 'Audio' ? (
-                          <AudioEvidenceRecorder
-                            isRecording={audio.isRecording}
-                            durationSeconds={audio.durationSeconds}
-                            maxDurationSeconds={audio.maxDurationSeconds}
-                            reachedLimit={audio.reachedLimit}
-                            uploading={isUploading && uploadingCategory === 'Audio'}
-                            onStart={() => void audio.start()}
-                            onStop={() => void handleStopRecording()}
-                          />
-                        ) : undefined
-                      }
-                    />
-                  </ChecklistCategoryRow>
-                );
-              })}
-
-              {!checklistLocked ? (
-                <View className="mt-3 rounded-2xl bg-surface p-3.5">
-                  <Text className="mb-2 text-sm font-bold text-textPrimary">
-                    Tình trạng vi phạm <Text style={{ color: colors.error }}>*</Text>
+              {checklistLocked && detail.fieldInvestigationSubmittedAt ? (
+                <ViolationReportDocument
+                  reportCode={detail.reportCode}
+                  submittedAt={detail.fieldInvestigationSubmittedAt}
+                  preparedByName={detail.assignedTeamName}
+                  violator={{
+                    name: detail.violatorName,
+                    address: detail.violatorAddress,
+                    identity: detail.violatorIdentity,
+                  }}
+                  sections={parseViolationReport(
+                    checklistStates.find((s) => s.category === 'ViolationStatus')?.note,
+                  )}
+                  evidenceStates={checklistStates.filter((s) => s.category !== 'ViolationStatus')}
+                />
+              ) : (
+                <View className="bg-white p-5" style={{ borderWidth: 1, borderColor: colors.textPrimary }}>
+                  <Text className="text-center text-base font-extrabold uppercase tracking-wide text-textPrimary">
+                    Biên bản ghi nhận hiện trường
                   </Text>
-                  <TextInput
-                    value={violationStatus}
-                    onChangeText={setViolationStatus}
-                    multiline
-                    placeholder="Mô tả tình trạng vi phạm quan sát được tại hiện trường"
-                    placeholderTextColor={colors.textSecondary}
-                    className={TEXTAREA_CLASS}
-                    style={{ backgroundColor: colors.white }}
-                    textAlignVertical="top"
-                  />
-                  <TextInput
-                    value={otherNote}
-                    onChangeText={setOtherNote}
-                    multiline
-                    placeholder="Ghi chú khác (tùy chọn)"
-                    placeholderTextColor={colors.textSecondary}
-                    className={TEXTAREA_CLASS}
-                    style={{ backgroundColor: colors.white }}
-                    textAlignVertical="top"
-                  />
+                  <Text className="mt-1 text-center text-xs italic text-textSecondary">
+                    (Số hồ sơ: {detail.reportCode})
+                  </Text>
+
+                  {/*
+                    BE cho phép UpdateDetails ngay trong InProgress (cùng nhóm với
+                    UpdateChecklist — xem docs/inspection-penalty-handover-flow.md dòng 273),
+                    nên hiện form theo cùng điều kiện các mục checklist khác, không phụ thuộc
+                    `canEditDetails` (flag đó phản ánh rule Draft cũ, không khớp flow checklist).
+                  */}
+                  <View className="mt-5 mb-5">
+                    <Text className="mb-2.5 text-sm font-bold text-textPrimary">Đối tượng vi phạm</Text>
+                    <TextInput
+                      value={violatorName}
+                      onChangeText={setViolatorName}
+                      placeholder="Họ tên / Tên cơ sở"
+                      placeholderTextColor={colors.textDisabled}
+                      className={PAPER_INPUT_CLASS}
+                    />
+                    <TextInput
+                      value={violatorAddress}
+                      onChangeText={setViolatorAddress}
+                      placeholder="Địa chỉ"
+                      placeholderTextColor={colors.textDisabled}
+                      className={PAPER_INPUT_CLASS}
+                    />
+                    <TextInput
+                      value={violatorIdentity}
+                      onChangeText={setViolatorIdentity}
+                      placeholder="CCCD / Mã số thuế"
+                      placeholderTextColor={colors.textDisabled}
+                      className={PAPER_INPUT_CLASS}
+                    />
+                  </View>
+
+                  {checklistStates.map((state, index) => {
+                    const numeral = ROMAN_NUMERALS[index] ?? String(index + 1);
+
+                    if (state.category === 'ViolationStatus') {
+                      return (
+                        <ChecklistSectionBlock key={state.category} numeral={numeral} state={state}>
+                          {VIOLATION_REPORT_SECTIONS.map((section) => (
+                            <View key={section.key} className="mb-3">
+                              <Text className="mb-1 text-sm text-textPrimary">
+                                {section.label}
+                                {section.required ? (
+                                  <Text style={{ color: colors.error }}> *</Text>
+                                ) : null}
+                              </Text>
+                              <TextInput
+                                value={violationReport[section.key]}
+                                onChangeText={(text) =>
+                                  setViolationReport((current) => ({ ...current, [section.key]: text }))
+                                }
+                                multiline
+                                placeholder={section.placeholder}
+                                placeholderTextColor={colors.textDisabled}
+                                className={PAPER_TEXTAREA_CLASS}
+                                textAlignVertical="top"
+                              />
+                            </View>
+                          ))}
+                        </ChecklistSectionBlock>
+                      );
+                    }
+
+                    const category = state.category as EvidenceCategory;
+                    return (
+                      <ChecklistSectionBlock key={state.category} numeral={numeral} state={state}>
+                        <EvidenceCategoryContent
+                          state={state}
+                          uploading={isUploading && uploadingCategory === category}
+                          compressProgress={
+                            uploadingCategory === category ? compressProgress : null
+                          }
+                          errorMessage={
+                            evidenceError ?? (category === 'Audio' ? audio.recordingError : null)
+                          }
+                          readOnly={checklistLocked}
+                          onPick={(pickedCategory, source) => void handleEvidencePick(pickedCategory, source)}
+                          onPreview={setPreviewItem}
+                          recorderSlot={
+                            category === 'Audio' ? (
+                              <AudioEvidenceRecorder
+                                isRecording={audio.isRecording}
+                                durationSeconds={audio.durationSeconds}
+                                maxDurationSeconds={audio.maxDurationSeconds}
+                                reachedLimit={audio.reachedLimit}
+                                uploading={isUploading && uploadingCategory === 'Audio'}
+                                onStart={() => void audio.start()}
+                                onStop={() => void handleStopRecording()}
+                              />
+                            ) : undefined
+                          }
+                        />
+                      </ChecklistSectionBlock>
+                    );
+                  })}
                 </View>
-              ) : null}
+              )}
 
               {detail.fieldInvestigationSubmittedAt ? (
                 <View
@@ -674,12 +720,17 @@ export default function InspectionDetailScreen() {
                   </View>
                   <TextInput
                     value={penaltyAmount}
-                    onChangeText={setPenaltyAmount}
+                    onChangeText={(text) => setPenaltyAmount(formatVndDigits(text))}
                     keyboardType="number-pad"
                     placeholder="Số tiền phạt (VND)"
                     placeholderTextColor={colors.textSecondary}
                     className={INPUT_CLASS}
                   />
+                  {parseVndDigits(penaltyAmount) > 0 ? (
+                    <Text className="-mt-2 mb-3 text-xs italic text-textSecondary">
+                      {vndToWords(parseVndDigits(penaltyAmount))}
+                    </Text>
+                  ) : null}
                   <TextInput
                     value={decisionNumber}
                     onChangeText={setDecisionNumber}
@@ -729,72 +780,19 @@ export default function InspectionDetailScreen() {
             </StagePanel>
           ) : null}
 
-          {/* ---- Nộp phạt & đóng hồ sơ ---- */}
+          {/* ---- Đóng hồ sơ ---- */}
           {currentStep === 'payment' ? (
             <StagePanel title={STEP_META.payment.title}>
-              {!detail.canRecordPayment && !detail.canClose ? (
+              {!detail.canClose ? (
                 <Text className="text-xs leading-[18px] text-textSecondary">
                   {detail.status === 'Closed'
                     ? 'Hồ sơ đã đóng.'
-                    : 'Bước này khả dụng sau khi có quyết định xử phạt.'}
+                    : 'LEO ghi nhận nộp phạt trên hệ thống web. Khi hồ sơ chuyển sang trạng thái đã nộp đủ, bước đóng hồ sơ sẽ khả dụng ở đây.'}
                 </Text>
               ) : null}
 
-              {detail.canRecordPayment ? (
-                <View className="mb-4">
-                  <Text className="mb-2 text-sm font-bold text-textPrimary">Ghi nhận nộp phạt</Text>
-                  <TextInput
-                    value={paidAmount}
-                    onChangeText={setPaidAmount}
-                    keyboardType="number-pad"
-                    placeholder="Số tiền đã nộp (VND)"
-                    placeholderTextColor={colors.textSecondary}
-                    className={INPUT_CLASS}
-                  />
-
-                  <Text className="mb-1.5 text-xs font-semibold text-textPrimary">
-                    Biên lai <Text style={{ color: colors.error }}>*</Text>
-                  </Text>
-                  {receipt ? (
-                    <View className="mb-3 flex-row items-center gap-3 rounded-2xl bg-surface p-2.5">
-                      <Image
-                        source={{ uri: receipt.uri }}
-                        style={{ width: 52, height: 52, borderRadius: 12 }}
-                      />
-                      <Text className="flex-1 text-xs text-textSecondary" numberOfLines={1}>
-                        {receipt.fileName}
-                      </Text>
-                      <Pressable onPress={() => setReceipt(null)} hitSlop={8}>
-                        <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
-                      </Pressable>
-                    </View>
-                  ) : (
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={() => void handlePickReceipt()}
-                      className="mb-3 items-center rounded-2xl bg-surface py-6"
-                    >
-                      <Ionicons name="receipt-outline" size={24} color={colors.textSecondary} />
-                      <Text className="mt-1.5 text-xs font-semibold text-textPrimary">
-                        Chọn ảnh biên lai
-                      </Text>
-                    </Pressable>
-                  )}
-
-                  <TextInput
-                    value={paymentNote}
-                    onChangeText={setPaymentNote}
-                    multiline
-                    placeholder="Ghi chú (tùy chọn)"
-                    placeholderTextColor={colors.textSecondary}
-                    className={TEXTAREA_CLASS}
-                    textAlignVertical="top"
-                  />
-                </View>
-              ) : null}
-
               {detail.canClose ? (
-                <View style={detail.canRecordPayment ? { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 } : undefined}>
+                <View>
                   <Text className="mb-2 text-sm font-bold text-textPrimary">Đóng hồ sơ</Text>
                   <TextInput
                     value={closeReason}
@@ -822,6 +820,14 @@ export default function InspectionDetailScreen() {
           </View>
         ) : null}
       </KeyboardAvoidingView>
+
+      <EvidencePlayerModal
+        visible={previewItem !== null}
+        kind={previewItem?.category === 'Audio' ? 'audio' : 'video'}
+        uri={previewItem?.mediaUrl ?? null}
+        title={previewItem?.category === 'Audio' ? 'Bản ghi âm hiện trường' : 'Video hiện trường'}
+        onClose={() => setPreviewItem(null)}
+      />
     </View>
   );
 }

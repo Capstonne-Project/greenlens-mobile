@@ -25,6 +25,7 @@ import { AssignmentActionButton } from '@/components/assignment/AssignmentAction
 import { BeforeImagesNextStepCard } from '@/components/assignment/BeforeImagesNextStepCard';
 import { TimerCard } from '@/components/assignment/TimerCard';
 import { ReportCommentsSection } from '@/components/report/ReportCommentsSection';
+import { ReportLocationMap } from '@/components/report/ReportLocationMap';
 import { ReportSatisfactionCard } from '@/components/report/ReportSatisfactionCard';
 import { useReportComments } from '@/hooks/useReportComments';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
@@ -164,6 +165,9 @@ function TaskDetailGallery({ images, severityBg, severityColor }: TaskDetailGall
         keyExtractor={(item, index) => item.url || `placeholder-${index}`}
         horizontal
         pagingEnabled
+        // 1 ảnh thì không cần vuốt ngang — tắt hẳn để cử chỉ dọc luôn về ScrollView cha.
+        scrollEnabled={items.length > 1}
+        nestedScrollEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={(e) => {
           const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
@@ -434,17 +438,6 @@ export default function AssignmentDetailScreen() {
     } as never);
   }, [task]);
 
-  const handleOpenEscalate = useCallback(() => {
-    if (!task) return;
-    router.push({
-      pathname: '/assignment/escalate',
-      params: {
-        reportId: task.reportId,
-        reportCode: task.reportCode,
-      },
-    } as never);
-  }, [task]);
-
   const severity     = SEVERITY_CONFIG[task?.severity ?? 'Medium'] ?? SEVERITY_CONFIG.Medium;
   const assignStatus = task
     ? (ASSIGNMENT_STATUS_CONFIG[task.assignmentStatus] ?? ASSIGNMENT_STATUS_CONFIG.Assigned)
@@ -453,6 +446,13 @@ export default function AssignmentDetailScreen() {
   const hasBeforeImages = task?.hasBeforeImages === true;
   const awaitingBeforeImages =
     task?.assignmentStatus === 'InProgress' && !hasBeforeImages;
+  /**
+   * Chỉ cho Hoàn thành khi đội đã cập nhật tiến độ ít nhất 1 lần.
+   * Tránh case task nhảy thẳng từ 0% sang Completed mà không có dấu vết xử lý.
+   */
+  const hasProgressUpdate =
+    task != null && (task.progressUpdatedAt != null || task.progressPercent > 0);
+  const canComplete = task?.canResolve === true && hasProgressUpdate;
   const declineDeadline = task
     ? resolveDeclineDeadline(task.declineDeadlineAt, task.assignedAt)
     : null;
@@ -525,6 +525,10 @@ export default function AssignmentDetailScreen() {
             />
 
             {/* Dialog bao ngoài — bo góc trên, chồng lên gallery */}
+            {/*
+              elevation cao (>8) trên Android đẩy view lên đầu z-order và nuốt touch event
+              của ScrollView cha → màn hình không lướt được. Giữ ở mức 4 như các card khác.
+            */}
             <View
               className="-mt-6 rounded-t-[28px] bg-white"
               style={{
@@ -532,7 +536,7 @@ export default function AssignmentDetailScreen() {
                 shadowOpacity: 0.15,
                 shadowRadius: 16,
                 shadowOffset: { width: 0, height: -4 },
-                elevation: 18,
+                elevation: 4,
               }}
             >
               <View className="items-center pt-2.5">
@@ -708,12 +712,19 @@ export default function AssignmentDetailScreen() {
                 />
               </View>
 
-              {/* Coordinates */}
+              {/* Coordinates + map ghim vị trí */}
               <View className="mb-4">
                 <SectionTitle label="Tọa độ" />
-                <Text className="text-sm text-textSecondary">
+                <Text className="mb-2.5 text-sm text-textSecondary">
                   {task.latitude.toFixed(6)}°N, {task.longitude.toFixed(6)}°E
                 </Text>
+                <ReportLocationMap
+                  latitude={task.latitude}
+                  longitude={task.longitude}
+                  address={task.address}
+                  hideHeading
+                  hideAddress
+                />
               </View>
 
               {/* SLA */}
@@ -852,6 +863,11 @@ export default function AssignmentDetailScreen() {
               </View>
             ) : (
               <View className="gap-2.5">
+                {!canComplete ? (
+                  <Text className="text-center text-xs text-textSecondary">
+                    Cần cập nhật tiến độ trước khi hoàn thành nhiệm vụ
+                  </Text>
+                ) : null}
                 <View className="flex-row items-stretch gap-3">
                   {task.canUpdateProgress ? (
                     <View style={{ flex: 1 }}>
@@ -869,21 +885,12 @@ export default function AssignmentDetailScreen() {
                         label="Hoàn thành"
                         icon="checkmark-done"
                         variant="primary"
+                        disabled={!canComplete}
                         onPress={handleOpenComplete}
                       />
                     </View>
                   ) : null}
                 </View>
-                <Pressable
-                  onPress={handleOpenEscalate}
-                  className="flex-row items-center justify-center gap-1.5 py-1"
-                  hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
-                >
-                  <Ionicons name="arrow-up-circle-outline" size={16} color={colors.textSecondary} />
-                  <Text className="text-xs font-semibold text-textSecondary">
-                    Vượt khả năng xử lý? Chuyển cấp
-                  </Text>
-                </Pressable>
               </View>
             )
           ) : task.assignmentStatus === 'Completed' ? (

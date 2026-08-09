@@ -17,7 +17,13 @@ interface UploadProgress {
   total: number;
 }
 
-type SubmitFailureReason = 'session-expired' | 'timeout' | 'network' | 'validation' | 'unknown';
+type SubmitFailureReason =
+  | 'session-expired'
+  | 'timeout'
+  | 'network'
+  | 'validation'
+  | 'rate-limited'
+  | 'unknown';
 
 interface UseSubmitPollutionReportResult {
   isUploading: boolean;
@@ -25,7 +31,12 @@ interface UseSubmitPollutionReportResult {
   uploadAllImages: (
     onProgress?: (progress: UploadProgress) => void,
   ) => Promise<{ ok: boolean; reason: SubmitFailureReason | null }>;
-  submitReport: () => Promise<{ ok: boolean; reason: SubmitFailureReason | null }>;
+  submitReport: () => Promise<{
+    ok: boolean;
+    reason: SubmitFailureReason | null;
+    /** Message BR-REP-010 từ BE (kèm số phút chờ) — chỉ có khi reason = 'rate-limited' */
+    rateLimitMessage?: string | null;
+  }>;
   lastFailureReason: SubmitFailureReason | null;
   fieldErrors: FieldErrors;
   clearFieldError: (field: keyof FieldErrors) => void;
@@ -61,11 +72,23 @@ function classifyUploadError(error: unknown): SubmitFailureReason {
   }
   if (isAxiosError(error)) {
     const body = error.response?.data as { code?: string } | undefined;
+    // BR-REP-010: 5 báo cáo/giờ, 20/24h — vượt thì bị khóa 1 giờ.
+    if (error.response?.status === 429 || body?.code === 'RATE_LIMIT_EXCEEDED') {
+      return 'rate-limited';
+    }
     if (error.response?.status === 422 || body?.code === 'VALIDATION_ERROR') return 'validation';
     if (error.code === 'ECONNABORTED') return 'timeout';
     if (!error.response) return 'network';
   }
   return 'unknown';
+}
+
+/** Message BR-REP-010 đã kèm số phút chờ — dùng nguyên văn thay vì tự chế lại. */
+function extractRateLimitMessage(error: unknown): string | null {
+  if (!isAxiosError(error)) return null;
+  const body = error.response?.data as Record<string, unknown> | undefined;
+  const message = typeof body?.message === 'string' ? body.message : undefined;
+  return message?.trim() || null;
 }
 
 function extractFieldErrors(error: unknown): FieldErrors {
@@ -311,7 +334,11 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
       if (reason === 'session-expired') {
         await clearAuth();
       }
-      return { ok: false as const, reason };
+      return {
+        ok: false as const,
+        reason,
+        rateLimitMessage: reason === 'rate-limited' ? extractRateLimitMessage(error) : null,
+      };
     } finally {
       console.log('[SUBMIT_REPORT] FINALLY', {
         isSubmitting: false,

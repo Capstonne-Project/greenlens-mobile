@@ -31,7 +31,7 @@ export default function ReportDetailScreen() {
       ? seedImageUrl.trim()
       : mergedFromThumb;
 
-  const { detail, history, isLoading, isActionBusy, errorMessage, refetch, closeReport, reopenReport, rateReport } =
+  const { detail, history, isLoading, isActionBusy, errorMessage, refetch, closeReport, requestReopen, rateReport } =
     useReportDetail(id, Boolean(id));
 
   const shouldResolveMergedFrom =
@@ -122,9 +122,7 @@ export default function ReportDetailScreen() {
       onClose={async () => {
         await closeReport();
       }}
-      onReopen={async () => {
-        await reopenReport();
-      }}
+      onRequestReopen={requestReopen}
       onRate={async (dto) => {
         await rateReport(dto);
       }}

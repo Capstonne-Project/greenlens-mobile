@@ -112,8 +112,37 @@ export default function AssignmentCompleteScreen() {
     setSubmitStep('uploading');
     try {
       const detailResponse = await cleanupAssignmentService.getMyTaskDetail(reportId);
-      if (!detailResponse.data.data.canResolve) {
-        const destination = detailResponse.data.data.hasBeforeImages
+      const detail = detailResponse.data.data;
+
+      // Bắt buộc có ít nhất 1 lần cập nhật tiến độ trước khi hoàn thành.
+      if (detail.progressUpdatedAt == null && detail.progressPercent <= 0) {
+        setSubmitStep('idle');
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        Alert.alert(
+          'Chưa cập nhật tiến độ',
+          'Hãy cập nhật tiến độ xử lý ít nhất một lần trước khi hoàn thành nhiệm vụ.',
+          [
+            { text: 'Đóng', style: 'cancel' },
+            {
+              text: 'Cập nhật tiến độ',
+              onPress: () =>
+                router.replace({
+                  pathname: '/assignment/progress',
+                  params: {
+                    reportId,
+                    currentPercent: String(detail.progressPercent),
+                    lastUpdatedHoursAgo: '',
+                    historyJson: '[]',
+                  },
+                } as never),
+            },
+          ],
+        );
+        return;
+      }
+
+      if (!detail.canResolve) {
+        const destination = detail.hasBeforeImages
           ? '/assignment/[id]'
           : '/assignment/before-images';
         router.replace({

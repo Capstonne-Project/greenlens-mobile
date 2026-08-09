@@ -1,9 +1,15 @@
-/** BE v3 — 7 trạng thái chính trên Report (master plan §2) */
+/**
+ * BE v3 — 8 trạng thái chính trên Report (master plan §2).
+ * `Reopened`: BR-REP-015 — LEO duyệt yêu cầu mở lại (Resolved → Reopened), chờ LEO phân
+ * công lại team (giống `Verified`) rồi mới sang `InProgress`.
+ * Xem docs/fe-reopen-request-workflow-guide.md.
+ */
 export type ReportStatus =
   | 'Submitted'
   | 'Verified'
   | 'InProgress'
   | 'Resolved'
+  | 'Reopened'
   | 'Closed'
   | 'Rejected'
   | 'Duplicate';
@@ -23,6 +29,7 @@ export const REPORT_STATUS_V3: readonly ReportStatus[] = [
   'Verified',
   'InProgress',
   'Resolved',
+  'Reopened',
   'Closed',
   'Rejected',
   'Duplicate',

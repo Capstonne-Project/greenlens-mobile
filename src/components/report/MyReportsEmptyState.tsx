@@ -64,6 +64,15 @@ export function MyReportsEmptyState({
           primaryIcon: 'sync-outline',
           onPrimary: () => onSwitchTab('InProgress'),
         };
+      case 'REOPENED':
+        return {
+          icon: 'refresh-outline',
+          title: 'Không có báo cáo mở lại',
+          description: 'Báo cáo được mở lại hoặc đang chờ duyệt yêu cầu mở lại sẽ hiện ở đây.',
+          primaryLabel: 'Xem tất cả',
+          primaryIcon: 'list-outline',
+          onPrimary: () => onSwitchTab('ALL'),
+        };
       case 'DONE':
         return {
           icon: 'checkmark-done-outline',

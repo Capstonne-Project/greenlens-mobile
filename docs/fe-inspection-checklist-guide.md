@@ -21,10 +21,31 @@ Draft → POST /accept → InProgress
 | Category | Bắt buộc | Upload route |
 |----------|----------|--------------|
 | `ViolationStatus` | Text | `PUT /checklist` |
-| `ScenePhoto` | ≥ 2 ảnh | `POST /evidence?category=ScenePhoto` |
-| `Video` | Không | `POST /evidence?category=Video` (≤30MB) |
-| `Audio` | Không | `POST /evidence?category=Audio` (≤10MB) |
-| `Other` | Không | `PUT /checklist` + optional file `Other` |
+| `ScenePhoto` | ≥ 2 ảnh | `POST /evidence` — `category: "ScenePhoto"` (≤20MB/ảnh) |
+| `Video` | Không | `POST /evidence` — `category: "Video"` (≤30MB) |
+| `Audio` | Không | `POST /evidence` — `category: "Audio"` (≤10MB) |
+| `Other` | Không | `PUT /checklist` + optional file `Other` (≤20MB) |
+
+## Upload evidence — JSON, không còn multipart
+
+BE đã đổi `POST /evidence` sang `application/json`. File phải upload thẳng lên R2 trước:
+
+```
+1) POST /v1/media/presign
+   { fileName, contentType, purpose: "InspectionEvidence",
+     inspectionId, evidenceCategory, fileSizeBytes }
+2) PUT <uploadUrl>  (binary, kèm requiredHeaders)
+3) POST /v1/inspections/{id}/evidence
+   { category, items: [{ url, contentType, sizeBytes, durationSeconds? }], description? }
+```
+
+Ràng buộc BE:
+
+- Tối đa **5 item** mỗi request.
+- `url` phải nằm trong folder `reports/{reportId}/inspection/{inspectionId}/{category}` — nên **bắt buộc** presign kèm `inspectionId` + `evidenceCategory`, không dùng presign chung.
+- `durationSeconds` nếu gửi phải **> 0** (bỏ field khi bản ghi < 1s).
+- Chỉ role `Inspector` được presign `purpose=InspectionEvidence`; inspection phải đang `InProgress` và chưa `submit-field-report`.
+- Response: `{ uploadedUrls, totalCategoryCount }`.
 
 ## API mới
 
@@ -33,7 +54,8 @@ Draft → POST /accept → InProgress
 | POST | `/v1/inspections/{id}/accept` | Inspector member |
 | POST | `/v1/inspections/{id}/confirm-arrival` | Inspector member |
 | PUT | `/v1/inspections/{id}/checklist` | Inspector member |
-| POST | `/v1/inspections/{id}/evidence` | Inspector member (multipart) |
+| POST | `/v1/media/presign` | Inspector (purpose=InspectionEvidence) |
+| POST | `/v1/inspections/{id}/evidence` | Inspector member (**JSON**, xem mục dưới) |
 | PUT | `/v1/inspections/{id}/submit-field-report` | Team Leader |
 
 ## GET detail capability flags

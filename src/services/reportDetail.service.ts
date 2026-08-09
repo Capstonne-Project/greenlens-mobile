@@ -4,6 +4,7 @@ import type {
   RateReportDto,
   ReportDetail,
   ReportHistoryResponse,
+  RequestReopenDto,
 } from '@/types/report-detail.types';
 
 export const reportDetailService = {
@@ -14,7 +15,13 @@ export const reportDetailService = {
 
   close: (reportId: string) => api.put<void>(`/reports/${reportId}/close`),
 
-  reopen: (reportId: string) => api.put<void>(`/reports/${reportId}/reopen`),
+  /**
+   * POST /reports/{id}/reopen-requests — BR-REP-015.
+   * Thay cho `PUT /reopen` (deprecated, luôn trả REOPEN_USE_REQUEST_ENDPOINT).
+   * Báo cáo giữ nguyên `Resolved` cho tới khi LEO duyệt. Trả về reopenRequestId.
+   */
+  requestReopen: (reportId: string, dto: RequestReopenDto) =>
+    api.post<ApiEnvelope<string>>(`/reports/${reportId}/reopen-requests`, dto),
 
   /** POST /reports/{id}/rate — độc lập với close/reopen */
   rate: (reportId: string, dto: RateReportDto) =>

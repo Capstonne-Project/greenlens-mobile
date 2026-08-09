@@ -16,6 +16,9 @@ export default function Index() {
   }
 
   if (isAuthenticated && user) {
+    if (user.mustChangePassword) {
+      return <Redirect href="/(auth)/force-change-password" />;
+    }
     return <Redirect href={getPostLoginHref(user.role)} />;
   }
 

@@ -25,6 +25,17 @@ const SEVERITY_META: Record<MyReportSeverity, { label: string; textColor: string
   Critical: { label: 'Nghiêm trọng', textColor: '#991B1B' },
 };
 
+/**
+ * Badge cho `Resolved` + `hasPendingReopenRequest` — tách khỏi `STATUS_META['Resolved']`
+ * ("Cần xác nhận") vì lúc này người dùng không cần làm gì, đang chờ LEO xem xét.
+ */
+const PENDING_REOPEN_META = {
+  label: 'Chờ duyệt mở lại',
+  textColor: '#7C2D12',
+  bgColor: '#FFEDD5',
+  highlight: true,
+};
+
 const CATEGORY_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   waste: 'trash-outline',
   water_pollution: 'water-outline',
@@ -33,12 +44,24 @@ const CATEGORY_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   other: 'leaf-outline',
 };
 
-function isNeedsConfirm(status: string): boolean {
-  return status === 'Resolved' || status === 'PenaltyIssued';
+/**
+ * BR-REP-015: khi có yêu cầu mở lại đang chờ LEO, status vẫn là `Resolved` — nhưng người
+ * dùng không cần xác nhận gì nữa (đã tự yêu cầu xử lý lại), nên tách riêng khỏi
+ * "cần xác nhận" để không hiện nhầm nút Đóng/Mở lại.
+ */
+function isPendingReopenReview(item: MyReportItem): boolean {
+  return item.status === 'Resolved' && Boolean(item.hasPendingReopenRequest);
+}
+
+function isNeedsConfirm(item: MyReportItem): boolean {
+  if (isPendingReopenReview(item)) return false;
+  return item.status === 'Resolved' || item.status === 'PenaltyIssued';
 }
 
 function isActiveWork(status: string): boolean {
-  return ['Submitted', 'Verified', 'Dispatched', 'Assigned', 'InProgress'].includes(status);
+  return ['Submitted', 'Verified', 'Dispatched', 'Assigned', 'InProgress', 'Reopened'].includes(
+    status,
+  );
 }
 
 function isClosed(status: string): boolean {
@@ -47,15 +70,6 @@ function isClosed(status: string): boolean {
 
 function isRejectedOnly(status: string): boolean {
   return status === 'Rejected';
-}
-
-function statusTone(status: string): string {
-  if (isNeedsConfirm(status)) return '#B45309';
-  if (isActiveWork(status)) return colors.primaryDark;
-  if (isClosed(status)) return colors.textSecondary;
-  if (status === 'Duplicate') return colors.primaryDark;
-  if (isRejectedOnly(status)) return colors.error;
-  return colors.textSecondary;
 }
 
 function timelineCopy(item: MyReportItem): { icon: keyof typeof Ionicons.glyphMap; text: string } {
@@ -74,8 +88,19 @@ function timelineCopy(item: MyReportItem): { icon: keyof typeof Ionicons.glyphMa
       text: 'Trùng với báo cáo khác và đã được gộp',
     };
   }
-  if (isNeedsConfirm(item.status)) {
+  if (isPendingReopenReview(item)) {
+    return {
+      icon: 'hourglass-outline',
+      text: 'Yêu cầu mở lại đã gửi — đang chờ cán bộ xem xét',
+    };
+  }
+  if (isNeedsConfirm(item)) {
     return { icon: 'checkmark-circle-outline', text: 'Đã hoàn thành — chờ bạn xác nhận' };
+  }
+  if (item.status === 'Reopened') {
+    // BR-REP-015: yêu cầu mở lại đã được LEO duyệt — phân biệt với "Đang được xử lý"
+    // thông thường để người dùng nhận ra đây là kết quả họ vừa yêu cầu.
+    return { icon: 'refresh-circle-outline', text: 'Yêu cầu mở lại đã được chấp nhận — đang xử lý lại' };
   }
   if (item.status === 'InProgress') {
     return { icon: 'sync-outline', text: 'Đang được xử lý' };
@@ -134,15 +159,20 @@ function ActionBtn({ label, variant, onPress }: ActionBtnProps) {
 }
 
 function MyReportListCardComponent({ item, onPress, onOpenPrimary }: MyReportListCardProps) {
-  const statusMeta = getReportStatusMeta(item.status);
+  const pendingReopenReview = isPendingReopenReview(item);
+  // `getReportStatusMeta('Resolved')` luôn trả label "Cần xác nhận" — sai khi đang chờ LEO
+  // duyệt yêu cầu mở lại, lúc đó người dùng không cần làm gì cả nên phải ghi đè riêng.
+  const statusMeta = pendingReopenReview ? PENDING_REOPEN_META : getReportStatusMeta(item.status);
   const severityMeta = SEVERITY_META[item.severity] ?? SEVERITY_META.Medium;
-  const needsConfirm = isNeedsConfirm(item.status);
-  const activeWork = isActiveWork(item.status);
+  const needsConfirm = isNeedsConfirm(item);
+  const activeWork = isActiveWork(item.status) || pendingReopenReview;
   const merged = isMergedDuplicateReport(item);
   const categoryKey = (item.categoryCode ?? 'other').toLowerCase();
   const iconName = CATEGORY_ICON[categoryKey] ?? 'leaf-outline';
   const timeline = timelineCopy(item);
-  const tone = statusTone(item.status);
+  // Dùng chung màu với badge (statusMeta) thay vì gọi lại statusTone(item.status) riêng —
+  // hai nguồn tách biệt từng khiến badge và icon/timeline lệch màu khi pending reopen.
+  const tone = statusMeta.textColor;
   const primaryCode = item.mergedIntoPrimaryReportCode?.trim();
 
   return (
@@ -157,13 +187,18 @@ function MyReportListCardComponent({ item, onPress, onOpenPrimary }: MyReportLis
               </Text>
               <Ionicons name="chevron-forward" size={14} color={colors.textDisabled} />
             </View>
-            <Text
-              className="max-w-[42%] text-right text-[12px] font-semibold"
-              style={{ color: tone }}
-              numberOfLines={1}
+            <View
+              className="max-w-[46%] shrink-0 rounded-full px-2.5 py-1"
+              style={{ backgroundColor: statusMeta.bgColor }}
             >
-              {statusMeta.label}
-            </Text>
+              <Text
+                className="text-[11px] font-bold"
+                style={{ color: statusMeta.textColor }}
+                numberOfLines={1}
+              >
+                {statusMeta.label}
+              </Text>
+            </View>
           </View>
 
           <View className="mb-3 flex-row items-start gap-2 rounded-xl bg-surface px-3 py-2">
@@ -215,12 +250,18 @@ function MyReportListCardComponent({ item, onPress, onOpenPrimary }: MyReportLis
             </View>
           </View>
 
-          <View className="mt-3 flex-row items-center justify-end border-t border-border/60 pt-2.5">
-            <Text className="text-[12px] text-textSecondary">Trạng thái: </Text>
-            <Text className="text-[13px] font-semibold" style={{ color: tone }}>
-              {needsConfirm ? 'Cần xác nhận' : activeWork ? 'Đang xử lý' : statusMeta.label}
-            </Text>
-          </View>
+          {/*
+            Badge ở đầu card đã nói rõ trạng thái — chân card chỉ nhắc việc người dùng
+            cần làm, tránh lặp lại cùng một thông tin hai lần.
+          */}
+          {needsConfirm ? (
+            <View className="mt-3 flex-row items-center justify-end gap-1 border-t border-border/60 pt-2.5">
+              <Text className="text-[13px] font-bold" style={{ color: statusMeta.textColor }}>
+                Xác nhận kết quả
+              </Text>
+              <Ionicons name="arrow-forward" size={14} color={statusMeta.textColor} />
+            </View>
+          ) : null}
         </View>
       </TapScale>
 

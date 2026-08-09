@@ -96,11 +96,44 @@ export interface ReportDetail {
   satisfaction?: ReportSatisfaction | null;
   hasCurrentUserRated?: boolean;
 
+  /** BR-REP-015: đang có yêu cầu mở lại chờ LEO duyệt — ẩn nút Mở lại */
+  hasPendingReopenRequest?: boolean;
+  pendingReopenRequest?: PendingReopenRequest | null;
+
   /** Khi báo cáo này bị gộp vào primary (Duplicate) */
   mergedIntoPrimaryReportId?: string | null;
   mergedIntoPrimaryReportCode?: string | null;
   /** Báo cáo đã gộp vào primary — gồm `imageUrl` thumb sau merge */
   mergedReports?: MergedReportRef[] | null;
+}
+
+/** BR-REP-015 — ràng buộc BE validate, FE chặn trước để không tốn round-trip */
+export const REOPEN_REASON_MIN_LENGTH = 20;
+export const REOPEN_REASON_MAX_LENGTH = 2000;
+export const REOPEN_EVIDENCE_MIN_IMAGES = 1;
+export const REOPEN_EVIDENCE_MAX_IMAGES = 5;
+/** `Report.MaxApprovedReopens` phía BE — mỗi báo cáo chỉ được duyệt mở lại 1 lần */
+export const REOPEN_MAX_APPROVED = 1;
+/** Cửa sổ 7 ngày kể từ `resolvedAt` */
+export const REOPEN_WINDOW_DAYS = 7;
+
+/** BR-REP-015: yêu cầu mở lại đang chờ LEO xem xét */
+export interface PendingReopenRequest {
+  requestId: string;
+  reason: string;
+  requestedAt: string;
+  evidenceMedia: ReportMediaItem[];
+}
+
+/**
+ * POST /reports/{id}/reopen-requests
+ * - `reason`: 20–2000 ký tự
+ * - `imageUrls`: 1–5 publicUrl từ presign (purpose = ReopenEvidence)
+ */
+export interface RequestReopenDto {
+  reason: string;
+  imageUrls: string[];
+  videoUrl?: string;
 }
 
 export interface ReportHistoryItem {
