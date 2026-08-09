@@ -55,6 +55,11 @@ const META_BY_TYPE: Record<string, NotificationMeta> = {
     categoryLabel: 'Xử phạt',
     isReportLinked: true,
   },
+  InspectionPenaltyPaidAndClosed: {
+    icon: 'checkmark-done-circle-outline',
+    categoryLabel: 'Xử phạt',
+    isReportLinked: true,
+  },
   ContractExpiry: {
     icon: 'calendar-outline',
     categoryLabel: 'Hợp đồng',
@@ -113,6 +118,41 @@ const META_BY_TYPE: Record<string, NotificationMeta> = {
   CommunityCleanupLeaderAssigned: {
     icon: 'people-circle-outline',
     categoryLabel: 'Cộng đồng',
+    isReportLinked: false,
+  },
+  CommunityCleanupStarted: {
+    icon: 'play-circle-outline',
+    categoryLabel: 'Cộng đồng',
+    isReportLinked: false,
+  },
+  CommunityCleanupProgressUpdated: {
+    icon: 'trending-up-outline',
+    categoryLabel: 'Cộng đồng',
+    isReportLinked: false,
+  },
+  CommunityCleanupVerificationSubmitted: {
+    icon: 'cloud-upload-outline',
+    categoryLabel: 'Cộng đồng',
+    isReportLinked: false,
+  },
+  CommunityCleanupVerificationRejected: {
+    icon: 'close-circle-outline',
+    categoryLabel: 'Cộng đồng',
+    isReportLinked: false,
+  },
+  CommunityCleanupVerified: {
+    icon: 'checkmark-done-circle-outline',
+    categoryLabel: 'Cộng đồng',
+    isReportLinked: false,
+  },
+  CommunityCleanupCheckInReminder: {
+    icon: 'alarm-outline',
+    categoryLabel: 'Cộng đồng',
+    isReportLinked: false,
+  },
+  BadgeProgressNear: {
+    icon: 'ribbon-outline',
+    categoryLabel: 'Thành tích',
     isReportLinked: false,
   },
 };
