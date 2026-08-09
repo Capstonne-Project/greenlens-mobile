@@ -11,6 +11,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.greenlensapp",
       "jsEngine": "jsc",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
@@ -88,7 +89,10 @@
         {
           "microphonePermission": "GreenLens cần micro để thanh tra ghi âm bằng chứng tại hiện trường."
         }
-      ]
+      ],
+      "react-native-compressor",
+      "expo-video",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true,

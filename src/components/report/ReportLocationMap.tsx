@@ -21,6 +21,10 @@ interface ReportLocationMapProps {
   address?: string | null;
   /** Ẩn nút "Chỉ đường Google Maps" — mặc định hiện khi toạ độ hợp lệ */
   hideDirectionsButton?: boolean;
+  /** Ẩn tiêu đề "VỊ TRÍ" — dùng khi màn hình đã có SectionTitle riêng */
+  hideHeading?: boolean;
+  /** Ẩn dòng địa chỉ phía trên map — dùng khi địa chỉ đã hiển thị ở chỗ khác */
+  hideAddress?: boolean;
 }
 
 function DirectionsButton({
@@ -88,14 +92,18 @@ export function ReportLocationMap({
   longitude,
   address,
   hideDirectionsButton = false,
+  hideHeading = false,
+  hideAddress = false,
 }: ReportLocationMapProps) {
   if (!isValidCoord(latitude, longitude)) {
     return (
       <View className="mb-4">
-        <Text className="mb-2 text-[11px] font-bold uppercase tracking-widest text-textSecondary">
-          Vị trí
-        </Text>
-        {address ? (
+        {!hideHeading ? (
+          <Text className="mb-2 text-[11px] font-bold uppercase tracking-widest text-textSecondary">
+            Vị trí
+          </Text>
+        ) : null}
+        {address && !hideAddress ? (
           <View className="flex-row items-start gap-1.5">
             <Ionicons name="location-outline" size={16} color={colors.textSecondary} style={{ marginTop: 1 }} />
             <Text className="flex-1 text-sm leading-5 text-textPrimary">{address}</Text>
@@ -109,11 +117,13 @@ export function ReportLocationMap({
 
   return (
     <View className="mb-4">
-      <Text className="mb-2 text-[11px] font-bold uppercase tracking-widest text-textSecondary">
-        Vị trí
-      </Text>
+      {!hideHeading ? (
+        <Text className="mb-2 text-[11px] font-bold uppercase tracking-widest text-textSecondary">
+          Vị trí
+        </Text>
+      ) : null}
 
-      {address ? (
+      {address && !hideAddress ? (
         <View className="mb-2.5 flex-row items-start gap-1.5">
           <Ionicons name="location-outline" size={16} color={colors.textSecondary} style={{ marginTop: 1 }} />
           <Text className="flex-1 text-sm leading-5 text-textPrimary">{address}</Text>

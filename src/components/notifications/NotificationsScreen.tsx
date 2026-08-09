@@ -167,6 +167,10 @@ export function NotificationsScreen({
 
   const listEmpty = isLoading && items.length === 0;
 
+  // `unreadCount` từ store có thể chưa đồng bộ (chưa fetch xong, hoặc BE trả 0 do lệch
+  // trạng thái) — dựa thêm vào danh sách thực tế để nút không biến mất khi vẫn còn chưa đọc.
+  const hasUnread = unreadCount > 0 || items.some((item) => !item.isRead);
+
   return (
     <View className="flex-1 bg-surface" style={{ paddingTop: insets.top }}>
       <View className="px-5 pb-3 pt-3">
@@ -186,13 +190,17 @@ export function NotificationsScreen({
             </Text>
           </View>
 
-          {unreadCount > 0 ? (
+          {hasUnread ? (
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Đánh dấu tất cả đã đọc"
               onPress={() => void markAllRead()}
-              className="rounded-full bg-white px-3 py-2"
+              hitSlop={6}
+              className="flex-row items-center gap-1.5 rounded-full px-3 py-2"
+              style={{ backgroundColor: colors.primaryLight }}
             >
-              <Text className="text-xs font-semibold text-primary">Đọc tất cả</Text>
+              <Ionicons name="checkmark-done" size={15} color={colors.primary} />
+              <Text className="text-xs font-bold text-primary">Đọc tất cả</Text>
             </Pressable>
           ) : null}
         </View>

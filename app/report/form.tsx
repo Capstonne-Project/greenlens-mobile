@@ -128,6 +128,16 @@ export default function ReportFormScreen() {
         );
         return;
       }
+      // BR-REP-010: đã bị khóa gửi — thử lại ngay chỉ tốn công, hướng người dùng chờ.
+      if (submitResult.reason === 'rate-limited') {
+        Alert.alert(
+          'Đã đạt giới hạn gửi báo cáo',
+          submitResult.rateLimitMessage ??
+            'Bạn đã gửi quá nhiều báo cáo trong thời gian ngắn. Vui lòng thử lại sau.',
+          [{ text: 'Đã hiểu' }],
+        );
+        return;
+      }
       Alert.alert('Gửi báo cáo thất bại', 'Vui lòng kiểm tra thông tin và thử lại.');
       return;
     }

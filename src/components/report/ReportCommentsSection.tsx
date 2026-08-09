@@ -27,6 +27,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+/** Damping cao để nút co lại rồi dừng hẳn, không dao động qua lại. */
+const PRESS_SPRING = { damping: 18, stiffness: 280 };
+
 interface ReportCommentsSectionProps {
   threads: CommentThread[];
   isLoading: boolean;
@@ -86,10 +89,10 @@ function ActionChip({
         disabled={disabled}
         hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
         onPressIn={() => {
-          scale.value = withSpring(0.9);
+          scale.value = withSpring(0.9, PRESS_SPRING);
         }}
         onPressOut={() => {
-          scale.value = withSpring(1);
+          scale.value = withSpring(1, PRESS_SPRING);
         }}
         className="flex-row items-center gap-1 py-1 pr-2"
       >
@@ -390,10 +393,10 @@ function ComposerSheet({
                   onPress={onSubmit}
                   disabled={!canSend}
                   onPressIn={() => {
-                    if (canSend) sendScale.value = withSpring(0.94);
+                    if (canSend) sendScale.value = withSpring(0.94, PRESS_SPRING);
                   }}
                   onPressOut={() => {
-                    sendScale.value = withSpring(1);
+                    sendScale.value = withSpring(1, PRESS_SPRING);
                   }}
                   className="h-10 flex-row items-center gap-1.5 rounded-full px-4"
                   style={{ backgroundColor: canSend ? colors.primary : colors.border }}

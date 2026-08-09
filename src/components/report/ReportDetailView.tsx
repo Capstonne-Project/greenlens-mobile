@@ -1,3 +1,4 @@
+import { ReopenRequestModal } from '@/components/report/ReopenRequestModal';
 import { ReportDetailBody, SEVERITY_CONFIG } from '@/components/report/ReportDetailBody';
 import { Text } from '@/components/ui/text';
 import { useReportComments } from '@/hooks/useReportComments';
@@ -8,6 +9,7 @@ import type {
   ReportDetailSource,
   ReportHistoryItem,
   ReportMediaItem,
+  RequestReopenDto,
 } from '@/types/report-detail.types';
 import { formatRelativeTime } from '@/utils/formatters';
 import { splitReportMedia } from '@/utils/report-media';
@@ -51,7 +53,8 @@ interface ReportDetailViewProps {
   onBack: () => void;
   onRetry: () => void;
   onClose: () => Promise<void>;
-  onReopen: () => Promise<void>;
+  /** BR-REP-015 — gửi yêu cầu mở lại kèm lý do + ảnh, trả về `true` khi thành công */
+  onRequestReopen: (dto: RequestReopenDto) => Promise<boolean>;
   onRate?: (dto: RateReportDto) => Promise<void>;
   /** Bật block bình luận / phản hồi (citizen + đội ngũ) */
   enableComments?: boolean;
@@ -98,10 +101,10 @@ function AnimatedButton({ onPress, disabled, style, className, children }: Anima
         onPress={onPress}
         disabled={disabled}
         onPressIn={() => {
-          scale.value = withSpring(0.96);
+          scale.value = withSpring(0.96, SPRING);
         }}
         onPressOut={() => {
-          scale.value = withSpring(1);
+          scale.value = withSpring(1, SPRING);
         }}
         className={className}
         style={style}
@@ -267,7 +270,7 @@ export function ReportDetailView({
   onBack,
   onRetry,
   onClose,
-  onReopen,
+  onRequestReopen,
   onRate,
   enableComments = true,
   fromMergedReportId,
@@ -292,11 +295,21 @@ export function ReportDetailView({
     detail?.reporterId != null && currentUserId != null
       ? detail.reporterId === currentUserId
       : source === 'tab' && !fromMergedReportId;
+  const [isReopenModalVisible, setIsReopenModalVisible] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
+
   const footerActions = detail
-    ? getReportFooterActions(detail.status, { isOwner, reopenedCount: detail.reopenedCount ?? 0 })
+    ? getReportFooterActions(detail.status, {
+        isOwner,
+        reopenedCount: detail.reopenedCount ?? 0,
+        hasPendingReopenRequest: detail.hasPendingReopenRequest ?? false,
+        resolvedAt: detail.resolvedAt,
+      })
     : { showClose: false, showReopen: false };
 
-  const statusMeta = detail ? getReportStatusMeta(detail.status) : null;
+  const statusMeta = detail
+    ? getReportStatusMeta(detail.status, detail.hasPendingReopenRequest)
+    : null;
   const severity = SEVERITY_CONFIG[detail?.severity ?? 'Medium'] ?? SEVERITY_CONFIG.Medium;
 
   const {
@@ -455,11 +468,20 @@ export function ReportDetailView({
   };
 
   const handleReopenPress = () => {
-    const remaining = Math.max(0, 2 - (detail?.reopenedCount ?? 0));
-    Alert.alert('Mở lại báo cáo', `Báo cáo sẽ được gửi xử lý lại. Còn ${remaining} lần mở lại.`, [
-      { text: 'Huỷ', style: 'cancel' },
-      { text: 'Mở lại', onPress: () => void onReopen() },
-    ]);
+    setReopenError(null);
+    setIsReopenModalVisible(true);
+  };
+
+  const handleReopenSubmit = async (dto: RequestReopenDto) => {
+    setReopenError(null);
+    const succeeded = await onRequestReopen(dto);
+    if (succeeded) {
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setIsReopenModalVisible(false);
+      return;
+    }
+    // Giữ modal mở để người dùng sửa lý do / ảnh thay vì mất hết nội dung đã nhập.
+    setReopenError(errorMessage ?? 'Không thể gửi yêu cầu mở lại. Vui lòng thử lại.');
   };
 
   if (isLoading) {
@@ -730,6 +752,21 @@ export function ReportDetailView({
           </View>
         ) : null}
       </Animated.View>
+
+      {/*
+        Chỉ mount khi thật sự mở — modal kéo theo hook chọn/nén/upload ảnh, không cần
+        chạy trong suốt vòng đời màn chi tiết.
+      */}
+      {isReopenModalVisible ? (
+        <ReopenRequestModal
+          visible
+          reportId={detail.id}
+          isSubmitting={isActionBusy}
+          submitError={reopenError}
+          onDismiss={() => setIsReopenModalVisible(false)}
+          onSubmit={handleReopenSubmit}
+        />
+      ) : null}
     </View>
   );
 }

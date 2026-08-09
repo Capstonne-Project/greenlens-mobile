@@ -39,6 +39,16 @@ export function connectNotificationHub(onNotification: () => void): HubConnectio
 
   connection.on('ReceiveNotification', () => onNotification());
 
+  connection.onreconnecting(() => {
+    if (__DEV__) console.log('[notification-hub] reconnecting…');
+  });
+  connection.onreconnected(() => {
+    if (__DEV__) console.log('[notification-hub] reconnected');
+  });
+  connection.onclose((error) => {
+    if (__DEV__) console.log('[notification-hub] closed', error?.message ?? '');
+  });
+
   void connection.start().catch((error) => {
     if (__DEV__) console.warn('[notification-hub] connect failed', error);
   });

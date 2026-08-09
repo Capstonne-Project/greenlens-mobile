@@ -59,6 +59,7 @@ export interface MyReportsTabCounts {
   ALL?: number;
   InProgress?: number;
   NEEDS_CONFIRM?: number;
+  REOPENED?: number;
   DONE?: number;
   Rejected?: number;
 }

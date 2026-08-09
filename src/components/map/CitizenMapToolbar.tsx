@@ -5,8 +5,6 @@ import { TapScale } from '@/components/layout/TapScale';
 interface CitizenMapToolbarProps {
   onLayers?: () => void;
   onLocate?: () => void;
-  onFilters?: () => void;
-  onZoomIn?: () => void;
   layersActive?: boolean;
   locateActive?: boolean;
   /** Khi false: chỉ stack icon (parent tự absolute). Mặc định absolute góc phải. */
@@ -17,8 +15,6 @@ interface CitizenMapToolbarProps {
 export function CitizenMapToolbar({
   onLayers,
   onLocate,
-  onFilters,
-  onZoomIn,
   layersActive = false,
   locateActive = false,
   floating = true,
@@ -31,8 +27,6 @@ export function CitizenMapToolbar({
     >
       <ToolbarIcon icon="layers-outline" onPress={onLayers ?? (() => {})} active={layersActive} />
       <ToolbarIcon icon="locate-outline" onPress={onLocate ?? (() => {})} active={locateActive} />
-      <ToolbarIcon icon="options-outline" onPress={onFilters ?? (() => {})} />
-      <ToolbarIcon icon="add-outline" onPress={onZoomIn ?? (() => {})} />
     </View>
   );
 }

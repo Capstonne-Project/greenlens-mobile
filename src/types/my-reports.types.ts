@@ -29,6 +29,12 @@ export interface MyReportItem {
   mergedIntoPrimaryReportId?: string | null;
   /** Mã hiển thị báo cáo gốc (e.g. RPT-2026-0045) */
   mergedIntoPrimaryReportCode?: string | null;
+  /**
+   * BR-REP-015: có yêu cầu mở lại đang chờ LEO duyệt. Status vẫn `Resolved` trong lúc chờ
+   * — không có field này thì card không phân biệt được "vừa xong" với "đang chờ duyệt".
+   */
+  hasPendingReopenRequest?: boolean;
+  reopenedCount?: number;
 }
 
 export interface ReportsPagination {
@@ -51,12 +57,19 @@ export interface GetMyReportsParams {
   status?: MyReportStatus;
 }
 
-export type MyReportsFilterKey = 'ALL' | 'InProgress' | 'NEEDS_CONFIRM' | 'DONE' | 'Rejected';
+export type MyReportsFilterKey =
+  | 'ALL'
+  | 'InProgress'
+  | 'NEEDS_CONFIRM'
+  | 'REOPENED'
+  | 'DONE'
+  | 'Rejected';
 
 export const MY_REPORTS_FILTERS: { key: MyReportsFilterKey; label: string }[] = [
   { key: 'ALL', label: 'Tất cả' },
   { key: 'InProgress', label: 'Đang xử lý' },
   { key: 'NEEDS_CONFIRM', label: 'Cần xác nhận' },
+  { key: 'REOPENED', label: 'Mở lại' },
   { key: 'DONE', label: 'Đã xong' },
   { key: 'Rejected', label: 'Từ chối / Đã gộp' },
 ];
@@ -69,7 +82,17 @@ export function filterMyReportsByKey(items: MyReportItem[], key: MyReportsFilter
     );
   }
   if (key === 'NEEDS_CONFIRM') {
-    return items.filter((item) => item.status === 'Resolved' || item.status === 'PenaltyIssued');
+    return items.filter(
+      (item) =>
+        (item.status === 'Resolved' && !item.hasPendingReopenRequest) ||
+        item.status === 'PenaltyIssued',
+    );
+  }
+  if (key === 'REOPENED') {
+    // BR-REP-015: báo cáo đã được LEO duyệt mở lại (Reopened) hoặc đang chờ duyệt yêu cầu mở lại.
+    return items.filter(
+      (item) => item.status === 'Reopened' || (item.status === 'Resolved' && item.hasPendingReopenRequest),
+    );
   }
   if (key === 'DONE') {
     return items.filter((item) => item.status === 'Closed' || item.status === 'ClosedNoViolation');

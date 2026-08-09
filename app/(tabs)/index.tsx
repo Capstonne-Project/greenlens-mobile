@@ -380,30 +380,6 @@ export default function CitizenHomeScreen() {
 
 
 
-  const zoomIn = useCallback(() => {
-
-    const base = userLocation && followUserLocation ? toRegion(userLocation) : HCM_INITIAL_REGION;
-
-    mapRef.current?.animateToRegion(
-
-      {
-
-        ...base,
-
-        latitudeDelta: base.latitudeDelta * 0.6,
-
-        longitudeDelta: base.longitudeDelta * 0.6,
-
-      },
-
-      400
-
-    );
-
-  }, [followUserLocation, toRegion, userLocation]);
-
-
-
   if (Platform.OS === 'web') {
 
     return (
@@ -573,8 +549,6 @@ export default function CitizenHomeScreen() {
         <CitizenMapToolbar
           onLayers={onChooseMapLayer}
           onLocate={onLocateMe}
-          onFilters={() => Alert.alert('Bộ lọc', 'Lọc nâng cao — sắp có.')}
-          onZoomIn={zoomIn}
           layersActive={mapLayerId !== DEFAULT_CITIZEN_MAP_LAYER_ID}
           locateActive={canShowUserLocation && followUserLocation}
           bottomOffset={REPORTS_SHEET_PEEK_HEIGHT + 16}

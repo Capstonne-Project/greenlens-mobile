@@ -1,131 +1,212 @@
-import { SafeScreen } from "@/components/layout/SafeScreen";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Text } from "@/components/ui/text";
-import { useAuth } from "@/hooks/useAuth";
-import { getApiErrorMessage } from "@/utils/api-error-message";
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useState } from "react";
-import { Alert, Pressable, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
+import { FloatingLabelInput } from '@/components/auth/FloatingLabelInput';
+import { getAuthDialogTop } from '@/components/auth/auth-layout';
+import { SafeScreen } from '@/components/layout/SafeScreen';
+import { TapScale } from '@/components/layout/TapScale';
+import { Text } from '@/components/ui/text';
+import { onboardingColors } from '@/components/onboarding/constants';
+import { useAuth } from '@/hooks/useAuth';
+import { getAuthErrorMessage } from '@/utils/auth-errors';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { router, type Href } from 'expo-router';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-interface TapItemProps {
-  onPress: () => void;
-  className?: string;
-  children: React.ReactNode;
-}
-
-function TapItem({ onPress, className, children }: TapItemProps) {
-  const scale = useSharedValue(1);
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  return (
-    <Animated.View style={animatedStyle}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={() => {
-          scale.value = withSpring(0.98, { damping: 18, stiffness: 260 });
-        }}
-        onPressOut={() => {
-          scale.value = withSpring(1, { damping: 18, stiffness: 260 });
-        }}
-        className={className}
-      >
-        {children}
-      </Pressable>
-    </Animated.View>
-  );
-}
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ForgotPasswordScreen() {
   const { forgotPassword } = useAuth();
-  const [credential, setCredential] = useState("");
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSendRecoveryLink = async () => {
-    const email = credential.trim();
-    if (!email) {
-      Alert.alert("Thiếu thông tin", "Vui lòng nhập email đã đăng ký.");
+  const validate = (value: string): string | null => {
+    if (!value) return 'Vui lòng nhập email đã đăng ký.';
+    if (!EMAIL_PATTERN.test(value)) return 'Email không hợp lệ.';
+    return null;
+  };
+
+  const handleSubmit = async () => {
+    const value = email.trim();
+    const error = validate(value);
+    if (error) {
+      setEmailError(error);
       return;
     }
+    setEmailError(null);
 
     try {
       setIsSubmitting(true);
-      await forgotPassword({ email });
-      Alert.alert(
-        "Đã xử lý",
-        "Nếu email tồn tại trong hệ thống, bạn sẽ nhận mã OTP để đặt lại mật khẩu.",
-        [
-          {
-            text: "Tiếp tục",
-            onPress: () =>
-              router.push({
-                pathname: "/(auth)/reset-password",
-                params: { email },
-              }),
-          },
-        ],
-      );
+      await forgotPassword({ email: value });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.push({
+        pathname: '/(auth)/verify-reset-otp',
+        params: { email: value },
+      } as Href);
     } catch (err) {
-      Alert.alert("Lỗi", getApiErrorMessage(err, "Không gửi được yêu cầu. Thử lại sau."));
+      setEmailError(getAuthErrorMessage(err, 'Không gửi được yêu cầu. Thử lại sau.'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const dialogTop = getAuthDialogTop('forgot-password', height);
+
   return (
-    <SafeScreen className="flex-1 bg-background px-5">
-      <View className="flex-1 pt-2">
-        <TapItem
-          onPress={() => router.back()}
-          className="mb-12 h-10 w-10 items-center justify-center rounded-full bg-surface"
-        >
-          <Ionicons name="chevron-back" size={18} color="#0F172A" />
-        </TapItem>
+    <SafeScreen edges={['top']} className="bg-transparent">
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View className="flex-1">
+          {/* Dải trên để lộ quả đất của auth layout */}
+          <View style={{ height: dialogTop }} className="justify-start px-4 pt-2">
+            <TapScale
+              onPress={() => router.back()}
+              className="flex-row items-center gap-1 self-start rounded-full px-1 py-2"
+            >
+              <Ionicons name="chevron-back" size={20} color={onboardingColors.text} />
+              <Text className="text-base font-medium" style={{ color: onboardingColors.text }}>
+                Back
+              </Text>
+            </TapScale>
+          </View>
 
-        <Text className="text-4xl font-bold text-textPrimary">Khôi phục mật khẩu</Text>
-        <Text className="mt-2 text-base leading-6 text-textSecondary">
-          Nhập email đã đăng ký. Hệ thống sẽ gửi mã OTP (theo chính sách bảo mật, không tiết lộ email có tồn tại hay không).
-        </Text>
-
-        <View className="mt-10 gap-4">
-          <View className="gap-2">
-            <Text className="text-sm font-medium text-textPrimary">Email</Text>
-            <View className="h-14 flex-row items-center rounded-2xl border border-border bg-white px-3">
-              <Ionicons name="person-outline" size={18} color="#94A3B8" />
-              <Input
-                value={credential}
-                onChangeText={setCredential}
-                autoCapitalize="none"
-                placeholder="vana@example.com"
-                placeholderTextColor="#94A3B8"
-                className="h-full flex-1 border-0 bg-transparent px-3 py-0 shadow-none"
-              />
+          <Animated.View
+            entering={FadeInDown.duration(320)}
+            style={[styles.dialog, { paddingBottom: Math.max(insets.bottom, 16) }]}
+          >
+            <View className="items-center pb-4 pt-3">
+              <View style={styles.grabber} />
             </View>
-          </View>
 
-          <View className="flex-row items-start gap-2 rounded-2xl border border-primary bg-primaryLight px-3 py-3">
-            <Ionicons name="time-outline" size={16} color="#10B981" />
-            <Text className="flex-1 text-sm leading-5 text-textPrimary">
-              Link sẽ hết hạn sau <Text className="font-semibold text-primary">15 phút</Text>. Bạn có tối đa{" "}
-              <Text className="font-semibold text-primary">3 lần</Text> yêu cầu/giờ.
-            </Text>
-          </View>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 12, paddingHorizontal: 24 }}
+            >
+              <View className="mb-6 items-center">
+                <View
+                  className="mb-4 h-16 w-16 items-center justify-center rounded-3xl"
+                  style={{ backgroundColor: 'rgba(34,197,94,0.12)' }}
+                >
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={28}
+                    color={onboardingColors.primary}
+                  />
+                </View>
+                <Text
+                  className="text-center text-[28px] font-bold"
+                  style={{ color: onboardingColors.primary }}
+                >
+                  Quên mật khẩu?
+                </Text>
+                <Text className="mt-2 text-center text-sm leading-5 text-textSecondary">
+                  Nhập email đã đăng ký, chúng tôi sẽ gửi mã OTP để bạn đặt lại mật khẩu.
+                </Text>
+              </View>
 
-          <Button onPress={handleSendRecoveryLink} disabled={isSubmitting} className="mt-2 h-16 rounded-3xl">
-            <Text className="text-base font-semibold text-primary-foreground">
-              {isSubmitting ? "Đang gửi..." : "Gửi mã OTP"}
-            </Text>
-          </Button>
+              <View className="gap-4">
+                  <FloatingLabelInput
+                    label="Email"
+                    value={email}
+                    onChangeText={(text) => {
+                      setEmail(text);
+                      if (emailError) setEmailError(null);
+                    }}
+                    onBlur={() => {
+                      const value = email.trim();
+                      if (value) setEmailError(validate(value));
+                    }}
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    keyboardType="email-address"
+                    error={emailError ?? undefined}
+                  />
 
-          <TapItem onPress={() => router.replace("/(auth)/login")} className="items-center py-3">
-            <Text className=" font-semibold text-textPrimary">Quay lại đăng nhập</Text>
-          </TapItem>
+                  <View
+                    className="flex-row items-start gap-2.5 rounded-2xl px-4 py-3.5"
+                    style={{ backgroundColor: 'rgba(34,197,94,0.08)' }}
+                  >
+                    <Ionicons
+                      name="shield-checkmark-outline"
+                      size={18}
+                      color={onboardingColors.primary}
+                      style={{ marginTop: 1 }}
+                    />
+                    <Text className="flex-1 text-sm leading-5 text-textSecondary">
+                      Vì lý do bảo mật, hệ thống không tiết lộ email có tồn tại hay không.
+                    </Text>
+                  </View>
+
+                  <View
+                    className="mt-1 overflow-hidden rounded-2xl"
+                    style={{
+                      backgroundColor: onboardingColors.primary,
+                      opacity: isSubmitting ? 0.6 : 1,
+                    }}
+                  >
+                    <TapScale
+                      onPress={() => void handleSubmit()}
+                      disabled={isSubmitting}
+                      className="h-14 items-center justify-center"
+                    >
+                      {isSubmitting ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text className="text-base font-bold text-white">Gửi mã OTP</Text>
+                      )}
+                    </TapScale>
+                  </View>
+              </View>
+
+              <View className="mt-8 flex-row items-center justify-center gap-1">
+                <Text className="text-sm text-textSecondary">Nhớ mật khẩu rồi?</Text>
+                <TapScale onPress={() => router.replace('/(auth)/login')}>
+                  <Text className="text-sm font-bold" style={{ color: onboardingColors.primary }}>
+                    Đăng nhập
+                  </Text>
+                </TapScale>
+              </View>
+            </ScrollView>
+          </Animated.View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </SafeScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  dialog: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 36,
+    borderTopRightRadius: 36,
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 12,
+  },
+  grabber: {
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: '#D1D5DB',
+  },
+});

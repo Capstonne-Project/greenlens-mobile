@@ -140,21 +140,23 @@ function BadgeCell({
             <Text className="mt-1 text-center text-[10px] font-bold" style={{ color: colors.primary }}>
               Đang hiển thị
             </Text>
-          ) : item.isUnlocked && item.awardedAt ? (
+          ) : item.isUnlocked ? (
+            // Đã unlock: `currentProgressValue` luôn null từ BE — không dùng nhánh
+            // progress bên dưới kẻo hiện lại "0/Y" cho huy hiệu đã đạt từ lâu.
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
-              {formatDate(item.awardedAt)}
+              {item.awardedAt ? formatDate(item.awardedAt) : 'Đã đạt'}
             </Text>
           ) : item.requiredPoints ? (
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
-              {item.currentProgressValue ?? 0}/{item.requiredPoints} điểm
+              {item.currentProgressValue ?? '?'}/{item.requiredPoints} điểm
             </Text>
           ) : item.requiredReportCount ? (
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
-              {item.currentProgressValue ?? 0}/{item.requiredReportCount} báo cáo
+              {item.currentProgressValue ?? '?'}/{item.requiredReportCount} báo cáo
             </Text>
           ) : item.requiredStreakDays ? (
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
-              {item.currentProgressValue ?? 0}/{item.requiredStreakDays} ngày
+              {item.currentProgressValue ?? '?'}/{item.requiredStreakDays} ngày
             </Text>
           ) : (
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>

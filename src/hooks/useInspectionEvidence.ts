@@ -2,8 +2,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useState } from 'react';
 
 import { inspectionService } from '@/services/inspection.service';
-import { EVIDENCE_MAX_BYTES, type EvidenceCategory } from '@/types/inspection.types';
+import {
+  EVIDENCE_MAX_BYTES,
+  EVIDENCE_MAX_ITEMS_PER_REQUEST,
+  type EvidenceCategory,
+  type EvidenceLocalFile,
+} from '@/types/inspection.types';
 import { compressImageForUpload } from '@/utils/compress-image';
+import { compressVideoForUpload } from '@/utils/compress-video';
 import { getInspectionErrorMessage } from '@/utils/inspection-errors';
 
 type PickSource = 'camera' | 'library';
@@ -29,6 +35,8 @@ export function useInspectionEvidence({
 }: UseInspectionEvidenceOptions) {
   const [uploadingCategory, setUploadingCategory] = useState<EvidenceCategory | null>(null);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  /** % nén video (0–100); null khi không nén — UI dùng để hiện tiến độ. */
+  const [compressProgress, setCompressProgress] = useState<number | null>(null);
 
   const upload = useCallback(
     async (category: EvidenceCategory, source: PickSource): Promise<boolean> => {
@@ -72,37 +80,74 @@ export function useInspectionEvidence({
         if (result.canceled || result.assets.length === 0) return false;
 
         const limit = EVIDENCE_MAX_BYTES[category];
-        const oversized = result.assets.find(
-          (a) => limit && typeof a.fileSize === 'number' && a.fileSize > limit,
-        );
-        if (oversized && limit) {
+
+        // Video sẽ được nén ở bước dưới nên chỉ chặn sau khi nén; ảnh/tệp khác chặn ngay.
+        if (!isVideo) {
+          const oversized = result.assets.find(
+            (a) => typeof a.fileSize === 'number' && a.fileSize > limit,
+          );
+          if (oversized) {
+            setEvidenceError(
+              `Tệp ${formatLimit(oversized.fileSize!)} vượt giới hạn ${formatLimit(limit)}. Vui lòng chọn tệp nhỏ hơn.`,
+            );
+            return false;
+          }
+        }
+
+        if (result.assets.length > EVIDENCE_MAX_ITEMS_PER_REQUEST) {
           setEvidenceError(
-            `Tệp ${formatLimit(oversized.fileSize!)} vượt giới hạn ${formatLimit(limit)}. Vui lòng chọn tệp nhỏ hơn.`,
+            `Chỉ được tải tối đa ${EVIDENCE_MAX_ITEMS_PER_REQUEST} tệp mỗi lượt. Vui lòng chọn lại.`,
           );
           return false;
         }
 
         setUploadingCategory(category);
 
+        const files: EvidenceLocalFile[] = [];
         for (const asset of result.assets) {
-          let uri = asset.uri;
-          let mimeType = asset.mimeType ?? (isVideo ? 'video/mp4' : 'image/jpeg');
-          let fileName = asset.fileName ?? `${category.toLowerCase()}.${isVideo ? 'mp4' : 'jpg'}`;
+          if (isVideo) {
+            setCompressProgress(0);
+            const video = await compressVideoForUpload(asset.uri, {
+              baseName: category.toLowerCase(),
+              onProgress: setCompressProgress,
+            });
+            setCompressProgress(null);
 
-          if (!isVideo) {
-            const compressed = await compressImageForUpload(asset.uri, category.toLowerCase());
-            uri = compressed.uri;
-            mimeType = compressed.mimeType;
-            fileName = compressed.fileName;
+            // Nén xong mới biết dung lượng thật — chặn ở đây thay vì trước khi nén.
+            const finalSize = video.sizeBytes ?? asset.fileSize;
+            if (typeof finalSize === 'number' && finalSize > limit) {
+              setEvidenceError(
+                video.compressed
+                  ? `Video sau khi nén vẫn ${formatLimit(finalSize)}, vượt giới hạn ${formatLimit(limit)}. Vui lòng quay clip ngắn hơn.`
+                  : `Video ${formatLimit(finalSize)} vượt giới hạn ${formatLimit(limit)}. Cần bản build dev-client để tự động nén, hoặc chọn clip ngắn hơn.`,
+              );
+              return false;
+            }
+
+            files.push({
+              uri: video.uri,
+              mimeType: video.mimeType,
+              fileName: video.fileName,
+              // expo-image-picker trả ms; BE yêu cầu số nguyên giây > 0.
+              ...(video.durationSeconds
+                ? { durationSeconds: video.durationSeconds }
+                : asset.duration
+                  ? { durationSeconds: Math.max(1, Math.round(asset.duration / 1000)) }
+                  : {}),
+            });
+            continue;
           }
 
-          await inspectionService.uploadEvidence(inspectionId, {
-            category,
-            uri,
-            fileName,
-            mimeType,
+          const compressed = await compressImageForUpload(asset.uri, category.toLowerCase());
+          files.push({
+            uri: compressed.uri,
+            mimeType: compressed.mimeType,
+            fileName: compressed.fileName,
           });
         }
+
+        // Một request cho cả lượt chọn — BE đếm lại tổng theo category để mở gate ScenePhoto ≥ 2.
+        await inspectionService.uploadEvidence(inspectionId, { category, files });
 
         await onUploaded();
         return true;
@@ -111,6 +156,7 @@ export function useInspectionEvidence({
         return false;
       } finally {
         setUploadingCategory(null);
+        setCompressProgress(null);
       }
     },
     [inspectionId, onUploaded, uploadingCategory],
@@ -120,13 +166,13 @@ export function useInspectionEvidence({
   const uploadFile = useCallback(
     async (
       category: EvidenceCategory,
-      file: { uri: string; fileName: string; mimeType: string },
+      file: EvidenceLocalFile,
     ): Promise<boolean> => {
       if (!inspectionId || uploadingCategory) return false;
       setEvidenceError(null);
       setUploadingCategory(category);
       try {
-        await inspectionService.uploadEvidence(inspectionId, { category, ...file });
+        await inspectionService.uploadEvidence(inspectionId, { category, files: [file] });
         await onUploaded();
         return true;
       } catch (error) {
@@ -144,6 +190,8 @@ export function useInspectionEvidence({
     uploadFile,
     uploadingCategory,
     isUploading: uploadingCategory !== null,
+    /** 0–100 khi đang nén video, null khi không — hiện tiến độ thay vì spinner câm. */
+    compressProgress,
     evidenceError,
     clearEvidenceError: useCallback(() => setEvidenceError(null), []),
   };

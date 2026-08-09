@@ -9,16 +9,23 @@ import type {
   UploadReportImageResult,
 } from '@/types/pollution-report.types';
 
-interface UploadReportImageInput {
+export interface UploadReportImageInput {
   uri: string;
   mimeType: string;
   fileName: string;
   purpose?: MediaUploadPurpose;
   reportId?: string;
+  /** Bắt buộc khi purpose = 'InspectionEvidence' — BE dùng để dựng folder key. */
+  inspectionId?: string;
+  /** Bắt buộc khi purpose = 'InspectionEvidence' — ScenePhoto | Video | Audio | Other. */
+  evidenceCategory?: string;
 }
 
 /** Mobile → R2 direct only. No BE multipart proxy. */
-const R2_PUT_TIMEOUT_MS = 90_000;
+const R2_PUT_BASE_TIMEOUT_MS = 30_000;
+/** ~0.6 Mbps sàn — video 30MB được ~7 phút thay vì chết cứng ở 90s trên 4G yếu. */
+const R2_PUT_MS_PER_MB = 13_000;
+const R2_PUT_MAX_TIMEOUT_MS = 480_000;
 const R2_PUT_MAX_ATTEMPTS = 2;
 const ANALYZE_TIMEOUT_MS = 60_000;
 
@@ -74,14 +81,24 @@ async function readLocalFile(uri: string): Promise<{ body: R2PutBody; sizeBytes:
   return { body: blob, sizeBytes };
 }
 
+/** File càng lớn càng cần nhiều thời gian — timeout cứng làm video luôn chết trên 4G. */
+function resolvePutTimeoutMs(sizeBytes: number): number {
+  const sizeMb = sizeBytes / (1024 * 1024);
+  return Math.min(
+    R2_PUT_MAX_TIMEOUT_MS,
+    R2_PUT_BASE_TIMEOUT_MS + Math.ceil(sizeMb) * R2_PUT_MS_PER_MB,
+  );
+}
+
 async function putToR2(
   uploadUrl: string,
   body: R2PutBody,
   contentType: string,
   requiredHeaders: Record<string, string>,
+  timeoutMs: number,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), R2_PUT_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(uploadUrl, {
       method: 'PUT',
@@ -111,6 +128,8 @@ async function uploadViaPresign({
   fileName,
   purpose = 'ReportImage',
   reportId,
+  inspectionId,
+  evidenceCategory,
 }: UploadReportImageInput): Promise<UploadReportImageResult> {
   const startedAt = Date.now();
   console.log('[R2_UPLOAD] START', { name: fileName, type: mimeType, purpose });
@@ -136,6 +155,8 @@ async function uploadViaPresign({
           contentType: normalizedMime,
           purpose,
           reportId,
+          inspectionId,
+          evidenceCategory,
           fileSizeBytes: sizeBytes,
         },
       );
@@ -168,6 +189,7 @@ async function uploadViaPresign({
           body,
           presign.contentType,
           presign.requiredHeaders ?? {},
+          resolvePutTimeoutMs(sizeBytes),
         );
       } catch (error: unknown) {
         if (error instanceof Error && error.name === 'AbortError') {

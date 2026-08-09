@@ -27,7 +27,7 @@ interface UseMyReportsResult {
 
 type FetchMode = 'initial' | 'refresh' | 'more';
 
-const CLIENT_FILTER_KEYS: MyReportsFilterKey[] = ['InProgress', 'NEEDS_CONFIRM', 'DONE'];
+const CLIENT_FILTER_KEYS: MyReportsFilterKey[] = ['InProgress', 'NEEDS_CONFIRM', 'REOPENED', 'DONE'];
 
 export function useMyReports({
   filterKey = 'ALL',
