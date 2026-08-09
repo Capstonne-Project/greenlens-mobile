@@ -35,6 +35,18 @@ const INSPECTION_ERROR_MESSAGES: Record<string, string> = {
 const FALLBACK = 'Không thể thực hiện thao tác. Vui lòng thử lại.';
 
 /**
+ * Lỗi upload trực tiếp lên R2 — ném dạng `Error` thuần từ pollutionReport.service,
+ * không phải AxiosError nên phải map riêng.
+ */
+const R2_UPLOAD_ERROR_MESSAGES: Record<string, string> = {
+  R2_PUT_TIMEOUT:
+    'Tải tệp quá lâu do mạng yếu. Vui lòng thử lại nơi có sóng tốt hơn hoặc chọn tệp nhỏ hơn.',
+  IMAGE_TOO_LARGE: 'Tệp vượt quá dung lượng cho phép. Vui lòng chọn tệp nhỏ hơn.',
+  PRESIGN_RESPONSE_INVALID: 'Không khởi tạo được phiên tải lên. Vui lòng thử lại.',
+  R2_UPLOAD_FAILED: 'Tải tệp lên thất bại. Vui lòng thử lại.',
+};
+
+/**
  * Map lỗi mutation sang message tiếng Việt.
  * Chỉ dùng `code` (enum của BE) — không hiển thị `message` thô từ server.
  */
@@ -48,6 +60,20 @@ export function getInspectionErrorMessage(error: unknown): string {
 
     const code = (error.response.data as { code?: string } | undefined)?.code;
     if (code && INSPECTION_ERROR_MESSAGES[code]) return INSPECTION_ERROR_MESSAGES[code];
+    return FALLBACK;
   }
+
+  if (error instanceof Error) {
+    const mapped = R2_UPLOAD_ERROR_MESSAGES[error.message];
+    if (mapped) return mapped;
+    // R2_PUT_FAILED_403 / _500 … — gom về một message chung.
+    if (error.message.startsWith('R2_PUT_FAILED_')) {
+      return R2_UPLOAD_ERROR_MESSAGES.R2_UPLOAD_FAILED;
+    }
+    if (error.message.startsWith('LOCAL_FILE_READ_FAILED')) {
+      return 'Không đọc được tệp đã chọn. Vui lòng chọn lại.';
+    }
+  }
+
   return FALLBACK;
 }
