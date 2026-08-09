@@ -15,6 +15,20 @@ export type NotificationType =
   | 'CommunityCleanupOpened'
   /** Cleaner được LEO chỉ định làm Leader chương trình dọn cộng đồng (gửi cho fieldWorker) */
   | 'CommunityCleanupLeaderAssigned'
+  /** Leader check-in / event bắt đầu — gửi cho participants còn lại (citizen) */
+  | 'CommunityCleanupStarted'
+  /** Leader cập nhật % tiến độ dọn dẹp — gửi cho participants (citizen) */
+  | 'CommunityCleanupProgressUpdated'
+  /** Leader nộp minh chứng hoàn thành — gửi cho LEO (chỉ xử lý ở web) */
+  | 'CommunityCleanupVerificationSubmitted'
+  /** LEO từ chối minh chứng — gửi cho Leader (fieldWorker) */
+  | 'CommunityCleanupVerificationRejected'
+  /** LEO duyệt hoàn thành chương trình — gửi cho participants (citizen) */
+  | 'CommunityCleanupVerified'
+  /** Nhắc check-in trước giờ dọn dẹp ~15 phút — gửi cho participants (citizen) */
+  | 'CommunityCleanupCheckInReminder'
+  /** Sắp đạt huy hiệu (tiến độ gần ngưỡng) */
+  | 'BadgeProgressNear'
   /** Planned — LEO/CM assign cleanup task */
   | 'ReportAssigned'
   /** Planned — LEO assign inspection */
@@ -27,6 +41,8 @@ export type NotificationType =
   | 'StaffInvitationAccepted'
   /** Citizen đã từ chối lời mời (gửi cho LEO) */
   | 'StaffInvitationDeclined'
+  /** LEO đã ghi nhận nộp phạt đủ và đóng hồ sơ — gửi cho Inspector đã ban hành QĐ */
+  | 'InspectionPenaltyPaidAndClosed'
   | (string & {});
 
 export interface AppNotification {

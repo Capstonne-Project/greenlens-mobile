@@ -191,16 +191,41 @@ export interface UpdateChecklistDto {
   otherDescription?: string;
 }
 
-export interface UploadEvidenceInput {
-  category: EvidenceCategory;
+/** Tệp local trước khi đẩy lên R2. */
+export interface EvidenceLocalFile {
   uri: string;
   fileName: string;
   mimeType: string;
+  /** Chỉ dùng cho Video/Audio — BE yêu cầu > 0 nếu có mặt. */
+  durationSeconds?: number;
+}
+
+export interface UploadEvidenceInput {
+  category: EvidenceCategory;
+  files: EvidenceLocalFile[];
   description?: string;
 }
 
-/** Giới hạn theo doc — Video ≤ 30MB, Audio ≤ 10MB. */
-export const EVIDENCE_MAX_BYTES: Partial<Record<EvidenceCategory, number>> = {
+/** Item trong body JSON `POST /inspections/{id}/evidence` (khác `InspectionEvidenceItem` — kiểu đọc về). */
+export interface EvidenceUploadItem {
+  url: string;
+  contentType: string;
+  sizeBytes: number;
+  durationSeconds?: number;
+}
+
+export interface UploadEvidenceResult {
+  uploadedUrls: string[];
+  totalCategoryCount: number;
+}
+
+/** BE chặn > 5 item mỗi request (InspectionEvidenceUploadRules.MaxItemsPerRequest). */
+export const EVIDENCE_MAX_ITEMS_PER_REQUEST = 5;
+
+/** Khớp `InspectionEvidenceUploadRules` của BE — ảnh 20MB, Video 30MB, Audio 10MB. */
+export const EVIDENCE_MAX_BYTES: Record<EvidenceCategory, number> = {
+  ScenePhoto: 20 * 1024 * 1024,
+  Other: 20 * 1024 * 1024,
   Video: 30 * 1024 * 1024,
   Audio: 10 * 1024 * 1024,
 };
