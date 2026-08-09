@@ -329,6 +329,11 @@ Không body. Chỉ `Resolved` + là reporter.
 
 ### Reopen
 
+> ⚠️ **Phần này đã lỗi thời.** Contract hiện hành là `POST /v1/reports/{id}/reopen-requests`
+> (bắt buộc lý do ≥ 20 ký tự + 1–5 ảnh minh chứng, tối đa **1** lần thay vì 2, và báo cáo giữ
+> nguyên `Resolved` cho tới khi LEO duyệt — không tự chuyển `InProgress`).
+> Xem [`fe-reopen-request-flow.md`](./fe-reopen-request-flow.md).
+
 ```http
 PUT /v1/reports/{id}/reopen
 ```
