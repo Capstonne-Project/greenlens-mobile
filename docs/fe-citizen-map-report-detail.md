@@ -143,6 +143,10 @@ Authorization: Bearer {token}
 
 #### Mở lại (chưa hài lòng)
 
+> ⚠️ **LỖI THỜI.** `PUT /reopen` nay luôn trả `REOPEN_USE_REQUEST_ENDPOINT`.
+> Contract hiện hành: `POST /v1/reports/{id}/reopen-requests` (kèm lý do + ảnh, giới hạn **1** lần,
+> chờ LEO duyệt) — xem [`fe-reopen-request-flow.md`](./fe-reopen-request-flow.md).
+
 ```http
 PUT /v1/reports/{reportId}/reopen
 Authorization: Bearer {token}

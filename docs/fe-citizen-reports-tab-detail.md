@@ -147,6 +147,10 @@ GET /v1/reports/{reportId}/history
 Authorization: Bearer {token}
 ```
 
+> ⚠️ `PUT /reopen` **đã lỗi thời** — nay là `POST /v1/reports/{id}/reopen-requests`
+> (lý do ≥ 20 ký tự + 1–5 ảnh, tối đa **1** lần, chờ LEO duyệt).
+> Xem [`fe-reopen-request-flow.md`](./fe-reopen-request-flow.md).
+
 ```http
 PUT /v1/reports/{reportId}/close    # 204, no body
 PUT /v1/reports/{reportId}/reopen   # 204, no body
