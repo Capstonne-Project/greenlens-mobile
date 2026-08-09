@@ -8,6 +8,7 @@ import type {
   ReportDetailWasteTag,
   ReportHistoryItem,
   ReportMediaItem,
+  RequestReopenDto,
 } from '@/types/report-detail.types';
 import { getApiErrorMessage } from '@/utils/api-error-message';
 import { firstNonEmptyUrl, isUuid } from '@/utils/report-merge';
@@ -20,7 +21,8 @@ interface UseReportDetailResult {
   errorMessage: string | null;
   refetch: () => Promise<void>;
   closeReport: () => Promise<boolean>;
-  reopenReport: () => Promise<boolean>;
+  /** BR-REP-015 — gửi yêu cầu mở lại kèm lý do + ảnh minh chứng, chờ LEO duyệt */
+  requestReopen: (dto: RequestReopenDto) => Promise<boolean>;
   rateReport: (dto: RateReportDto) => Promise<boolean>;
 }
 
@@ -117,6 +119,8 @@ export function useReportDetail(reportId: string | undefined, enabled = true): U
         wasteTags: normalizeWasteTags(data.wasteTags),
         mergedReports: normalizeMergedReports(mergedRaw),
         reopenedCount: data.reopenedCount ?? 0,
+        hasPendingReopenRequest: data.hasPendingReopenRequest ?? false,
+        pendingReopenRequest: data.pendingReopenRequest ?? null,
       });
       setHistory(historyRes.data.data.items ?? []);
     } catch (error) {
@@ -151,20 +155,23 @@ export function useReportDetail(reportId: string | undefined, enabled = true): U
     }
   }, [refetch, reportId]);
 
-  const reopenReport = useCallback(async () => {
-    if (!reportId) return false;
-    setIsActionBusy(true);
-    try {
-      await reportDetailService.reopen(reportId);
-      await refetch();
-      return true;
-    } catch (error) {
-      setErrorMessage(getApiErrorMessage(error, 'Không thể mở lại báo cáo.'));
-      return false;
-    } finally {
-      setIsActionBusy(false);
-    }
-  }, [refetch, reportId]);
+  const requestReopen = useCallback(
+    async (dto: RequestReopenDto) => {
+      if (!reportId) return false;
+      setIsActionBusy(true);
+      try {
+        await reportDetailService.requestReopen(reportId, dto);
+        await refetch();
+        return true;
+      } catch (error) {
+        setErrorMessage(getApiErrorMessage(error, 'Không thể gửi yêu cầu mở lại.'));
+        return false;
+      } finally {
+        setIsActionBusy(false);
+      }
+    },
+    [refetch, reportId],
+  );
 
   const rateReport = useCallback(
     async (dto: RateReportDto) => {
@@ -193,9 +200,9 @@ export function useReportDetail(reportId: string | undefined, enabled = true): U
       errorMessage,
       refetch,
       closeReport,
-      reopenReport,
+      requestReopen,
       rateReport,
     }),
-    [detail, history, isLoading, isActionBusy, errorMessage, refetch, closeReport, reopenReport, rateReport],
+    [detail, history, isLoading, isActionBusy, errorMessage, refetch, closeReport, requestReopen, rateReport],
   );
 }

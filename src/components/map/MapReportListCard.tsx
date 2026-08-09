@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -28,10 +28,11 @@ const CATEGORY_ICON: Record<ReportCategory, keyof typeof Ionicons.glyphMap> = {
 
 interface MapReportListCardProps {
   pin: CitizenMapPin;
-  onPress: () => void;
+  /** Nhận `pin` để caller truyền được callback ổn định — giữ `memo` có hiệu lực. */
+  onPress: (pin: CitizenMapPin) => void;
 }
 
-export function MapReportListCard({ pin, onPress }: MapReportListCardProps) {
+function MapReportListCardComponent({ pin, onPress }: MapReportListCardProps) {
   const [isSaved, setIsSaved] = useState(false);
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
@@ -47,7 +48,7 @@ export function MapReportListCard({ pin, onPress }: MapReportListCardProps) {
   return (
     <Animated.View style={animatedStyle}>
       <Pressable
-        onPress={onPress}
+        onPress={() => onPress(pin)}
         onPressIn={() => { scale.value = withSpring(0.98, { damping: 18, stiffness: 260 }); }}
         onPressOut={() => { scale.value = withSpring(1, { damping: 18, stiffness: 260 }); }}
         className="mx-4 mb-4 overflow-hidden rounded-2xl border border-border bg-white"
@@ -110,3 +111,9 @@ export function MapReportListCard({ pin, onPress }: MapReportListCardProps) {
     </Animated.View>
   );
 }
+
+/**
+ * Memo hoá — sheet re-render liên tục khi kéo, không memo thì mọi card (kèm ảnh 200px)
+ * dựng lại mỗi frame và làm nghẽn JS thread.
+ */
+export const MapReportListCard = memo(MapReportListCardComponent);
