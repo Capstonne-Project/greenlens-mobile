@@ -39,6 +39,7 @@ function resolveCitizenHref(type: string, ref: string | null): Href | null {
   switch (type) {
     case 'BadgeEarned':
     case 'LevelUp':
+    case 'BadgeProgressNear':
       return '/(tabs)/profile' as Href;
 
     // Fullscreen accept/decline — referenceId = invitationId
@@ -53,6 +54,10 @@ function resolveCitizenHref(type: string, ref: string | null): Href | null {
 
     // referenceId = CommunityCleanupEvent id (not report id) — deep-link to the vote/join screen.
     case 'CommunityCleanupOpened':
+    // Cleanup verified as complete, or check-in reminder — deep-link to the event detail screen.
+    // Note: CommunityCleanupStarted/ProgressUpdated are LEO-only notifications, not sent to citizens.
+    case 'CommunityCleanupVerified':
+    case 'CommunityCleanupCheckInReminder':
       if (ref) {
         return {
           pathname: '/community/[id]',
@@ -103,6 +108,8 @@ function resolveFieldWorkerHref(type: string, ref: string | null): Href | null {
 
     // referenceId = CommunityCleanupEvent id — Cleaner được chỉ định làm Leader.
     case 'CommunityCleanupLeaderAssigned':
+    // LEO từ chối minh chứng hoàn thành — Leader quay lại màn quản lý để nộp lại.
+    case 'CommunityCleanupVerificationRejected':
       if (ref) {
         return {
           pathname: '/community-lead/[id]',
