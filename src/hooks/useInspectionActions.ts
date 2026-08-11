@@ -1,7 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import { useCallback, useState } from 'react';
 
-import { getInspectionErrorMessage } from '@/utils/inspection-errors';
+import { getInspectionErrorMessage, isStaleStateError } from '@/utils/inspection-errors';
 
 interface UseInspectionActionsOptions {
   /** Gọi lại detail sau khi mutation thành công. */
@@ -32,6 +32,9 @@ export function useInspectionActions({ onRefresh }: UseInspectionActionsOptions)
       } catch (error) {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
         setActionError(getInspectionErrorMessage(error));
+        if (isStaleStateError(error)) {
+          await onRefresh();
+        }
         return false;
       } finally {
         setSubmitting(false);

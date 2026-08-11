@@ -62,3 +62,24 @@ export async function enrichLocationWithGoong(
     wardCode,
   };
 }
+
+/**
+ * Thử enrich tỉnh/phường lần lượt theo danh sách tọa độ (thường là GPS của nhiều ảnh khác nhau).
+ * Dừng ngay khi một tọa độ resolve ra được `provinceCode` — tránh bỏ cuộc chỉ vì ảnh đầu
+ * rơi vào vùng Goong không có dữ liệu. Nếu không tọa độ nào ra kết quả, trả về enrich của tọa độ đầu.
+ */
+export async function enrichLocationWithGoongFallback(
+  candidates: ReportLocationDraft[],
+  provinces: CatalogProvince[],
+  options?: { overwriteAddress?: boolean; preserveAdminCodes?: boolean },
+): Promise<ReportLocationDraft> {
+  let lastResolved: ReportLocationDraft | null = null;
+
+  for (const candidate of candidates) {
+    const resolved = await enrichLocationWithGoong(candidate, provinces, options);
+    lastResolved = resolved;
+    if (resolved.provinceCode) return resolved;
+  }
+
+  return lastResolved ?? candidates[0];
+}

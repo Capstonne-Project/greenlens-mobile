@@ -27,6 +27,7 @@ import { Text } from '@/components/ui/text';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { colors } from '@/theme/colors';
+import { getCleanupErrorMessage } from '@/utils/cleanup-errors';
 import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -48,19 +49,21 @@ interface PickedImage {
 interface PercentChipProps {
   value: number;
   isActive: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }
 
-function PercentChip({ value, isActive, onPress }: PercentChipProps) {
+function PercentChip({ value, isActive, disabled, onPress }: PercentChipProps) {
   const scale = useSharedValue(1);
   const anim  = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
-    <Animated.View style={anim}>
+    <Animated.View style={[anim, disabled && { opacity: 0.4 }]}>
       <Pressable
         onPress={onPress}
-        onPressIn={() => { scale.value = withSpring(0.93, { damping: 14, stiffness: 300 }); }}
-        onPressOut={() => { scale.value = withSpring(1, { damping: 14, stiffness: 300 }); }}
+        disabled={disabled}
+        onPressIn={() => { if (!disabled) scale.value = withSpring(0.93, { damping: 14, stiffness: 300 }); }}
+        onPressOut={() => { if (!disabled) scale.value = withSpring(1, { damping: 14, stiffness: 300 }); }}
         className="min-w-[52px] items-center justify-center rounded-full px-3 py-1.5"
         style={{
           backgroundColor: isActive ? colors.primary : '#F3F4F6',
@@ -180,18 +183,20 @@ export default function ProgressUpdateScreen() {
 
   const showWarning = hoursAgo !== null && hoursAgo >= 24;
 
-  // Sync input text → percent value
+  // Sync input text → percent value. Không cho nhập thấp hơn tiến độ đã lưu (initPercent) —
+  // chỉ cho phép giữ nguyên (chỉnh sửa ghi chú/ảnh) hoặc tăng lên.
   const handleInputChange = useCallback((text: string) => {
     setInputText(text);
     const n = parseInt(text, 10);
-    if (!isNaN(n) && n >= 0 && n <= 100) setPercent(n);
-  }, []);
+    if (!isNaN(n) && n >= 0 && n <= 100) setPercent(Math.max(n, initPercent));
+  }, [initPercent]);
 
   const handleChipPress = useCallback((val: number) => {
-    setPercent(val);
-    setInputText(String(val));
+    const clamped = Math.max(val, initPercent);
+    setPercent(clamped);
+    setInputText(String(clamped));
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
+  }, [initPercent]);
 
   const pickImages = useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -253,6 +258,14 @@ export default function ProgressUpdateScreen() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  // Snap về mức đã lưu khi rời input mà đang nhập giá trị thấp hơn (VD: xoá "50" rồi gõ "5").
+  const handleInputBlur = useCallback(() => {
+    if (percent < initPercent) {
+      setPercent(initPercent);
+      setInputText(String(initPercent));
+    }
+  }, [percent, initPercent]);
+
   const handleSubmit = useCallback(async () => {
     if (submitting || !isLeader || !reportId) return;
     setSubmit(true);
@@ -266,14 +279,14 @@ export default function ProgressUpdateScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast('Đã cập nhật tiến độ thành công!');
       setTimeout(() => router.back(), 1400);
-    } catch {
-      setApiError('Không thể gửi cập nhật. Vui lòng thử lại.');
+    } catch (err) {
+      setApiError(getCleanupErrorMessage(err));
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setSubmit(false);
     }
   }, [submitting, isLeader, reportId, percent, note, images, showToast]);
 
-  const validPercent = percent >= 0 && percent <= 100;
+  const validPercent = percent >= initPercent && percent <= 100;
   const canSubmit = isLeader && validPercent && !submitting && !processing;
 
   return (
@@ -331,6 +344,7 @@ export default function ProgressUpdateScreen() {
             <TextInput
               value={inputText}
               onChangeText={handleInputChange}
+              onBlur={handleInputBlur}
               keyboardType="number-pad"
               maxLength={3}
               style={{
@@ -350,6 +364,12 @@ export default function ProgressUpdateScreen() {
             </Text>
           </View>
 
+          {initPercent > 0 && (
+            <Text className="mb-3 text-xs" style={{ color: colors.textSecondary }}>
+              Đã lưu {initPercent}% — chỉ có thể giữ nguyên hoặc tăng lên.
+            </Text>
+          )}
+
           {/* Quick chips */}
           <View className="mb-3 flex-row gap-2">
             {QUICK_PERCENTS.map((v) => (
@@ -357,6 +377,7 @@ export default function ProgressUpdateScreen() {
                 key={v}
                 value={v}
                 isActive={percent === v}
+                disabled={v < initPercent}
                 onPress={() => handleChipPress(v)}
               />
             ))}

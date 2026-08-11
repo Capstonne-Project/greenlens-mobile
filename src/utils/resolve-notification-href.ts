@@ -38,8 +38,10 @@ export function resolveNotificationHref(
 function resolveCitizenHref(type: string, ref: string | null): Href | null {
   switch (type) {
     case 'BadgeEarned':
-    case 'LevelUp':
     case 'BadgeProgressNear':
+      return '/badges' as Href;
+
+    case 'LevelUp':
       return '/(tabs)/profile' as Href;
 
     // Fullscreen accept/decline — referenceId = invitationId
