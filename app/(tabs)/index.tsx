@@ -184,6 +184,12 @@ export default function CitizenHomeScreen() {
     preFocusRegionRef.current = null;
     preFocusCameraRef.current = null;
 
+    // Giữ chặn native onRegionChangeComplete trong lúc animate restore (420ms) — nếu không,
+    // sự kiện native bắn ra khi animation xong sẽ mang region suy từ zoom (lossy so với
+    // latitudeDelta/longitudeDelta gốc), làm bboxCacheKey lệch và trigger fetch thừa
+    // (đè mất pins đã fetch đúng cho toàn khu vực trước focus).
+    isCinematicRef.current = true;
+
     // Một lệnh camera đầy đủ (center + zoom + pitch/heading) — không gọi
     // animateCamera({ pitch, heading }) riêng vì sẽ giữ zoom focus → map 1 pin / list 8.
     if (restoreCamera?.center) {
@@ -200,7 +206,16 @@ export default function CitizenHomeScreen() {
     } else {
       mapRef.current?.animateToRegion(restoreRegion, 420);
     }
+
+    lastInteractiveRegionRef.current = restoreRegion;
     onRegionChangeComplete(restoreRegion);
+
+    const token = ++pressTokenRef.current;
+    orbitTimerRef.current = setTimeout(() => {
+      orbitTimerRef.current = null;
+      if (token !== pressTokenRef.current) return;
+      isCinematicRef.current = false;
+    }, 420);
   }, [clearCameraAnimations, onRegionChangeComplete]);
 
   const onMapPress = useCallback(() => {
