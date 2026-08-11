@@ -110,3 +110,22 @@ export function parseLocationFromPickerAssets(assets: ImageAssetGpsSource[]): Ex
   }
   return null;
 }
+
+/**
+ * Lấy GPS từ TẤT CẢ ảnh trong selection có metadata vị trí (không dừng ở ảnh đầu).
+ * Dùng khi cần fallback sang ảnh khác nếu reverse-geocode ảnh đầu không ra tỉnh/phường.
+ */
+export function parseAllLocationsFromPickerAssets(
+  assets: ImageAssetGpsSource[],
+): ExifGpsCoords[] {
+  const results: ExifGpsCoords[] = [];
+  for (const asset of assets) {
+    const coords = parseLocationFromPickerAsset(asset);
+    if (!coords) continue;
+    const isDuplicate = results.some(
+      (r) => r.latitude === coords.latitude && r.longitude === coords.longitude,
+    );
+    if (!isDuplicate) results.push(coords);
+  }
+  return results;
+}
