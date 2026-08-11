@@ -36,10 +36,11 @@ import {
   resolveCaptureLocation,
 } from "@/utils/capture-location";
 import {
+  parseAllLocationsFromPickerAssets,
   parseLocationFromPickerAsset,
   parseLocationFromPickerAssets,
 } from "@/utils/exif-location";
-import { enrichLocationWithGoong } from "@/utils/goong-admin-match";
+import { enrichLocationWithGoong, enrichLocationWithGoongFallback } from "@/utils/goong-admin-match";
 import { haversineKm } from "@/utils/geo";
 import { validatePinAgainstBoundary } from "@/utils/validate-pin-boundary";
 import {
@@ -744,6 +745,7 @@ export default function ReportCreateWizardScreen() {
   }, [applyGpsLocation, ensurePermission, refreshLocation]);
 
   const handlePickLibrary = useCallback(async () => {
+    if (isPicking || isAnalyzing || pendingAiPick !== null) return;
     setIsPicking(true);
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -763,15 +765,20 @@ export default function ReportCreateWizardScreen() {
 
       setSource("library");
 
-      // Parse GPS từ ảnh gốc trước khi compress strip EXIF.
-      const exifCoords = parseLocationFromPickerAssets(result.assets);
-      setExifLocation(exifCoords ?? null);
-      if (exifCoords) {
-        const fromExif = await buildLocationDraftFromCoords(exifCoords);
+      // Parse GPS từ ảnh gốc trước khi compress strip EXIF — lấy TẤT CẢ ảnh có GPS,
+      // không chỉ ảnh đầu, để có thể fallback sang ảnh khác nếu reverse-geocode ảnh đầu
+      // không ra được tỉnh/phường (vùng Goong không phủ, lỗi mạng tạm thời, …).
+      const allExifCoords = parseAllLocationsFromPickerAssets(result.assets);
+      const exifCoords = allExifCoords[0] ?? null;
+      setExifLocation(exifCoords);
+      if (allExifCoords.length > 0) {
+        const candidates = await Promise.all(
+          allExifCoords.map((coords) => buildLocationDraftFromCoords(coords)),
+        );
         const resolved =
           provinces.length > 0
-            ? await enrichLocationWithGoong(fromExif, provinces)
-            : fromExif;
+            ? await enrichLocationWithGoongFallback(candidates, provinces)
+            : candidates[0];
         setLocation(resolved);
       }
 
@@ -843,7 +850,19 @@ export default function ReportCreateWizardScreen() {
     } finally {
       setIsPicking(false);
     }
-  }, [prepareImage, uploadDraftImage, ensureLocationSeed, provinces, setImages, setLocation, setSource, useAi]);
+  }, [
+    isPicking,
+    isAnalyzing,
+    pendingAiPick,
+    prepareImage,
+    uploadDraftImage,
+    ensureLocationSeed,
+    provinces,
+    setImages,
+    setLocation,
+    setSource,
+    useAi,
+  ]);
 
   const handleAiPickSelect = useCallback(
     async (index: number) => {
@@ -1080,6 +1099,7 @@ export default function ReportCreateWizardScreen() {
                 removeImage(uri);
                 clearAiResult();
               }}
+              disabled={isPicking || isAnalyzing || pendingAiPick !== null}
             />
           </View>
         </ReportFormSection>
