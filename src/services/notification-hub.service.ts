@@ -34,8 +34,13 @@ export function connectNotificationHub(onNotification: () => void): HubConnectio
       accessTokenFactory: async () => (await SecureStore.getItemAsync('accessToken')) ?? '',
     })
     .withAutomaticReconnect([0, 2000, 5000, 10_000, 30_000])
-    .configureLogging(__DEV__ ? LogLevel.Error : LogLevel.None)
+    .configureLogging(LogLevel.None)
     .build();
+
+  // Server phải gửi ping thường xuyên hơn timeout để tránh bị coi là mất kết nối
+  // trên mobile network (4G/WiFi có NAT/proxy đóng idle connection sớm).
+  connection.serverTimeoutInMilliseconds = 60_000;
+  connection.keepAliveIntervalInMilliseconds = 15_000;
 
   connection.on('ReceiveNotification', () => onNotification());
 
