@@ -295,6 +295,8 @@ export default function CommunityLeadWorkspaceScreen() {
   const handleUpdateProgress = useCallback(async () => {
     if (!eventId || isActing) return;
     const percent = Math.min(100, Math.max(0, parseInt(percentInput, 10) || 0));
+    // Bắt buộc tăng so với tiến độ đã lưu — không cho cập nhật lại cùng mức hoặc thấp hơn.
+    if (percent <= (event?.progressPercent ?? 0)) return;
     setActing(true);
     try {
       const imageUrls = progressImages.length > 0
@@ -315,7 +317,7 @@ export default function CommunityLeadWorkspaceScreen() {
     } finally {
       setActing(false);
     }
-  }, [eventId, isActing, percentInput, progressNote, progressImages, event?.reportId, load, showToast]);
+  }, [eventId, isActing, percentInput, progressNote, progressImages, event?.reportId, event?.progressPercent, load, showToast]);
 
   const handleSubmitVerification = useCallback(async () => {
     if (!eventId || isActing || afterImages.length < 2) return;
@@ -573,10 +575,15 @@ export default function CommunityLeadWorkspaceScreen() {
                           <AssignmentActionButton
                             label="Cập nhật tiến độ" icon="refresh" variant="secondary"
                             onPress={handleUpdateProgress}
-                            disabled={isActing}
+                            disabled={isActing || (parseInt(percentInput, 10) || 0) <= event.progressPercent}
                             loading={isActing}
                           />
                         </View>
+                        {(parseInt(percentInput, 10) || 0) <= event.progressPercent ? (
+                          <Text className="mt-2 text-xs text-textSecondary">
+                            Tiến độ mới phải lớn hơn {event.progressPercent}% đã lưu.
+                          </Text>
+                        ) : null}
                       </>
                     ),
                   },

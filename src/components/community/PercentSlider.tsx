@@ -17,17 +17,19 @@ const THUMB_SIZE = 28;
 interface PercentSliderProps {
   value: number;
   onChange: (value: number) => void;
-  /** Mốc % thấp nhất được phép — tiến độ đã lưu không được kéo lùi xuống dưới mốc này. */
+  /** Tiến độ đã lưu — giá trị mới bắt buộc phải LỚN HƠN mốc này, không được bằng. */
   minValue?: number;
   disabled?: boolean;
 }
 
-/** Thanh trượt kéo chọn % tiến độ (0–100), snap về bội số 5 khi thả tay. Không cho kéo xuống dưới `minValue`. */
+/** Thanh trượt kéo chọn % tiến độ (0–100), snap về bội số 5 khi thả tay. Không cho kéo về bằng hoặc dưới `minValue`. */
 export function PercentSlider({ value, onChange, minValue = 0, disabled = false }: PercentSliderProps) {
   const [trackWidth, setTrackWidth] = useState(0);
   const progress = useSharedValue(value);
   const lastHapticStep = useRef(Math.round(value / 5));
-  const floor = Math.min(100, Math.max(0, minValue));
+  const savedMark = Math.min(100, Math.max(0, minValue));
+  // Sàn thực tế phải > mốc đã lưu — không cho giữ nguyên giá trị cũ.
+  const floor = Math.min(100, savedMark + 1);
 
   const clampedValue = Math.min(100, Math.max(0, value));
 
@@ -95,7 +97,7 @@ export function PercentSlider({ value, onChange, minValue = 0, disabled = false 
           {clampedValue}%
         </Text>
         <Text className="mb-1.5 text-xs text-textSecondary">
-          {floor > 0 ? `Đã lưu ${floor}% — chỉ tăng được` : 'Kéo để điều chỉnh'}
+          {savedMark > 0 ? `Đã lưu ${savedMark}% — phải tăng lên` : 'Kéo để điều chỉnh'}
         </Text>
       </View>
 
@@ -106,11 +108,11 @@ export function PercentSlider({ value, onChange, minValue = 0, disabled = false 
           style={{ height: THUMB_SIZE, paddingHorizontal: 0 }}
         >
           <View className="absolute h-2 w-full overflow-hidden rounded-full bg-surface" />
-          {floor > 0 && trackWidth > 0 ? (
+          {savedMark > 0 && trackWidth > 0 ? (
             <View
               className="absolute h-2 rounded-full opacity-40"
               style={{
-                width: (floor / 100) * (trackWidth - THUMB_SIZE) + THUMB_SIZE / 2,
+                width: (savedMark / 100) * (trackWidth - THUMB_SIZE) + THUMB_SIZE / 2,
                 backgroundColor: colors.textDisabled,
               }}
             />

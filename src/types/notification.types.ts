@@ -43,6 +43,10 @@ export type NotificationType =
   | 'StaffInvitationDeclined'
   /** LEO đã ghi nhận nộp phạt đủ và đóng hồ sơ — gửi cho Inspector đã ban hành QĐ */
   | 'InspectionPenaltyPaidAndClosed'
+  /** BR-REP-015: citizen gửi yêu cầu mở lại báo cáo — gửi cho LEO của office */
+  | 'ReopenReviewNeeded'
+  /** BR-REP-015: LEO đã chấp nhận/từ chối yêu cầu mở lại — gửi cho citizen */
+  | 'ReopenRequestDecided'
   | (string & {});
 
 export interface AppNotification {

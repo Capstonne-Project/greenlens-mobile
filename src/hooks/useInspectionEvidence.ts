@@ -16,7 +16,7 @@ type PickSource = 'camera' | 'library';
 
 interface UseInspectionEvidenceOptions {
   inspectionId: string | undefined;
-  onUploaded: () => Promise<void>;
+  onUploaded: () => Promise<unknown>;
 }
 
 const MB = 1024 * 1024;

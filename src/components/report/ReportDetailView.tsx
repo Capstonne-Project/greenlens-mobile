@@ -66,6 +66,8 @@ interface ReportDetailViewProps {
   onOpenMergedReport?: (reportId: string, imageUrl?: string | null) => void;
   /** Mở hồ sơ công khai người gửi báo cáo / tác giả bình luận */
   onOpenUserProfile: (userId: string) => void;
+  /** Nhảy sang tab "Báo cáo của tôi" và highlight đúng báo cáo này — chỉ hiện khi mở từ map + là chủ báo cáo */
+  onViewInMyReports?: () => void;
 }
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -279,6 +281,7 @@ export function ReportDetailView({
   onOpenPrimaryReport,
   onOpenMergedReport,
   onOpenUserProfile,
+  onViewInMyReports,
 }: ReportDetailViewProps) {
   const insets = useSafeAreaInsets();
   const [heroIndex, setHeroIndex] = useState(0);
@@ -662,6 +665,7 @@ export function ReportDetailView({
               onOpenPrimaryReport={onOpenPrimaryReport}
               onOpenMergedReport={onOpenMergedReport}
               onOpenUserProfile={onOpenUserProfile}
+              onViewInMyReports={onViewInMyReports}
               comments={{
                 threads,
                 isLoading: isCommentsLoading,

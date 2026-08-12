@@ -119,6 +119,15 @@ export default function ReportDetailScreen() {
         openReportById(reportId, { seedImageUrl: imageUrl });
       }}
       onOpenUserProfile={openUserProfile}
+      onViewInMyReports={
+        detailSource === 'map' && detail
+          ? () =>
+              router.push({
+                pathname: '/(tabs)/reports',
+                params: { highlightReportId: detail.id },
+              } as Href)
+          : undefined
+      }
       onClose={async () => {
         await closeReport();
       }}

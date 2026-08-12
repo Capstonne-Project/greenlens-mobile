@@ -142,7 +142,16 @@ export interface ReportHistoryItem {
   changedByName: string | null;
   reason: string | null;
   createdAt: string;
+  /**
+   * JSON tuỳ chọn — chỉ có ý nghĩa khi `fromStatus === toStatus` (không có chuyển trạng
+   * thái thật, ví dụ yêu cầu/từ chối mở lại). Parse ra `{ eventType }` bằng
+   * `parseReopenEventType` — không tự parse tay ở nơi khác.
+   */
+  metadata?: string | null;
 }
+
+/** Event type đánh dấu trong `ReportHistoryItem.metadata` khi không có status transition thật. */
+export type ReportHistoryEventType = 'ReopenRequested' | 'ReopenApproved' | 'ReopenRejected';
 
 export interface ReportHistoryResponse {
   items: ReportHistoryItem[];
