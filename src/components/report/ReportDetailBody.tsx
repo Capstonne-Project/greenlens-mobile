@@ -16,7 +16,7 @@ import type {
 } from '@/types/report-detail.types';
 import { formatDate } from '@/utils/formatters';
 import { splitReportMedia } from '@/utils/report-media';
-import { getCitizenProgress } from '@/utils/report-status';
+import { getCitizenProgress, parseReopenEventType } from '@/utils/report-status';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useMemo, useState } from 'react';
@@ -45,6 +45,8 @@ export interface ReportDetailBodyProps {
   onOpenMergedReport?: (reportId: string, imageUrl?: string | null) => void;
   /** Mở hồ sơ công khai của người gửi báo cáo hoặc tác giả bình luận */
   onOpenUserProfile: (userId: string) => void;
+  /** Nhảy sang tab "Báo cáo của tôi" và highlight đúng báo cáo này — chỉ hiện khi mở từ map + là chủ báo cáo */
+  onViewInMyReports?: () => void;
   comments: {
     threads: CommentThread[];
     isLoading: boolean;
@@ -280,6 +282,119 @@ function RateSection({ detail, isActionBusy, onRate }: RateSectionProps) {
   );
 }
 
+interface ReopenTimelineStepProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  tone: 'neutral' | 'success' | 'error';
+  label: string;
+  time: string;
+  reason?: string | null;
+  isLast?: boolean;
+}
+
+const REOPEN_TONE_COLOR: Record<ReopenTimelineStepProps['tone'], string> = {
+  neutral: colors.textSecondary,
+  success: colors.primary,
+  error: colors.error,
+};
+
+/** 1 mốc trong timeline mở lại — dùng icon riêng (không phải dấu check) để phân biệt rõ với "Tiến trình" xử lý chính. */
+function ReopenTimelineStep({ icon, tone, label, time, reason, isLast = false }: ReopenTimelineStepProps) {
+  const toneColor = REOPEN_TONE_COLOR[tone];
+  return (
+    <View className="flex-row items-start">
+      <View className="mr-3 items-center" style={{ width: 20 }}>
+        <View
+          className="h-4 w-4 items-center justify-center rounded-full"
+          style={{ backgroundColor: toneColor }}
+        >
+          <Ionicons name={icon} size={10} color="#fff" />
+        </View>
+        {!isLast ? (
+          <View className="mt-0.5 w-px flex-1" style={{ backgroundColor: colors.border, minHeight: 24 }} />
+        ) : null}
+      </View>
+      <View className="flex-1 pb-4">
+        <Text className="text-sm font-semibold" style={{ color: colors.textPrimary }}>
+          {label}
+        </Text>
+        <Text className="text-xs text-textSecondary">{time}</Text>
+        {reason ? (
+          <View className="mt-1.5 rounded-xl bg-surface px-3 py-2">
+            <Text className="text-xs leading-5 text-textSecondary">{reason}</Text>
+          </View>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * BR-REP-015: timeline riêng cho vòng mở lại — yêu cầu (kèm lý do citizen) → quyết định
+ * của LEO (chấp nhận/từ chối, kèm lý do). Ẩn hoàn toàn khi báo cáo chưa từng có yêu cầu
+ * mở lại nào, để không làm rối màn hình cho báo cáo bình thường.
+ */
+function ReopenTimelineSection({ history }: { history: ReportHistoryItem[] }) {
+  const events = useMemo(
+    () =>
+      history
+        .map((item) => ({ item, eventType: parseReopenEventType(item) }))
+        .filter((entry): entry is { item: ReportHistoryItem; eventType: NonNullable<ReturnType<typeof parseReopenEventType>> } =>
+          entry.eventType !== null,
+        ),
+    [history],
+  );
+
+  if (events.length === 0) return null;
+
+  return (
+    <View className="mb-4">
+      <SectionTitle label="Yêu cầu mở lại" />
+      {events.map(({ item, eventType }, index) => {
+        const isLast = index === events.length - 1;
+        const time = formatDate(item.createdAt);
+        switch (eventType) {
+          case 'ReopenRequested':
+            return (
+              <ReopenTimelineStep
+                key={`${item.createdAt}-${index}`}
+                icon="refresh"
+                tone="neutral"
+                label="Bạn đã gửi yêu cầu mở lại"
+                time={time}
+                reason={item.reason ? `Lý do: ${item.reason}` : null}
+                isLast={isLast}
+              />
+            );
+          case 'ReopenApproved':
+            return (
+              <ReopenTimelineStep
+                key={`${item.createdAt}-${index}`}
+                icon="checkmark"
+                tone="success"
+                label="Cán bộ đã chấp nhận yêu cầu mở lại"
+                time={time}
+                reason="Báo cáo sẽ được phân công xử lý lại."
+                isLast={isLast}
+              />
+            );
+          case 'ReopenRejected':
+            return (
+              <ReopenTimelineStep
+                key={`${item.createdAt}-${index}`}
+                icon="close"
+                tone="error"
+                label="Cán bộ đã từ chối yêu cầu mở lại"
+                time={time}
+                reason={item.reason ? `Lý do: ${item.reason}` : null}
+                isLast={isLast}
+              />
+            );
+        }
+      })}
+    </View>
+  );
+}
+
 /** Nội dung chi tiết báo cáo — dùng chung trong sheet mọi entry point */
 export function ReportDetailBody({
   detail,
@@ -295,6 +410,7 @@ export function ReportDetailBody({
   onOpenPrimaryReport,
   onOpenMergedReport,
   onOpenUserProfile,
+  onViewInMyReports,
   comments,
 }: ReportDetailBodyProps) {
   const severity = SEVERITY_CONFIG[detail.severity] ?? SEVERITY_CONFIG.Medium;
@@ -321,6 +437,22 @@ export function ReportDetailBody({
             Đây là báo cáo từ cộng đồng
           </Text>
         </View>
+      ) : null}
+
+      {isOwner && source === 'map' && onViewInMyReports ? (
+        <Pressable
+          onPress={onViewInMyReports}
+          className="mb-4 flex-row items-center justify-between rounded-2xl px-4 py-3"
+          style={{ backgroundColor: '#ECFDF5' }}
+        >
+          <View className="flex-1 flex-row items-center gap-2">
+            <Ionicons name="document-text-outline" size={16} color="#065F46" />
+            <Text className="text-sm font-semibold" style={{ color: '#065F46' }}>
+              Đây là báo cáo của bạn — xem trong &quot;Báo cáo của tôi&quot;
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color="#065F46" />
+        </Pressable>
       ) : null}
 
       <View className="mb-2 flex-row flex-wrap items-center gap-2">
@@ -449,6 +581,8 @@ export function ReportDetailBody({
           </View>
         </>
       ) : null}
+
+      {!hideOpsProgress ? <ReopenTimelineSection history={history} /> : null}
 
       {detail.reopenedCount > 0 && !hideOpsProgress ? (
         <Text className="mb-4 text-xs text-textSecondary">
