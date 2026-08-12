@@ -14,7 +14,7 @@ import { resolveMyReportDetailTarget } from "@/utils/report-merge";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
-import { Redirect, router, type Href } from "expo-router";
+import { Redirect, router, useLocalSearchParams, type Href } from "expo-router";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -98,6 +98,10 @@ interface ReportsFilterPageProps {
   onSwitchTab: (key: MyReportsFilterKey) => void;
   onRegisterRefetch: (filterKey: MyReportsFilterKey, refetch: () => Promise<void>) => void;
   onTotalCountChange: (filterKey: MyReportsFilterKey, count: number, isLoading: boolean) => void;
+  /** BE deep-link từ map: báo cáo cần cuộn tới + highlight khi tab này đang active */
+  highlightReportId?: string | null;
+  /** Báo cho cha biết đã tìm thấy/hết trang mà không thấy — để dừng loop tìm kiếm */
+  onHighlightResolved?: (found: boolean) => void;
 }
 
 const ReportsFilterPage = memo(function ReportsFilterPage({
@@ -110,6 +114,8 @@ const ReportsFilterPage = memo(function ReportsFilterPage({
   onSwitchTab,
   onRegisterRefetch,
   onTotalCountChange,
+  highlightReportId,
+  onHighlightResolved,
 }: ReportsFilterPageProps) {
   const { items, totalCount, isLoading, isRefreshing, isFetchingMore, hasNextPage, errorMessage, refetch, loadMore } =
     useMyReports({ filterKey, pageSize: 20, enabled: isAuthenticated });
@@ -124,11 +130,49 @@ const ReportsFilterPage = memo(function ReportsFilterPage({
     onTotalCountChange(filterKey, totalCount, isLoading);
   }, [filterKey, isLoading, onTotalCountChange, totalCount]);
 
+  const listRef = useRef<FlatList<MyReportItem>>(null);
+  const highlightIndex = useMemo(
+    () => (highlightReportId ? filteredItems.findIndex((item) => item.id === highlightReportId) : -1),
+    [filteredItems, highlightReportId],
+  );
+
+  // BE trả danh sách theo trang — báo cáo cần highlight có thể ở trang chưa tải. Tự tải
+  // thêm cho tới khi thấy hoặc hết trang, để nút "Xem trong Báo cáo của tôi" luôn tới đúng
+  // báo cáo thay vì chỉ tới trang đầu.
+  useEffect(() => {
+    if (!highlightReportId || isLoading) return;
+    if (highlightIndex >= 0) {
+      onHighlightResolved?.(true);
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToIndex({ index: highlightIndex, animated: true, viewPosition: 0.3 });
+      });
+      return;
+    }
+    if (hasNextPage && !isFetchingMore) {
+      void loadMore();
+    } else if (!hasNextPage) {
+      onHighlightResolved?.(false);
+    }
+  }, [
+    highlightReportId,
+    highlightIndex,
+    hasNextPage,
+    isFetchingMore,
+    isLoading,
+    loadMore,
+    onHighlightResolved,
+  ]);
+
   const renderItem = useCallback(
     ({ item }: { item: MyReportItem }) => (
-      <MyReportListCard item={item} onPress={() => onOpenDetail(item)} onOpenPrimary={() => onOpenDetail(item)} />
+      <MyReportListCard
+        item={item}
+        onPress={() => onOpenDetail(item)}
+        onOpenPrimary={() => onOpenDetail(item)}
+        highlighted={item.id === highlightReportId}
+      />
     ),
-    [onOpenDetail],
+    [onOpenDetail, highlightReportId],
   );
 
   const hasSearch = searchQuery.trim().length > 0;
@@ -136,6 +180,7 @@ const ReportsFilterPage = memo(function ReportsFilterPage({
   return (
     <View style={{ width: pageWidth, height: pageHeight }}>
       <FlatList
+        ref={listRef}
         style={{ flex: 1, backgroundColor: colors.surface }}
         data={filteredItems}
         keyExtractor={(item) => item.id}
@@ -145,6 +190,12 @@ const ReportsFilterPage = memo(function ReportsFilterPage({
         onEndReachedThreshold={0.25}
         onEndReached={() => {
           if (hasNextPage && !hasSearch) void loadMore();
+        }}
+        onScrollToIndexFailed={({ index }) => {
+          // Item chưa render layout kịp (list vừa tải thêm) — retry sau 1 tick.
+          requestAnimationFrame(() => {
+            listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+          });
         }}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={() => void refetch()} tintColor={colors.primary} />
@@ -185,11 +236,19 @@ const ReportsFilterPage = memo(function ReportsFilterPage({
 export default function ReportsTabScreen() {
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { width: pageWidth } = useWindowDimensions();
+  const { highlightReportId: highlightReportIdParam } = useLocalSearchParams<{
+    highlightReportId?: string;
+  }>();
   const [activeFilter, setActiveFilter] = useState<MyReportsFilterKey>("ALL");
   const [activeTabMeta, setActiveTabMeta] = useState({ count: 0, isLoading: true });
   const [tabCounts, setTabCounts] = useState<MyReportsTabCounts>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [pagerHeight, setPagerHeight] = useState(0);
+  // Deep-link từ map (bấm "Xem trong Báo cáo của tôi") — luôn vào tab "Tất cả" để chắc
+  // chắn tìm được báo cáo bất kể trạng thái, rồi tự tắt sau khi đã cuộn tới + pulse xong.
+  const [highlightReportId, setHighlightReportId] = useState<string | null>(
+    typeof highlightReportIdParam === "string" ? highlightReportIdParam : null,
+  );
 
   const pagerRef = useRef<ScrollView>(null);
   const chipRef = useRef<FlatList<(typeof MY_REPORTS_FILTERS)[number]>>(null);
@@ -242,6 +301,26 @@ export default function ReportsTabScreen() {
   const onPagerLayout = useCallback((event: LayoutChangeEvent) => {
     const nextHeight = Math.round(event.nativeEvent.layout.height);
     setPagerHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+  }, []);
+
+  // Deep-link từ map: mỗi lần param đổi (kể cả khi screen đã mount sẵn), nhảy về tab
+  // "Tất cả" để chắc chắn tìm thấy báo cáo bất kể trạng thái hiện tại của nó.
+  useEffect(() => {
+    if (typeof highlightReportIdParam !== "string" || !highlightReportIdParam) return;
+    setHighlightReportId(highlightReportIdParam);
+    if (activeFilterRef.current !== "ALL") goToFilterKey("ALL");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightReportIdParam]);
+
+  const handleHighlightResolved = useCallback((found: boolean) => {
+    if (!found) {
+      // Hết trang mà không thấy — tắt ngay, không có gì để chờ.
+      setHighlightReportId(null);
+      return;
+    }
+    // Tìm thấy: giữ `highlightReportId` đủ lâu cho card chạy hết pulse animation
+    // (3 lần × 400ms) trước khi tắt — tắt ngay sẽ cắt animation giữa chừng.
+    setTimeout(() => setHighlightReportId(null), 2600);
   }, []);
 
   const openDetail = useCallback((item: MyReportItem) => {
@@ -343,6 +422,9 @@ export default function ReportsTabScreen() {
                 onSwitchTab={goToFilterKey}
                 onRegisterRefetch={handleRegisterRefetch}
                 onTotalCountChange={handleTotalCountChange}
+                // Chỉ tab "Tất cả" cần tìm — đây là tab được ép chuyển sang khi có deep-link.
+                highlightReportId={filter.key === "ALL" ? highlightReportId : null}
+                onHighlightResolved={filter.key === "ALL" ? handleHighlightResolved : undefined}
               />
             ))}
           </ScrollView>
