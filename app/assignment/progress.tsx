@@ -183,20 +183,19 @@ export default function ProgressUpdateScreen() {
 
   const showWarning = hoursAgo !== null && hoursAgo >= 24;
 
-  // Sync input text → percent value. Không cho nhập thấp hơn tiến độ đã lưu (initPercent) —
-  // chỉ cho phép giữ nguyên (chỉnh sửa ghi chú/ảnh) hoặc tăng lên.
+  // Sync input text → percent value. Không cho nhập bằng hoặc thấp hơn tiến độ đã lưu
+  // (initPercent) — bắt buộc phải tăng lên so với lần cập nhật trước.
   const handleInputChange = useCallback((text: string) => {
     setInputText(text);
     const n = parseInt(text, 10);
-    if (!isNaN(n) && n >= 0 && n <= 100) setPercent(Math.max(n, initPercent));
-  }, [initPercent]);
+    if (!isNaN(n) && n >= 0 && n <= 100) setPercent(n);
+  }, []);
 
   const handleChipPress = useCallback((val: number) => {
-    const clamped = Math.max(val, initPercent);
-    setPercent(clamped);
-    setInputText(String(clamped));
+    setPercent(val);
+    setInputText(String(val));
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [initPercent]);
+  }, []);
 
   const pickImages = useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -258,9 +257,10 @@ export default function ProgressUpdateScreen() {
     setImages((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  // Snap về mức đã lưu khi rời input mà đang nhập giá trị thấp hơn (VD: xoá "50" rồi gõ "5").
+  // Snap về mức đã lưu khi rời input mà đang nhập giá trị bằng hoặc thấp hơn tiến độ
+  // đã lưu (VD: xoá "60" rồi gõ "50" trong khi đã lưu 50%) — bắt buộc phải tăng lên.
   const handleInputBlur = useCallback(() => {
-    if (percent < initPercent) {
+    if (percent <= initPercent) {
       setPercent(initPercent);
       setInputText(String(initPercent));
     }
@@ -286,7 +286,7 @@ export default function ProgressUpdateScreen() {
     }
   }, [submitting, isLeader, reportId, percent, note, images, showToast]);
 
-  const validPercent = percent >= initPercent && percent <= 100;
+  const validPercent = percent > initPercent && percent <= 100;
   const canSubmit = isLeader && validPercent && !submitting && !processing;
 
   return (
@@ -366,7 +366,7 @@ export default function ProgressUpdateScreen() {
 
           {initPercent > 0 && (
             <Text className="mb-3 text-xs" style={{ color: colors.textSecondary }}>
-              Đã lưu {initPercent}% — chỉ có thể giữ nguyên hoặc tăng lên.
+              Đã lưu {initPercent}% — bắt buộc phải tăng lên, không thể giữ nguyên hoặc giảm.
             </Text>
           )}
 
@@ -377,7 +377,7 @@ export default function ProgressUpdateScreen() {
                 key={v}
                 value={v}
                 isActive={percent === v}
-                disabled={v < initPercent}
+                disabled={v <= initPercent}
                 onPress={() => handleChipPress(v)}
               />
             ))}

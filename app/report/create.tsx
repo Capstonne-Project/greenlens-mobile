@@ -100,6 +100,8 @@ export default function ReportCreateWizardScreen() {
   const [tagDraft, setTagDraft] = useState("");
   const [wasteTagLimitMessage, setWasteTagLimitMessage] = useState<string | null>(null);
   const [showAiResult, setShowAiResult] = useState(false);
+  // URI ảnh đang được AI phân tích — dùng cho overlay, tránh hardcode ảnh đầu tiên.
+  const [analyzingImageUri, setAnalyzingImageUri] = useState<string | null>(null);
   const [pendingAiOutcome, setPendingAiOutcome] = useState<"accepted" | "review" | null>(null);
   // Nhiều ảnh được chọn cùng lúc + AI bật → chờ user chọn 1 ảnh để phân tích
   const [pendingAiPick, setPendingAiPick] = useState<
@@ -496,9 +498,11 @@ export default function ReportCreateWizardScreen() {
       setImages([{ localUri: compressed.uri, mimeType, fileName: compressed.fileName, uploadStatus: "pending" }]);
 
       // Step 1: upload Mobile → R2 (presign + PUT). AI classify only if toggle on.
+      setAnalyzingImageUri(compressed.uri);
       const outcome = await prepareImage(compressed.uri, mimeType, compressed.fileName, {
         runAi: useAi,
       });
+      setAnalyzingImageUri(null);
       if (outcome === "error") {
         Alert.alert(
           "Không tải được ảnh",
@@ -831,9 +835,11 @@ export default function ReportCreateWizardScreen() {
       const restPromise = Promise.all(
         rest.map((img) => uploadDraftImage(img.localUri, img.mimeType, img.fileName)),
       );
+      if (first) setAnalyzingImageUri(first.localUri);
       const firstOutcome = first
         ? await prepareImage(first.localUri, first.mimeType, first.fileName, { runAi: useAi })
         : null;
+      setAnalyzingImageUri(null);
       const restResults = await restPromise;
 
       if (firstOutcome === "error" || restResults.some((ok) => !ok)) {
@@ -871,9 +877,11 @@ export default function ReportCreateWizardScreen() {
       if (!drafted?.[index]) return;
 
       const picked = drafted[index];
+      setAnalyzingImageUri(picked.localUri);
       const outcome = await prepareImage(picked.localUri, picked.mimeType, picked.fileName, {
         runAi: true,
       });
+      setAnalyzingImageUri(null);
       if (outcome === "error") {
         Alert.alert("Không phân tích được ảnh", "Vui lòng thử lại hoặc tắt AI.");
       } else if (outcome === "rejected") {
@@ -1294,7 +1302,7 @@ export default function ReportCreateWizardScreen() {
           banner "Đang tải ảnh lên server..." + badge trạng thái trên từng ảnh. */}
       <AiImageScanOverlay
         visible={isAnalyzing && useAi}
-        imageUri={images[0]?.localUri}
+        imageUri={analyzingImageUri ?? images[0]?.localUri}
         mode="ai"
       />
 
