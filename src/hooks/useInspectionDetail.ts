@@ -25,8 +25,8 @@ export function useInspectionDetail(id: string | undefined) {
   const [isLoading, setLoading] = useState(true);
   const [errorMessage, setError] = useState<string | null>(null);
 
-  const refetch = useCallback(async () => {
-    if (!id) return;
+  const refetch = useCallback(async (): Promise<InspectionDetail | null> => {
+    if (!id) return null;
     setLoading(true);
     setError(null);
     try {
@@ -48,8 +48,10 @@ export function useInspectionDetail(id: string | undefined) {
         setReportMedia([]);
         setSceneCoords(null);
       }
+      return data;
     } catch {
       setError('Không tải được chi tiết hồ sơ.');
+      return null;
     } finally {
       setLoading(false);
     }
