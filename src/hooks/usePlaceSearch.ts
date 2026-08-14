@@ -144,7 +144,6 @@ export function usePlaceSearch(): UsePlaceSearchResult {
         code: p.code,
         name: p.name,
         subtitle: PROVINCE_SUBTITLE,
-        boundaryUrl: p.boundaryUrl,
         provinceCode: p.code,
       })),
     [provinces],
@@ -158,7 +157,6 @@ export function usePlaceSearch(): UsePlaceSearchResult {
         code: w.code,
         name: w.unitAbbreviation ? `${w.unitAbbreviation} ${w.name}` : w.name,
         subtitle: provinceNameByCode.get(provinceCode) ?? '',
-        boundaryUrl: w.boundaryUrl,
         provinceCode,
       })),
     );

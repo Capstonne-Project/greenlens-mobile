@@ -3,9 +3,7 @@ import { catalogService } from '@/services/catalog.service';
 import type { CatalogProvince, CatalogWard } from '@/types/catalog.types';
 import {
   fetchProvinceBoundaryGroups,
-  fetchProvinceBoundaryPolygons,
   fetchWardBoundaryGroups,
-  fetchWardBoundaryPolygons,
 } from '@/utils/ward-boundary';
 import type { LatLng } from 'react-native-maps';
 
@@ -19,8 +17,8 @@ interface UseCatalogAddressResult {
   wardPolygons: LatLng[][];
   provincePolygonGroups: LatLng[][][];
   wardPolygonGroups: LatLng[][][];
-  loadProvinceBoundary: (boundaryUrl: string | null) => Promise<void>;
-  loadWardBoundary: (boundaryUrl: string | null, wardCode: string | null) => Promise<void>;
+  loadProvinceBoundary: (provinceCode: string | null) => Promise<void>;
+  loadWardBoundary: (wardCode: string | null) => Promise<void>;
   refetchProvinces: () => Promise<void>;
   refetchWards: (provinceCode: string) => Promise<void>;
 }
@@ -63,41 +61,41 @@ export function useCatalogAddress(): UseCatalogAddressResult {
     }
   }, []);
 
-  const loadProvinceBoundary = useCallback(async (boundaryUrl: string | null) => {
-    if (!boundaryUrl) {
+  const loadProvinceBoundary = useCallback(async (provinceCode: string | null) => {
+    if (!provinceCode) {
       setProvincePolygons([]);
       setProvincePolygonGroups([]);
       return;
     }
 
     try {
-      const [polygons, groups] = await Promise.all([
-        fetchProvinceBoundaryPolygons(boundaryUrl),
-        fetchProvinceBoundaryGroups(boundaryUrl),
-      ]);
-      setProvincePolygons(polygons);
+      // Lấy groups trước rồi derive polygons từ groups (không gọi fetchProvinceBoundaryPolygons
+      // song song) — tránh double-fetch cùng 1 GeoJSON lớn khi cache chưa kịp populate.
+      const groups = await fetchProvinceBoundaryGroups(provinceCode);
+      if (__DEV__) console.log('[useCatalogAddress] province groups loaded', provinceCode, 'groups:', groups.length, 'points:', groups.flat(2).length);
+      setProvincePolygons(groups.flatMap((group) => group));
       setProvincePolygonGroups(groups);
-    } catch {
+    } catch (error) {
+      if (__DEV__) console.warn('[useCatalogAddress] loadProvinceBoundary failed', provinceCode, error);
       setProvincePolygons([]);
       setProvincePolygonGroups([]);
     }
   }, []);
 
-  const loadWardBoundary = useCallback(async (boundaryUrl: string | null, wardCode: string | null) => {
-    if (!boundaryUrl || !wardCode) {
+  const loadWardBoundary = useCallback(async (wardCode: string | null) => {
+    if (!wardCode) {
       setWardPolygons([]);
       setWardPolygonGroups([]);
       return;
     }
 
     try {
-      const [polygons, groups] = await Promise.all([
-        fetchWardBoundaryPolygons(boundaryUrl, wardCode),
-        fetchWardBoundaryGroups(boundaryUrl, wardCode),
-      ]);
-      setWardPolygons(polygons);
+      const groups = await fetchWardBoundaryGroups(wardCode);
+      if (__DEV__) console.log('[useCatalogAddress] ward groups loaded', wardCode, 'groups:', groups.length, 'points:', groups.flat(2).length);
+      setWardPolygons(groups.flatMap((group) => group));
       setWardPolygonGroups(groups);
-    } catch {
+    } catch (error) {
+      if (__DEV__) console.warn('[useCatalogAddress] loadWardBoundary failed', wardCode, error);
       setWardPolygons([]);
       setWardPolygonGroups([]);
     }
