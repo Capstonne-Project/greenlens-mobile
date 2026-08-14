@@ -1,50 +1,56 @@
-import {
-  extractPolygonGroups,
-  extractWardPolygonGroups,
-  type GeoJsonCollection,
-} from '@/utils/geojson-boundaries';
+import { catalogService } from '@/services/catalog.service';
+import { extractPolygonGroups, type GeoJsonCollection } from '@/utils/geojson-boundaries';
 import type { LatLng } from 'react-native-maps';
 
-const rawGeoJsonCache = new Map<string, GeoJsonCollection>();
+const boundaryCache = new Map<string, GeoJsonCollection>();
 
-export async function fetchGeoJsonCollection(boundaryUrl: string): Promise<GeoJsonCollection> {
-  const cached = rawGeoJsonCache.get(boundaryUrl);
+async function loadBoundaryGeometry(
+  code: string,
+  fetchRaw: () => Promise<string | null>,
+): Promise<GeoJsonCollection> {
+  const cached = boundaryCache.get(code);
   if (cached) {
     return cached;
   }
 
-  const response = await fetch(boundaryUrl);
-  if (!response.ok) {
-    throw new Error('BOUNDARY_FETCH_FAILED');
+  const raw = await fetchRaw();
+  if (!raw) {
+    throw new Error('BOUNDARY_NOT_FOUND');
   }
 
-  const geoJson = (await response.json()) as GeoJsonCollection;
-  rawGeoJsonCache.set(boundaryUrl, geoJson);
-  return geoJson;
+  const geometry = JSON.parse(raw);
+  const collection: GeoJsonCollection = { geometry };
+
+  if (__DEV__) {
+    console.log('[ward-boundary] loaded', code, 'geometry type:', geometry?.type);
+  }
+
+  boundaryCache.set(code, collection);
+  return collection;
 }
 
-export async function fetchProvinceBoundaryPolygons(boundaryUrl: string): Promise<LatLng[][]> {
-  const groups = await fetchProvinceBoundaryGroups(boundaryUrl);
+export async function fetchProvinceBoundaryPolygons(provinceCode: string): Promise<LatLng[][]> {
+  const groups = await fetchProvinceBoundaryGroups(provinceCode);
   return groups.flatMap((group) => group);
 }
 
-export async function fetchProvinceBoundaryGroups(boundaryUrl: string): Promise<LatLng[][][]> {
-  const geoJson = await fetchGeoJsonCollection(boundaryUrl);
-  return extractPolygonGroups(geoJson);
+export async function fetchProvinceBoundaryGroups(provinceCode: string): Promise<LatLng[][][]> {
+  const collection = await loadBoundaryGeometry(provinceCode, async () => {
+    const res = await catalogService.getProvinceBoundary(provinceCode);
+    return res.data.data.geoJson;
+  });
+  return extractPolygonGroups(collection);
 }
 
-export async function fetchWardBoundaryPolygons(
-  boundaryUrl: string,
-  wardCode: string,
-): Promise<LatLng[][]> {
-  const groups = await fetchWardBoundaryGroups(boundaryUrl, wardCode);
+export async function fetchWardBoundaryPolygons(wardCode: string): Promise<LatLng[][]> {
+  const groups = await fetchWardBoundaryGroups(wardCode);
   return groups.flatMap((group) => group);
 }
 
-export async function fetchWardBoundaryGroups(
-  boundaryUrl: string,
-  wardCode: string,
-): Promise<LatLng[][][]> {
-  const geoJson = await fetchGeoJsonCollection(boundaryUrl);
-  return extractWardPolygonGroups(geoJson, wardCode);
+export async function fetchWardBoundaryGroups(wardCode: string): Promise<LatLng[][][]> {
+  const collection = await loadBoundaryGeometry(wardCode, async () => {
+    const res = await catalogService.getWardBoundary(wardCode);
+    return res.data.data.geoJson;
+  });
+  return extractPolygonGroups(collection);
 }

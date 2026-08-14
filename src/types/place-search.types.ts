@@ -9,7 +9,6 @@ export interface PlaceSuggestion {
   name: string;
   /** Nhãn phụ: "Tỉnh / Thành phố" hoặc tên tỉnh cha */
   subtitle: string;
-  boundaryUrl: string | null;
   /** Phường cần mã tỉnh để lấy đúng file GeoJSON */
   provinceCode: string;
 }
