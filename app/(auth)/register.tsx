@@ -6,6 +6,7 @@ import { Text } from '@/components/ui/text';
 import { onboardingColors } from '@/components/onboarding/constants';
 import { useAuth } from '@/hooks/useAuth';
 import { getApiErrorMessage } from '@/utils/api-error-message';
+import { validateStrongPassword } from '@/utils/validators';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
@@ -59,6 +60,12 @@ export default function RegisterScreen() {
       return;
     }
 
+    const passwordError = validateStrongPassword(password);
+    if (passwordError) {
+      Alert.alert('Mật khẩu chưa đủ mạnh', passwordError);
+      return;
+    }
+
     if (password !== confirmPassword) {
       Alert.alert('Mật khẩu không khớp', 'Ô xác nhận mật khẩu phải giống với mật khẩu bạn vừa nhập.');
       return;
@@ -75,6 +82,7 @@ export default function RegisterScreen() {
         fullName: fullName.trim(),
         email: email.trim(),
         password,
+        acceptTerms,
       });
       router.push({
         pathname: '/(auth)/verify-otp',

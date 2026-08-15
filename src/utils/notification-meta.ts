@@ -120,6 +120,16 @@ const META_BY_TYPE: Record<string, NotificationMeta> = {
     categoryLabel: 'Cộng đồng',
     isReportLinked: false,
   },
+  ReopenReviewNeeded: {
+    icon: 'refresh-circle-outline',
+    categoryLabel: 'Mở lại',
+    isReportLinked: true,
+  },
+  ReopenRequestDecided: {
+    icon: 'refresh-circle-outline',
+    categoryLabel: 'Mở lại',
+    isReportLinked: true,
+  },
   CommunityCleanupStarted: {
     icon: 'play-circle-outline',
     categoryLabel: 'Cộng đồng',

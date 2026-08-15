@@ -19,6 +19,22 @@ export interface CatalogWardsResponse {
   items: CatalogWard[];
 }
 
+export interface ProvinceBoundaryResponse {
+  provinceCode: string;
+  name: string | null;
+  geoJson: string | null;
+  /** DEPRECATED — CDN cũ đã chết, luôn null. */
+  boundaryUrl: string | null;
+}
+
+export interface WardBoundaryResponse {
+  wardCode: string;
+  name: string | null;
+  geoJson: string | null;
+  /** DEPRECATED — CDN cũ đã chết, luôn null. */
+  boundaryUrl: string | null;
+}
+
 export interface CatalogPollutionCategory {
   id: string;
   code: string;

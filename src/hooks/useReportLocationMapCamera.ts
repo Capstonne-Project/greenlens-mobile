@@ -35,15 +35,23 @@ export function useReportLocationMapCamera({
     }
   }, [enabled]);
 
-  // Fit ranh giới khi auto-chọn / user chọn tỉnh hoặc phường
+  // Fit ranh giới khi auto-chọn / user chọn tỉnh hoặc phường.
+  // Key theo cả số lượng điểm polygon — vì provincePolygons/wardPolygons cập nhật async sau khi
+  // provinceCode/wardCode đổi, nên rings có thể vẫn là dữ liệu ranh giới CŨ trong 1-2 lần render đầu.
+  // Nếu chỉ key theo code, fit sẽ chạy nhầm với ranh giới cũ rồi bỏ qua lần fit đúng khi ranh giới mới về.
   useEffect(() => {
     if (!enabled) return;
 
-    const boundaryKey = wardCode ? `ward:${wardCode}` : provinceCode ? `province:${provinceCode}` : null;
-    if (!boundaryKey || lastBoundaryKeyRef.current === boundaryKey) return;
-
     const rings = wardCode && wardPolygons.length ? wardPolygons : provincePolygons;
     if (!rings.length) return;
+
+    const pointCount = rings.reduce((sum, ring) => sum + ring.length, 0);
+    const boundaryKey = wardCode
+      ? `ward:${wardCode}:${pointCount}`
+      : provinceCode
+        ? `province:${provinceCode}:${pointCount}`
+        : null;
+    if (!boundaryKey || lastBoundaryKeyRef.current === boundaryKey) return;
 
     lastBoundaryKeyRef.current = boundaryKey;
     mapRef.current?.fitToCoordinates(rings.flat(), {
@@ -71,8 +79,8 @@ export function useReportLocationMapCamera({
     const markerKey = `${marker.latitude.toFixed(5)},${marker.longitude.toFixed(5)}`;
     if (lastMarkerKeyRef.current === markerKey) return;
 
-    const boundaryKey = wardCode ? `ward:${wardCode}` : provinceCode ? `province:${provinceCode}` : null;
-    const boundaryUnchanged = boundaryKey != null && lastBoundaryKeyRef.current === boundaryKey;
+    const boundaryPrefix = wardCode ? `ward:${wardCode}:` : provinceCode ? `province:${provinceCode}:` : null;
+    const boundaryUnchanged = boundaryPrefix != null && (lastBoundaryKeyRef.current?.startsWith(boundaryPrefix) ?? false);
 
     lastMarkerKeyRef.current = markerKey;
 

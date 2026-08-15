@@ -48,9 +48,6 @@ export function PlaceSuggestionRow({ suggestion, onPress }: PlaceSuggestionRowPr
           ) : null}
         </View>
 
-        {!suggestion.boundaryUrl ? (
-          <Ionicons name="alert-circle-outline" size={15} color={colors.textDisabled} />
-        ) : null}
         <Ionicons name="chevron-forward" size={16} color={colors.textDisabled} />
       </Pressable>
     </Animated.View>

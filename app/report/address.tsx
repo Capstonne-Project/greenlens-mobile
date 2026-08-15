@@ -78,15 +78,9 @@ export default function ReportAddressScreen() {
       let wardGroups = wardPolygonGroups;
 
       if (wardCode && wardGroups.length === 0) {
-        const ward = wards.find((item) => item.code === wardCode);
-        if (ward?.boundaryUrl) {
-          wardGroups = await fetchWardBoundaryGroups(ward.boundaryUrl, wardCode);
-        }
+        wardGroups = await fetchWardBoundaryGroups(wardCode);
       } else if (provinceCode && provinceGroups.length === 0) {
-        const province = provinces.find((item) => item.code === provinceCode);
-        if (province?.boundaryUrl) {
-          provinceGroups = await fetchProvinceBoundaryGroups(province.boundaryUrl);
-        }
+        provinceGroups = await fetchProvinceBoundaryGroups(provinceCode);
       }
 
       return validatePinAgainstBoundary({
@@ -97,7 +91,7 @@ export default function ReportAddressScreen() {
         wardPolygonGroups: wardGroups,
       });
     },
-    [provinceCode, provincePolygonGroups, provinces, wardCode, wardPolygonGroups, wards],
+    [provinceCode, provincePolygonGroups, wardCode, wardPolygonGroups],
   );
 
   const handleProvinceChange = useCallback(
@@ -105,34 +99,32 @@ export default function ReportAddressScreen() {
       if (!code) {
         setProvinceCode(null);
         setWardCode(null);
-        void loadWardBoundary(null, null);
+        void loadWardBoundary(null);
         await loadProvinceBoundary(null);
         return;
       }
 
       setProvinceCode(code);
       setWardCode(null);
-      void loadWardBoundary(null, null);
-      const province = provinces.find((item) => item.code === code);
-      await loadProvinceBoundary(province?.boundaryUrl ?? null);
+      void loadWardBoundary(null);
+      await loadProvinceBoundary(code);
       await refetchWards(code);
     },
-    [loadProvinceBoundary, loadWardBoundary, provinces, refetchWards],
+    [loadProvinceBoundary, loadWardBoundary, refetchWards],
   );
 
   const handleWardChange = useCallback(
     async (code: string | null) => {
       if (!code) {
         setWardCode(null);
-        void loadWardBoundary(null, null);
+        void loadWardBoundary(null);
         return;
       }
 
       setWardCode(code);
-      const ward = wards.find((item) => item.code === code);
-      await loadWardBoundary(ward?.boundaryUrl ?? null, code);
+      await loadWardBoundary(code);
     },
-    [loadWardBoundary, wards],
+    [loadWardBoundary],
   );
 
   const handleMarkerChange = useCallback(

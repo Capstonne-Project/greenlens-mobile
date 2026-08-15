@@ -39,19 +39,11 @@ export function useAreaBoundary(): UseAreaBoundaryResult {
       fitCoords: [],
     };
 
-    // Chưa có ranh giới → vẫn focus theo tên để hiển thị, nhưng không vẽ polygon.
-    if (!suggestion.boundaryUrl) {
-      setAreaFocus(emptyFocus);
-      setHasNoBoundary(true);
-      setLoading(false);
-      return emptyFocus;
-    }
-
     try {
       const raw =
         suggestion.kind === 'province'
-          ? await fetchProvinceBoundaryGroups(suggestion.boundaryUrl)
-          : await fetchWardBoundaryGroups(suggestion.boundaryUrl, suggestion.code);
+          ? await fetchProvinceBoundaryGroups(suggestion.code)
+          : await fetchWardBoundaryGroups(suggestion.code);
 
       // Bỏ đảo/mảnh vụn xa bờ + lọc thưa điểm, nếu không map zoom quá rộng và tụt FPS.
       const { groups, fitCoords } = prepareAreaShape(raw);

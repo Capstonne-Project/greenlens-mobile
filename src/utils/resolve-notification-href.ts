@@ -38,8 +38,10 @@ export function resolveNotificationHref(
 function resolveCitizenHref(type: string, ref: string | null): Href | null {
   switch (type) {
     case 'BadgeEarned':
-    case 'LevelUp':
     case 'BadgeProgressNear':
+      return '/badges' as Href;
+
+    case 'LevelUp':
       return '/(tabs)/profile' as Href;
 
     // Fullscreen accept/decline — referenceId = invitationId
@@ -82,6 +84,9 @@ function resolveCitizenHref(type: string, ref: string | null): Href | null {
     case 'PenaltyIssued':
     case 'SlaBreachWarning':
     case 'DuplicateReviewNeeded':
+    // BR-REP-015: LEO chấp nhận/từ chối yêu cầu mở lại — referenceId = report id, mở lại
+    // đúng báo cáo để citizen thấy lý do (đã lưu vào ReportStatusHistory khi LEO quyết định).
+    case 'ReopenRequestDecided':
       if (ref) {
         return {
           pathname: '/report/[id]',
@@ -106,10 +111,16 @@ function resolveFieldWorkerHref(type: string, ref: string | null): Href | null {
     case 'ContractExpiry':
       return '/(staff)/settings' as Href;
 
-    // referenceId = CommunityCleanupEvent id — Cleaner được chỉ định làm Leader.
+    // Lời mời tham gia team clean up — chỉ để thông báo, không redirect
+    // (event có thể chưa sẵn sàng ở phía BE, gây lỗi "không tìm thấy team").
     case 'CommunityCleanupLeaderAssigned':
+      return null;
+
     // LEO từ chối minh chứng hoàn thành — Leader quay lại màn quản lý để nộp lại.
+    // LEO duyệt hoàn thành chương trình — referenceId = CommunityCleanupEvent id, không
+    // phải assignmentId, nên phải cùng route quản lý cộng đồng của leader, không phải /assignment/[id].
     case 'CommunityCleanupVerificationRejected':
+    case 'CommunityCleanupVerified':
       if (ref) {
         return {
           pathname: '/community-lead/[id]',
@@ -117,6 +128,12 @@ function resolveFieldWorkerHref(type: string, ref: string | null): Href | null {
         } as Href;
       }
       return '/(staff)/assignments' as Href;
+
+    // Chưa có màn thành tích/badge riêng cho shell staff — chỉ đóng thông báo,
+    // tránh rơi vào default và bị ép sang /assignment/[id] (referenceId ở đây không phải assignmentId).
+    case 'BadgeEarned':
+    case 'BadgeProgressNear':
+      return null;
 
     case 'ReportAssigned':
     case 'ReportStatusChanged':

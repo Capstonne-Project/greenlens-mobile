@@ -2,7 +2,30 @@ import {
   REOPEN_MAX_APPROVED,
   REOPEN_WINDOW_DAYS,
 } from '@/types/report-detail.types';
+import type {
+  ReportHistoryEventType,
+  ReportHistoryItem,
+} from '@/types/report-detail.types';
 import type { ReportWorkflowStatus } from '@/types/report-status.types';
+
+const REOPEN_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'ReopenRequested',
+  'ReopenApproved',
+  'ReopenRejected',
+]);
+
+/** Đọc `eventType` từ `ReportHistoryItem.metadata` (JSON) — trả `null` nếu không khớp/lỗi parse. */
+export function parseReopenEventType(item: ReportHistoryItem): ReportHistoryEventType | null {
+  if (!item.metadata) return null;
+  try {
+    const parsed = JSON.parse(item.metadata) as { eventType?: string };
+    return parsed.eventType && REOPEN_EVENT_TYPES.has(parsed.eventType)
+      ? (parsed.eventType as ReportHistoryEventType)
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface ReportStatusMeta {
   label: string;

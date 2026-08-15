@@ -30,7 +30,21 @@ const INSPECTION_ERROR_MESSAGES: Record<string, string> = {
   INSPECTION_NO_TEAM: 'Hồ sơ chưa được gán đoàn thanh tra.',
   INSPECTION_DECLINE_EXPIRED: 'Đã quá hạn 24h để từ chối hồ sơ.',
   ENDPOINT_DEPRECATED: 'Chức năng này đã được thay thế. Vui lòng cập nhật ứng dụng.',
+  INVALID_STORAGE_URL: 'Đường dẫn tệp không hợp lệ. Vui lòng chụp/tải lại ảnh.',
+  CONCURRENCY_CONFLICT: 'Thao tác có thể đã được ghi nhận. Đang tải lại trạng thái hồ sơ...',
 };
+
+/** Code cần tự động refetch detail sau khi lỗi — trạng thái BE đã đổi, cache FE đang stale. */
+export const STALE_STATE_ERROR_CODES = new Set([
+  'CONCURRENCY_CONFLICT',
+  'INSPECTION_INVALID_STATUS',
+]);
+
+export function isStaleStateError(error: unknown): boolean {
+  if (!isAxiosError(error) || !error.response) return false;
+  const code = (error.response.data as { code?: string } | undefined)?.code;
+  return !!code && STALE_STATE_ERROR_CODES.has(code);
+}
 
 const FALLBACK = 'Không thể thực hiện thao tác. Vui lòng thử lại.';
 

@@ -7,15 +7,24 @@ import { isMergedDuplicateReport } from '@/utils/report-merge';
 import { getReportStatusMeta } from '@/utils/report-status';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 import { Pressable, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 
 interface MyReportListCardProps {
   item: MyReportItem;
   onPress: () => void;
   /** Tap riêng vào link báo cáo gốc (Duplicate) */
   onOpenPrimary?: () => void;
+  /** Deep-link từ map: viền pulse vài giây để người dùng nhận ra đúng báo cáo vừa xem */
+  highlighted?: boolean;
 }
 
 const SEVERITY_META: Record<MyReportSeverity, { label: string; textColor: string }> = {
@@ -158,7 +167,26 @@ function ActionBtn({ label, variant, onPress }: ActionBtnProps) {
   );
 }
 
-function MyReportListCardComponent({ item, onPress, onOpenPrimary }: MyReportListCardProps) {
+function MyReportListCardComponent({ item, onPress, onOpenPrimary, highlighted }: MyReportListCardProps) {
+  const highlightOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    if (!highlighted) {
+      highlightOpacity.value = 0;
+      return;
+    }
+    // Pulse 3 lần rồi tắt — đủ để mắt bắt được đúng card, không gây rối mắt kéo dài.
+    highlightOpacity.value = withRepeat(
+      withSequence(withTiming(1, { duration: 400 }), withTiming(0, { duration: 400 })),
+      3,
+      false,
+    );
+  }, [highlighted, highlightOpacity]);
+
+  const highlightStyle = useAnimatedStyle(() => ({
+    opacity: highlightOpacity.value,
+  }));
+
   const pendingReopenReview = isPendingReopenReview(item);
   // `getReportStatusMeta('Resolved')` luôn trả label "Cần xác nhận" — sai khi đang chờ LEO
   // duyệt yêu cầu mở lại, lúc đó người dùng không cần làm gì cả nên phải ghi đè riêng.
@@ -176,7 +204,14 @@ function MyReportListCardComponent({ item, onPress, onOpenPrimary }: MyReportLis
   const primaryCode = item.mergedIntoPrimaryReportCode?.trim();
 
   return (
-    <View className="mb-2.5 bg-white px-4 py-3.5">
+    <View className="relative mb-2.5 overflow-hidden rounded-2xl bg-white px-4 py-3.5">
+      {highlighted ? (
+        <Animated.View
+          pointerEvents="none"
+          className="absolute inset-0 rounded-2xl border-2"
+          style={[{ borderColor: colors.primary, backgroundColor: colors.primaryLight }, highlightStyle]}
+        />
+      ) : null}
       <TapScale onPress={onPress}>
         <View>
           <View className="mb-2.5 flex-row items-center justify-between gap-3">

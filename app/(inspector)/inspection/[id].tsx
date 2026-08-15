@@ -37,6 +37,7 @@ import { colors } from '@/theme/colors';
 import type {
   EvidenceCategory,
   InspectionEvidenceItem,
+  InspectionDetail,
   ViolationLevel,
 } from '@/types/inspection.types';
 import { formatVndDigits, parseVndDigits, vndToWords } from '@/utils/currency';
@@ -70,6 +71,16 @@ const VIOLATION_LEVEL_LABELS: Record<ViolationLevel, string> = {
 const MIN_CLOSE_REASON_LENGTH = 50;
 
 type StepKey = 'accept' | 'arrival' | 'checklist' | 'decision' | 'payment';
+
+/** Step đầu tiên còn cần xử lý theo trạng thái hồ sơ hiện tại — dùng để tự nhảy step sau mỗi hành động. */
+function resolveNextStep(detail: InspectionDetail): StepKey | null {
+  if (detail.canAcceptTask) return 'accept';
+  if (detail.canConfirmArrival && !detail.arrivalConfirmedAt) return 'arrival';
+  if (detail.canEditChecklist) return 'checklist';
+  if (detail.canIssuePenalty || detail.canCloseNoViolation) return 'decision';
+  if (detail.canClose) return 'payment';
+  return null;
+}
 
 const STEP_ORDER: readonly StepKey[] = ['accept', 'arrival', 'checklist', 'decision', 'payment'];
 
@@ -129,9 +140,23 @@ export default function InspectionDetailScreen() {
 
   const { detail, reportMedia, sceneCoords, isLoading, errorMessage, refetch } =
     useInspectionDetail(id);
-  const { run, submitting, actionError, successMessage, dismissFeedback } = useInspectionActions({
+  const { run, submitting, actionError, successMessage, dismissFeedback } = useInspectionActions<
+    InspectionDetail | null
+  >({
     onRefresh: refetch,
   });
+
+  // Sau mỗi hành động thành công, tự nhảy sang step kế tiếp theo trạng thái mới nhất từ
+  // server — không chờ user thoát/vào lại màn hình mới re-tính (bug cũ). User vẫn bấm
+  // tay được vào StageTracker để xem lại step trước.
+  const runAndAdvance = useCallback(
+    async (action: () => Promise<unknown>, message: string) => {
+      const refreshed = await run(action, message);
+      if (refreshed) setActiveStep(resolveNextStep(refreshed));
+      return refreshed;
+    },
+    [run],
+  );
   const {
     upload,
     uploadFile,
@@ -163,6 +188,8 @@ export default function InspectionDetailScreen() {
   const [paymentDueDays, setPaymentDueDays] = useState('10');
   const [additionalMeasures, setAdditionalMeasures] = useState('');
   const [closeNoViolationReason, setCloseNoViolationReason] = useState('');
+  // Mặc định hiện form ban hành quyết định — chỉ chuyển sang form từ chối khi user bấm chọn.
+  const [decisionMode, setDecisionMode] = useState<'penalty' | 'reject'>('penalty');
   const [closeReason, setCloseReason] = useState('');
 
   const checklistStates = useMemo(
@@ -180,7 +207,9 @@ export default function InspectionDetailScreen() {
     enabled: activeStep === 'arrival' && Boolean(detail?.canConfirmArrival),
   });
 
-  // Prefill từ server + tự chọn stage đang cần xử lý.
+  // Prefill từ server — CHỈ chạy khi mở hồ sơ (đổi `detail.id`), không chạy lại mỗi lần
+  // refetch (vd sau khi upload ảnh/video/ghi âm), nếu không sẽ ghi đè mất nội dung user
+  // đang gõ trong biên bản mà chưa bấm "Lưu checklist".
   useEffect(() => {
     if (!detail) return;
     const states = buildChecklistState(detail.checklistEvidence);
@@ -192,16 +221,13 @@ export default function InspectionDetailScreen() {
     );
     setOtherNote(states.find((s) => s.category === 'Other')?.note ?? '');
     if (detail.violationLevel) setViolationLevel(detail.violationLevel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail?.id]);
 
-    setActiveStep((current) => {
-      if (current) return current;
-      if (detail.canAcceptTask) return 'accept';
-      if (detail.canConfirmArrival && !detail.arrivalConfirmedAt) return 'arrival';
-      if (detail.canEditChecklist) return 'checklist';
-      if (detail.canIssuePenalty || detail.canCloseNoViolation) return 'decision';
-      if (detail.canClose) return 'payment';
-      return null;
-    });
+  // Tự chọn stage đang cần xử lý — tách riêng khỏi prefill để không phụ thuộc lifecycle của nó.
+  useEffect(() => {
+    if (!detail) return;
+    setActiveStep((current) => current ?? resolveNextStep(detail));
   }, [detail]);
 
   const handleEvidencePick = useCallback(
@@ -290,7 +316,7 @@ export default function InspectionDetailScreen() {
       icon: 'hand-left-outline',
       disabled: submitting,
       loading: submitting,
-      onPress: () => void run(() => inspectionService.accept(id!), 'Đã nhận hồ sơ.'),
+      onPress: () => void runAndAdvance(() => inspectionService.accept(id!), 'Đã nhận hồ sơ.'),
     });
   }
 
@@ -300,7 +326,7 @@ export default function InspectionDetailScreen() {
       disabled: submitting || !violationReport.severity.trim(),
       loading: submitting,
       onPress: () =>
-        void run(
+        void runAndAdvance(
           async () => {
             await inspectionService.updateDetails(id!, {
               violatorName: violatorName.trim() || undefined,
@@ -323,17 +349,17 @@ export default function InspectionDetailScreen() {
       disabled: submitting || !canSubmitFieldReport,
       loading: submitting,
       onPress: () =>
-        void run(() => inspectionService.submitFieldReport(id!), 'Đã chốt biên bản hiện trường.'),
+        void runAndAdvance(() => inspectionService.submitFieldReport(id!), 'Đã chốt biên bản hiện trường.'),
     });
   }
 
-  if (currentStep === 'decision' && detail.canIssuePenalty) {
+  if (currentStep === 'decision' && detail.canIssuePenalty && decisionMode === 'penalty') {
     footerButtons.push({
       label: 'Ban hành quyết định',
       disabled: submitting || parseVndDigits(penaltyAmount) <= 0 || !decisionNumber.trim(),
       loading: submitting,
       onPress: () =>
-        void run(
+        void runAndAdvance(
           () =>
             inspectionService.issuePenalty(id!, {
               violationLevel,
@@ -346,14 +372,18 @@ export default function InspectionDetailScreen() {
         ),
     });
   }
-  if (currentStep === 'decision' && detail.canCloseNoViolation) {
+  if (
+    currentStep === 'decision' &&
+    detail.canCloseNoViolation &&
+    (decisionMode === 'reject' || !detail.canIssuePenalty)
+  ) {
     footerButtons.push({
       label: 'Đóng không vi phạm',
       tone: 'neutral',
       disabled: submitting || closeNoViolationReason.trim().length < MIN_CLOSE_REASON_LENGTH,
       loading: submitting,
       onPress: () =>
-        void run(
+        void runAndAdvance(
           () => inspectionService.closeNoViolation(id!, { reason: closeNoViolationReason.trim() }),
           'Đã đóng hồ sơ — không đủ căn cứ.',
         ),
@@ -366,7 +396,7 @@ export default function InspectionDetailScreen() {
       disabled: submitting,
       loading: submitting,
       onPress: () =>
-        void run(
+        void runAndAdvance(
           () =>
             inspectionService.close(
               id!,
@@ -502,7 +532,7 @@ export default function InspectionDetailScreen() {
                     if (!coords) {
                       return;
                     }
-                    void run(
+                    void runAndAdvance(
                       () =>
                         inspectionService.confirmArrival(id!, {
                           latitude: coords.latitude,
@@ -510,8 +540,8 @@ export default function InspectionDetailScreen() {
                           note: arrivalNote.trim() || undefined,
                         }),
                       'Đã xác nhận có mặt tại hiện trường.',
-                    ).then((ok) => {
-                      if (ok) setArrivalNote('');
+                    ).then((refreshed) => {
+                      if (refreshed) setArrivalNote('');
                     });
                   }}
                 />
@@ -691,7 +721,7 @@ export default function InspectionDetailScreen() {
                 </Text>
               ) : null}
 
-              {detail.canIssuePenalty ? (
+              {detail.canIssuePenalty && decisionMode === 'penalty' ? (
                 <View className="mb-4">
                   <Text className="mb-2 text-sm font-bold text-textPrimary">
                     Ban hành quyết định xử phạt
@@ -755,11 +785,36 @@ export default function InspectionDetailScreen() {
                     className={TEXTAREA_CLASS}
                     textAlignVertical="top"
                   />
+
+                  {detail.canCloseNoViolation ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setDecisionMode('reject')}
+                      className="mt-1 self-start"
+                    >
+                      <Text className="text-xs font-semibold" style={{ color: colors.error }}>
+                        Không đủ căn cứ — chuyển sang đóng hồ sơ
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
 
-              {detail.canCloseNoViolation ? (
-                <View style={detail.canIssuePenalty ? { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 } : undefined}>
+              {detail.canCloseNoViolation && (decisionMode === 'reject' || !detail.canIssuePenalty) ? (
+                <View>
+                  {detail.canIssuePenalty ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setDecisionMode('penalty')}
+                      hitSlop={8}
+                      className="mb-3 flex-row items-center gap-1 self-start"
+                    >
+                      <Ionicons name="chevron-back" size={14} color={colors.textSecondary} />
+                      <Text className="text-xs font-semibold text-textSecondary">
+                        Quay lại ban hành quyết định
+                      </Text>
+                    </Pressable>
+                  ) : null}
                   <Text className="mb-2 text-sm font-bold text-textPrimary">
                     Đóng hồ sơ — không đủ căn cứ
                   </Text>

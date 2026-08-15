@@ -36,10 +36,11 @@ import {
   resolveCaptureLocation,
 } from "@/utils/capture-location";
 import {
+  parseAllLocationsFromPickerAssets,
   parseLocationFromPickerAsset,
   parseLocationFromPickerAssets,
 } from "@/utils/exif-location";
-import { enrichLocationWithGoong } from "@/utils/goong-admin-match";
+import { enrichLocationWithGoong, enrichLocationWithGoongFallback } from "@/utils/goong-admin-match";
 import { haversineKm } from "@/utils/geo";
 import { validatePinAgainstBoundary } from "@/utils/validate-pin-boundary";
 import {
@@ -51,7 +52,6 @@ import {
   fetchProvinceBoundaryGroups,
   fetchWardBoundaryGroups,
 } from "@/utils/ward-boundary";
-import { extractPolygonRings } from "@/utils/geojson-boundaries";
 import { resolvePollutionCategoryIcon } from "@/utils/pollution-category-icon";
 import { compressImage, UPLOAD_COMPRESS_PRESET } from "@/utils/compress-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -99,6 +99,8 @@ export default function ReportCreateWizardScreen() {
   const [tagDraft, setTagDraft] = useState("");
   const [wasteTagLimitMessage, setWasteTagLimitMessage] = useState<string | null>(null);
   const [showAiResult, setShowAiResult] = useState(false);
+  // URI ảnh đang được AI phân tích — dùng cho overlay, tránh hardcode ảnh đầu tiên.
+  const [analyzingImageUri, setAnalyzingImageUri] = useState<string | null>(null);
   const [pendingAiOutcome, setPendingAiOutcome] = useState<"accepted" | "review" | null>(null);
   // Nhiều ảnh được chọn cùng lúc + AI bật → chờ user chọn 1 ảnh để phân tích
   const [pendingAiPick, setPendingAiPick] = useState<
@@ -223,21 +225,18 @@ export default function ReportCreateWizardScreen() {
 
   useEffect(() => {
     if (!isLocationOpen || !location?.provinceCode) return;
-    const province = provinces.find((item) => item.code === location.provinceCode);
-    void loadProvinceBoundary(province?.boundaryUrl ?? null);
+    void loadProvinceBoundary(location.provinceCode);
     void refetchWards(location.provinceCode);
-  }, [isLocationOpen, loadProvinceBoundary, location?.provinceCode, provinces, refetchWards]);
+  }, [isLocationOpen, loadProvinceBoundary, location?.provinceCode, refetchWards]);
 
   useEffect(() => {
     if (!isLocationOpen) return;
     if (!location?.wardCode) {
-      void loadWardBoundary(null, null);
+      void loadWardBoundary(null);
       return;
     }
-    if (!wards.length) return;
-    const ward = wards.find((item) => item.code === location.wardCode);
-    void loadWardBoundary(ward?.boundaryUrl ?? null, location.wardCode);
-  }, [isLocationOpen, loadWardBoundary, location?.wardCode, wards]);
+    void loadWardBoundary(location.wardCode);
+  }, [isLocationOpen, loadWardBoundary, location?.wardCode]);
 
   // Enrich location bằng Goong khi mở section vị trí — chỉ chạy 1 lần per coords
   useEffect(() => {
@@ -459,6 +458,7 @@ export default function ReportCreateWizardScreen() {
 
       // Đọc GPS từ EXIF trước khi compress (nén JPEG sẽ strip metadata).
       const exifCoords = parseLocationFromPickerAsset(asset);
+      if (__DEV__) console.log('[handlePickCamera] exifCoords:', exifCoords);
       const captured = exifCoords
         ? await buildLocationDraftFromCoords(exifCoords)
         : await resolveCaptureLocation();
@@ -495,9 +495,11 @@ export default function ReportCreateWizardScreen() {
       setImages([{ localUri: compressed.uri, mimeType, fileName: compressed.fileName, uploadStatus: "pending" }]);
 
       // Step 1: upload Mobile → R2 (presign + PUT). AI classify only if toggle on.
+      setAnalyzingImageUri(compressed.uri);
       const outcome = await prepareImage(compressed.uri, mimeType, compressed.fileName, {
         runAi: useAi,
       });
+      setAnalyzingImageUri(null);
       if (outcome === "error") {
         Alert.alert(
           "Không tải được ảnh",
@@ -544,24 +546,14 @@ export default function ReportCreateWizardScreen() {
       let provinceGroups: LatLng[][][] = [];
       let wardGroups: LatLng[][][] = [];
 
-      if (admin.wardCode) {
-        let ward = wards.find((item) => item.code === admin.wardCode);
-        if (!ward && admin.provinceCode) {
-          try {
-            const response = await catalogService.getWardsByProvince(admin.provinceCode);
-            ward = response.data.data.items.find((item) => item.code === admin.wardCode);
-          } catch {
-            ward = undefined;
-          }
+      try {
+        if (admin.wardCode) {
+          wardGroups = await fetchWardBoundaryGroups(admin.wardCode);
+        } else if (admin.provinceCode) {
+          provinceGroups = await fetchProvinceBoundaryGroups(admin.provinceCode);
         }
-        if (ward?.boundaryUrl) {
-          wardGroups = await fetchWardBoundaryGroups(ward.boundaryUrl, admin.wardCode);
-        }
-      } else if (admin.provinceCode) {
-        const province = provinces.find((item) => item.code === admin.provinceCode);
-        if (province?.boundaryUrl) {
-          provinceGroups = await fetchProvinceBoundaryGroups(province.boundaryUrl);
-        }
+      } catch {
+        // Chưa có boundary hoặc lỗi mạng — validatePinAgainstBoundary xử lý groups rỗng.
       }
 
       return validatePinAgainstBoundary({
@@ -572,7 +564,7 @@ export default function ReportCreateWizardScreen() {
         wardPolygonGroups: wardGroups,
       });
     },
-    [provinces, wards],
+    [],
   );
 
   const showInvalidPinAlert = useCallback((message: string) => {
@@ -634,7 +626,9 @@ export default function ReportCreateWizardScreen() {
       };
 
       const exif = useCreateReportDraftStore.getState().exifLocation;
-      if (isFarFromExif(exif, coordinate)) {
+      const far = isFarFromExif(exif, coordinate);
+      if (__DEV__) console.log('[handleMapPress] exif:', exif, 'newPoint:', coordinate, 'far:', far);
+      if (far) {
         setPendingLocationOverride({ newLocation: coordinate, apply: () => void commit() });
         return;
       }
@@ -680,15 +674,12 @@ export default function ReportCreateWizardScreen() {
       }
 
       if (enriched.provinceCode) {
-        const province = provinces.find((item) => item.code === enriched.provinceCode);
-        await loadProvinceBoundary(province?.boundaryUrl ?? null);
+        await loadProvinceBoundary(enriched.provinceCode);
         await refetchWards(enriched.provinceCode);
         if (enriched.wardCode) {
-          const wardsResponse = await catalogService.getWardsByProvince(enriched.provinceCode);
-          const ward = wardsResponse.data.data.items.find((item) => item.code === enriched.wardCode);
-          await loadWardBoundary(ward?.boundaryUrl ?? null, enriched.wardCode);
+          await loadWardBoundary(enriched.wardCode);
         } else {
-          void loadWardBoundary(null, null);
+          void loadWardBoundary(null);
         }
       }
 
@@ -699,7 +690,7 @@ export default function ReportCreateWizardScreen() {
         );
       }
     },
-    [loadProvinceBoundary, loadWardBoundary, patchLocation, provinces, refetchWards, setLocation],
+    [loadProvinceBoundary, loadWardBoundary, patchLocation, refetchWards, setLocation],
   );
 
   const applyGpsLocation = useCallback(
@@ -744,6 +735,7 @@ export default function ReportCreateWizardScreen() {
   }, [applyGpsLocation, ensurePermission, refreshLocation]);
 
   const handlePickLibrary = useCallback(async () => {
+    if (isPicking || isAnalyzing || pendingAiPick !== null) return;
     setIsPicking(true);
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -763,15 +755,21 @@ export default function ReportCreateWizardScreen() {
 
       setSource("library");
 
-      // Parse GPS từ ảnh gốc trước khi compress strip EXIF.
-      const exifCoords = parseLocationFromPickerAssets(result.assets);
-      setExifLocation(exifCoords ?? null);
-      if (exifCoords) {
-        const fromExif = await buildLocationDraftFromCoords(exifCoords);
+      // Parse GPS từ ảnh gốc trước khi compress strip EXIF — lấy TẤT CẢ ảnh có GPS,
+      // không chỉ ảnh đầu, để có thể fallback sang ảnh khác nếu reverse-geocode ảnh đầu
+      // không ra được tỉnh/phường (vùng Goong không phủ, lỗi mạng tạm thời, …).
+      const allExifCoords = parseAllLocationsFromPickerAssets(result.assets);
+      const exifCoords = allExifCoords[0] ?? null;
+      if (__DEV__) console.log('[handlePickLibrary] allExifCoords:', allExifCoords, 'chosen:', exifCoords);
+      setExifLocation(exifCoords);
+      if (allExifCoords.length > 0) {
+        const candidates = await Promise.all(
+          allExifCoords.map((coords) => buildLocationDraftFromCoords(coords)),
+        );
         const resolved =
           provinces.length > 0
-            ? await enrichLocationWithGoong(fromExif, provinces)
-            : fromExif;
+            ? await enrichLocationWithGoongFallback(candidates, provinces)
+            : candidates[0];
         setLocation(resolved);
       }
 
@@ -824,9 +822,11 @@ export default function ReportCreateWizardScreen() {
       const restPromise = Promise.all(
         rest.map((img) => uploadDraftImage(img.localUri, img.mimeType, img.fileName)),
       );
+      if (first) setAnalyzingImageUri(first.localUri);
       const firstOutcome = first
         ? await prepareImage(first.localUri, first.mimeType, first.fileName, { runAi: useAi })
         : null;
+      setAnalyzingImageUri(null);
       const restResults = await restPromise;
 
       if (firstOutcome === "error" || restResults.some((ok) => !ok)) {
@@ -843,7 +843,19 @@ export default function ReportCreateWizardScreen() {
     } finally {
       setIsPicking(false);
     }
-  }, [prepareImage, uploadDraftImage, ensureLocationSeed, provinces, setImages, setLocation, setSource, useAi]);
+  }, [
+    isPicking,
+    isAnalyzing,
+    pendingAiPick,
+    prepareImage,
+    uploadDraftImage,
+    ensureLocationSeed,
+    provinces,
+    setImages,
+    setLocation,
+    setSource,
+    useAi,
+  ]);
 
   const handleAiPickSelect = useCallback(
     async (index: number) => {
@@ -852,9 +864,11 @@ export default function ReportCreateWizardScreen() {
       if (!drafted?.[index]) return;
 
       const picked = drafted[index];
+      setAnalyzingImageUri(picked.localUri);
       const outcome = await prepareImage(picked.localUri, picked.mimeType, picked.fileName, {
         runAi: true,
       });
+      setAnalyzingImageUri(null);
       if (outcome === "error") {
         Alert.alert("Không phân tích được ảnh", "Vui lòng thử lại hoặc tắt AI.");
       } else if (outcome === "rejected") {
@@ -876,7 +890,7 @@ export default function ReportCreateWizardScreen() {
       if (!code) {
         enrichedRef.current = null;
         void loadProvinceBoundary(null);
-        void loadWardBoundary(null, null);
+        void loadWardBoundary(null);
         const current = useCreateReportDraftStore.getState().location;
         if (current) {
           patchLocation({ provinceCode: undefined, wardCode: undefined, address: undefined });
@@ -884,19 +898,17 @@ export default function ReportCreateWizardScreen() {
         return;
       }
 
-      const selected = provinces.find((item) => item.code === code);
-
-      // Load boundary + wards song song, lấy polygon ngay từ kết quả
-      const [rings] = await Promise.all([
-        selected?.boundaryUrl
-          ? fetch(selected.boundaryUrl)
-              .then((r) => r.json())
-              .then((geo) => extractPolygonRings(geo as Parameters<typeof extractPolygonRings>[0]).flat() as LatLng[])
-              .catch(() => [] as LatLng[])
-          : Promise.resolve([] as LatLng[]),
-        loadProvinceBoundary(selected?.boundaryUrl ?? null),
+      // Fetch boundary groups 1 lần (có cache theo code trong ward-boundary.ts), dùng luôn để
+      // tính centroid; loadProvinceBoundary gọi lại cùng code sẽ trúng cache, không double-fetch.
+      const [groups] = await Promise.all([
+        fetchProvinceBoundaryGroups(code).catch((error) => {
+          if (__DEV__) console.warn('[handleProvinceSelect] boundary fetch failed', code, error);
+          return [] as LatLng[][][];
+        }),
         refetchWards(code),
       ]);
+      await loadProvinceBoundary(code);
+      const rings = groups.flat(2) as LatLng[];
 
       // Centroid bounding box của tỉnh
       let centerLat = userLocation?.latitude ?? 10.7769;
@@ -908,43 +920,59 @@ export default function ReportCreateWizardScreen() {
         centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
       }
 
-      const commit = () => {
-        enrichedRef.current = null;
-        void loadWardBoundary(null, null);
+      // Chọn tỉnh qua dropdown là hành động chủ ý của user — áp dụng ngay, không hỏi lại qua
+      // LocationOverrideDialog (dialog đó chỉ dành cho việc bấm/kéo pin trực tiếp trên map).
+      // Giữ nguyên mốc EXIF gốc: nếu sau đó user bấm/kéo pin đi quá xa vị trí ảnh thật, vẫn cần
+      // cảnh báo lệch vị trí — đổi tỉnh/ward ở bước này không có nghĩa user đã xác nhận điểm cụ thể.
+      // Đánh dấu coord này đã "enriched" ngay — nếu để null, effect reverse-geocode Goong sẽ chạy
+      // lại trên centroid và có thể trả về provinceCode/wardCode khác, ghi đè lựa chọn của user.
+      void loadWardBoundary(null);
+      enrichedRef.current = `${centerLat.toFixed(5)},${centerLng.toFixed(5)}`;
 
-        const current = useCreateReportDraftStore.getState().location;
-        if (current) {
-          patchLocation({ provinceCode: code, wardCode: undefined, address: undefined, latitude: centerLat, longitude: centerLng });
-        } else {
-          setLocation({ latitude: centerLat, longitude: centerLng, provinceCode: code, capturedAt: new Date().toISOString() });
-        }
-      };
-
-      const exif = useCreateReportDraftStore.getState().exifLocation;
-      const centroid = { latitude: centerLat, longitude: centerLng };
-      if (isFarFromExif(exif, centroid)) {
-        setPendingLocationOverride({ newLocation: centroid, apply: commit });
-        return;
+      const current = useCreateReportDraftStore.getState().location;
+      if (current) {
+        patchLocation({ provinceCode: code, wardCode: undefined, address: undefined, latitude: centerLat, longitude: centerLng });
+      } else {
+        setLocation({ latitude: centerLat, longitude: centerLng, provinceCode: code, capturedAt: new Date().toISOString() });
       }
-
-      commit();
     },
-    [loadProvinceBoundary, loadWardBoundary, patchLocation, provinces, refetchWards, setLocation, userLocation],
+    [loadProvinceBoundary, loadWardBoundary, patchLocation, refetchWards, setLocation, userLocation],
   );
 
   const handleWardSelect = useCallback(
     async (code: string | null) => {
       if (!code) {
-        void loadWardBoundary(null, null);
+        void loadWardBoundary(null);
         patchLocation({ wardCode: undefined });
         return;
       }
 
-      const selected = wards.find((item) => item.code === code);
-      await loadWardBoundary(selected?.boundaryUrl ?? null, code);
-      patchLocation({ wardCode: code });
+      const rings = await fetchWardBoundaryGroups(code)
+        .then((groups) => groups.flat(2) as LatLng[])
+        .catch((error) => {
+          if (__DEV__) console.warn('[handleWardSelect] boundary fetch failed', code, error);
+          return [] as LatLng[];
+        });
+      await loadWardBoundary(code);
+
+      const current = useCreateReportDraftStore.getState().location;
+      let centerLat = current?.latitude ?? userLocation?.latitude ?? 10.7769;
+      let centerLng = current?.longitude ?? userLocation?.longitude ?? 106.7009;
+      if (rings.length > 0) {
+        const lats = rings.map((p) => p.latitude);
+        const lngs = rings.map((p) => p.longitude);
+        centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+        centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+      }
+
+      // Chuyển sang phường khác — dời pin về tâm ranh giới phường mới, nhưng giữ nguyên mốc EXIF
+      // gốc: nếu tâm phường mới lệch xa vị trí ảnh thật, hoặc user sau đó kéo pin đi xa hơn nữa,
+      // vẫn cần cảnh báo lệch vị trí (LocationOverrideDialog) ở lần bấm/kéo pin tiếp theo.
+      // Đánh dấu coord mới này đã "enriched" — tránh effect reverse-geocode Goong ghi đè wardCode vừa chọn.
+      enrichedRef.current = `${centerLat.toFixed(5)},${centerLng.toFixed(5)}`;
+      patchLocation({ wardCode: code, latitude: centerLat, longitude: centerLng });
     },
-    [loadWardBoundary, patchLocation, wards],
+    [loadWardBoundary, patchLocation, userLocation],
   );
 
   const handleAddTag = useCallback(() => {
@@ -991,15 +1019,12 @@ export default function ReportCreateWizardScreen() {
     setLocation(resolved);
 
     if (resolved.provinceCode) {
-      const province = provinces.find((item) => item.code === resolved.provinceCode);
-      await loadProvinceBoundary(province?.boundaryUrl ?? null);
+      await loadProvinceBoundary(resolved.provinceCode);
       await refetchWards(resolved.provinceCode);
       if (resolved.wardCode) {
-        const wardsResponse = await catalogService.getWardsByProvince(resolved.provinceCode);
-        const ward = wardsResponse.data.data.items.find((item) => item.code === resolved.wardCode);
-        await loadWardBoundary(ward?.boundaryUrl ?? null, resolved.wardCode);
+        await loadWardBoundary(resolved.wardCode);
       } else {
-        void loadWardBoundary(null, null);
+        void loadWardBoundary(null);
       }
     }
   }, [loadProvinceBoundary, loadWardBoundary, provinces, refetchWards, setLocation]);
@@ -1080,6 +1105,7 @@ export default function ReportCreateWizardScreen() {
                 removeImage(uri);
                 clearAiResult();
               }}
+              disabled={isPicking || isAnalyzing || pendingAiPick !== null}
             />
           </View>
         </ReportFormSection>
@@ -1274,7 +1300,7 @@ export default function ReportCreateWizardScreen() {
           banner "Đang tải ảnh lên server..." + badge trạng thái trên từng ảnh. */}
       <AiImageScanOverlay
         visible={isAnalyzing && useAi}
-        imageUri={images[0]?.localUri}
+        imageUri={analyzingImageUri ?? images[0]?.localUri}
         mode="ai"
       />
 

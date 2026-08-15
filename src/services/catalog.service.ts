@@ -4,6 +4,8 @@ import type {
   CatalogPollutionCategoriesResponse,
   CatalogProvincesResponse,
   CatalogWardsResponse,
+  ProvinceBoundaryResponse,
+  WardBoundaryResponse,
 } from '@/types/catalog.types';
 
 export const catalogService = {
@@ -18,5 +20,15 @@ export const catalogService = {
   getPollutionCategories: () =>
     apiPublic.get<ApiEnvelope<CatalogPollutionCategoriesResponse>>(
       '/catalog/pollution-categories',
+    ),
+
+  getProvinceBoundary: (provinceCode: string) =>
+    apiPublic.get<ApiEnvelope<ProvinceBoundaryResponse>>(
+      `/catalog/provinces/${provinceCode}/boundary`,
+    ),
+
+  getWardBoundary: (wardCode: string) =>
+    apiPublic.get<ApiEnvelope<WardBoundaryResponse>>(
+      `/catalog/wards/${wardCode}/boundary`,
     ),
 };
