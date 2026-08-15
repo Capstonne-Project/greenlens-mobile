@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { colors } from '@/theme/colors';
 import type { BadgeCatalogItem } from '@/types/gamification.types';
 import { getApiErrorMessage } from '@/utils/api-error-message';
+import { getBadgeProgress } from '@/utils/badge-progress';
 import { formatDate } from '@/utils/formatters';
 
 const CARD_3D_SHADOW = Platform.select({
@@ -48,6 +49,7 @@ function BadgeCell({
   onPress: () => void;
 }) {
   const locked = !item.isUnlocked;
+  const progress = locked ? getBadgeProgress(item) : null;
 
   return (
     <View className="w-1/3 px-1.5 py-2">
@@ -146,17 +148,9 @@ function BadgeCell({
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
               {item.awardedAt ? formatDate(item.awardedAt) : 'Đã đạt'}
             </Text>
-          ) : item.requiredPoints ? (
+          ) : progress ? (
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
-              {item.currentProgressValue ?? '?'}/{item.requiredPoints} điểm
-            </Text>
-          ) : item.requiredReportCount ? (
-            <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
-              {item.currentProgressValue ?? '?'}/{item.requiredReportCount} báo cáo
-            </Text>
-          ) : item.requiredStreakDays ? (
-            <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>
-              {item.currentProgressValue ?? '?'}/{item.requiredStreakDays} ngày
+              {progress.label}
             </Text>
           ) : (
             <Text className="mt-1 text-center text-[10px] text-textSecondary" numberOfLines={1}>

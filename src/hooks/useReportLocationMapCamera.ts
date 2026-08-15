@@ -54,10 +54,15 @@ export function useReportLocationMapCamera({
     if (!boundaryKey || lastBoundaryKeyRef.current === boundaryKey) return;
 
     lastBoundaryKeyRef.current = boundaryKey;
-    mapRef.current?.fitToCoordinates(rings.flat(), {
-      edgePadding: MAP_EDGE_PADDING,
-      animated: true,
+    // MapView cần ít nhất 1 frame để render Polygon mới trước khi fitToCoordinates
+    // đo đúng bounds — gọi ngay trong effect có thể fit hụt trên Android.
+    const raf = requestAnimationFrame(() => {
+      mapRef.current?.fitToCoordinates(rings.flat(), {
+        edgePadding: MAP_EDGE_PADDING,
+        animated: true,
+      });
     });
+    return () => cancelAnimationFrame(raf);
   }, [enabled, mapRef, provinceCode, provincePolygons, wardCode, wardPolygons]);
 
   // Căn map lần đầu vào step khi chưa có ranh giới
