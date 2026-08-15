@@ -447,11 +447,22 @@ export default function AssignmentDetailScreen() {
   const awaitingBeforeImages =
     task?.assignmentStatus === 'InProgress' && !hasBeforeImages;
   /**
-   * Chỉ cho Hoàn thành khi đội đã cập nhật tiến độ ít nhất 1 lần.
-   * Tránh case task nhảy thẳng từ 0% sang Completed mà không có dấu vết xử lý.
+   * Task bị từ chối / chuyển cấp: dừng timeline ngay tại "Giao cho đội".
+   * Không được suy luận done từ hasBeforeImages/progressUpdatedAt — các field này
+   * gắn với report (toàn cục), không phải riêng lần assignment hiện tại, nên có thể
+   * còn sót dữ liệu từ lần giao trước đó.
    */
+  const isTimelineHalted =
+    task?.assignmentStatus === 'Declined' || task?.assignmentStatus === 'Escalated';
+  /**
+   * Chỉ cho Hoàn thành khi tiến độ đã đạt tối thiểu 50%.
+   * BE chưa trả số lần cập nhật thực tế (chỉ có progressUpdatedAt của lần gần nhất),
+   * nên dùng % làm proxy — tránh case chỉ update 1 lần ở mức thấp (VD 25%) rồi bấm
+   * Hoàn thành ngay, chưa thực sự xử lý xong hiện trường.
+   */
+  const MIN_PROGRESS_PERCENT_TO_COMPLETE = 50;
   const hasProgressUpdate =
-    task != null && (task.progressUpdatedAt != null || task.progressPercent > 0);
+    task != null && task.progressPercent >= MIN_PROGRESS_PERCENT_TO_COMPLETE;
   const canComplete = task?.canResolve === true && hasProgressUpdate;
   const declineDeadline = task
     ? resolveDeclineDeadline(task.declineDeadlineAt, task.assignedAt)
@@ -686,28 +697,30 @@ export default function AssignmentDetailScreen() {
                 <TimelineStep
                   label="Chấp nhận / Check-in"
                   time={task.startedAt ? formatTime(task.startedAt) : null}
-                  done={!!task.startedAt || task.assignmentStatus === 'InProgress'}
+                  done={!!task.startedAt}
                 />
                 <TimelineStep
                   label="Ảnh hiện trạng trước dọn"
-                  time={hasBeforeImages ? 'Đã gửi' : null}
-                  done={hasBeforeImages}
+                  time={isTimelineHalted ? null : hasBeforeImages ? 'Đã gửi' : null}
+                  done={!isTimelineHalted && hasBeforeImages}
                   active={awaitingBeforeImages}
                 />
                 <TimelineStep
                   label="Xử lý hiện trường"
                   time={
-                    task.progressUpdatedAt
-                      ? `Cập nhật ${formatDateTime(task.progressUpdatedAt)}`
-                      : 'Cập nhật tiến độ là tùy chọn'
+                    isTimelineHalted
+                      ? null
+                      : task.progressUpdatedAt
+                        ? `Cập nhật ${formatDateTime(task.progressUpdatedAt)}`
+                        : 'Cập nhật tiến độ là tùy chọn'
                   }
                   done={task.assignmentStatus === 'Completed'}
-                  active={task.assignmentStatus === 'InProgress' && hasBeforeImages}
+                  active={!isTimelineHalted && task.assignmentStatus === 'InProgress' && hasBeforeImages}
                 />
                 <TimelineStep
-                  label="Hoàn thành"
+                  label={isTimelineHalted ? (task.assignmentStatus === 'Declined' ? 'Đã từ chối' : 'Đã chuyển cấp') : 'Hoàn thành'}
                   time={task.completedAt ? formatDateTime(task.completedAt) : null}
-                  done={task.assignmentStatus === 'Completed'}
+                  done={task.assignmentStatus === 'Completed' || isTimelineHalted}
                   isLast
                 />
               </View>
@@ -865,7 +878,7 @@ export default function AssignmentDetailScreen() {
               <View className="gap-2.5">
                 {!canComplete ? (
                   <Text className="text-center text-xs text-textSecondary">
-                    Cần cập nhật tiến độ trước khi hoàn thành nhiệm vụ
+                    Cần cập nhật tiến độ đạt tối thiểu {MIN_PROGRESS_PERCENT_TO_COMPLETE}% trước khi hoàn thành nhiệm vụ
                   </Text>
                 ) : null}
                 <View className="flex-row items-stretch gap-3">
