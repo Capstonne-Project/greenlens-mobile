@@ -2,17 +2,10 @@ import { catalogService } from '@/services/catalog.service';
 import { extractPolygonGroups, type GeoJsonCollection } from '@/utils/geojson-boundaries';
 import type { LatLng } from 'react-native-maps';
 
-const boundaryCache = new Map<string, GeoJsonCollection>();
-
 async function loadBoundaryGeometry(
   code: string,
   fetchRaw: () => Promise<string | null>,
 ): Promise<GeoJsonCollection> {
-  const cached = boundaryCache.get(code);
-  if (cached) {
-    return cached;
-  }
-
   const raw = await fetchRaw();
   if (!raw) {
     throw new Error('BOUNDARY_NOT_FOUND');
@@ -25,7 +18,6 @@ async function loadBoundaryGeometry(
     console.log('[ward-boundary] loaded', code, 'geometry type:', geometry?.type);
   }
 
-  boundaryCache.set(code, collection);
   return collection;
 }
 

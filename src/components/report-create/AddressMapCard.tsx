@@ -114,6 +114,10 @@ export function AddressMapCard({
 
       <View className="overflow-hidden rounded-2xl border border-border">
         <MapView
+          // react-native-maps (Android) không luôn redraw Polygon khi coordinates đổi
+          // trên MapView đã mount — remount toàn bộ map khi ranh giới đổi để đảm bảo
+          // ranh giới mới hiện ngay, không cần đóng/mở lại section.
+          key={`${provinceCode ?? 'none'}-${wardCode ?? 'none'}`}
           ref={mapRef}
           style={{ width: '100%', height: 280 }}
           initialRegion={DEFAULT_REGION}
@@ -121,7 +125,7 @@ export function AddressMapCard({
         >
           {provincePolygons.map((ring, index) => (
             <Polygon
-              key={`province-${index}`}
+              key={`province-${provinceCode}-${index}`}
               coordinates={ring}
               strokeColor={colors.primary}
               fillColor="rgba(16, 185, 129, 0.12)"
@@ -130,7 +134,7 @@ export function AddressMapCard({
           ))}
           {wardPolygons.map((ring, index) => (
             <Polygon
-              key={`ward-${index}`}
+              key={`ward-${wardCode}-${index}`}
               coordinates={ring}
               strokeColor={colors.info}
               fillColor="rgba(59, 130, 246, 0.14)"

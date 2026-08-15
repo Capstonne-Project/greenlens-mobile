@@ -6,6 +6,7 @@ import { Modal, Platform, Pressable, View } from 'react-native';
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
 import type { BadgeCatalogItem } from '@/types/gamification.types';
+import { getBadgeProgress } from '@/utils/badge-progress';
 import { formatDate } from '@/utils/formatters';
 
 const CARD_SHADOW = Platform.select({
@@ -23,33 +24,12 @@ interface BadgeDetailModalProps {
   onClose: () => void;
 }
 
-interface ProgressAxis {
-  current: number;
-  required: number;
-  unit: string;
-}
-
-function getProgressAxis(badge: BadgeCatalogItem): ProgressAxis | null {
-  const current = badge.currentProgressValue ?? 0;
-  if (badge.requiredPoints != null) {
-    return { current, required: badge.requiredPoints, unit: 'điểm' };
-  }
-  if (badge.requiredReportCount != null) {
-    return { current, required: badge.requiredReportCount, unit: 'báo cáo' };
-  }
-  if (badge.requiredStreakDays != null) {
-    return { current, required: badge.requiredStreakDays, unit: 'ngày liên tiếp' };
-  }
-  return null;
-}
-
 /** Modal chi tiết huy hiệu — hiện tiến độ "hiện tại/cần đạt" cho huy hiệu chưa mở khóa. */
 export function BadgeDetailModal({ badge, onClose }: BadgeDetailModalProps) {
   if (!badge) return null;
 
   const locked = !badge.isUnlocked;
-  const axis = locked ? getProgressAxis(badge) : null;
-  const percent = axis ? Math.min(100, Math.round((axis.current / axis.required) * 100)) : 0;
+  const progress = locked ? getBadgeProgress(badge) : null;
 
   return (
     <Modal visible={!!badge} transparent animationType="fade" onRequestClose={onClose}>
@@ -121,24 +101,22 @@ export function BadgeDetailModal({ badge, onClose }: BadgeDetailModalProps) {
                   Đạt được ngày {formatDate(badge.awardedAt)}
                 </Text>
               </View>
-            ) : axis ? (
+            ) : progress ? (
               <View className="mt-5 w-full">
                 <View className="mb-1.5 flex-row items-end justify-between">
-                  <Text className="text-sm font-bold text-textPrimary">
-                    {axis.current}/{axis.required} {axis.unit}
-                  </Text>
+                  <Text className="text-sm font-bold text-textPrimary">{progress.label}</Text>
                   <Text className="text-xs font-bold" style={{ color: colors.primary }}>
-                    {percent}%
+                    {progress.percent}%
                   </Text>
                 </View>
                 <View className="h-2.5 overflow-hidden rounded-full bg-surface">
                   <View
                     className="h-full rounded-full"
-                    style={{ width: `${percent}%` as `${number}%`, backgroundColor: colors.primary }}
+                    style={{ width: `${progress.percent}%` as `${number}%`, backgroundColor: colors.primary }}
                   />
                 </View>
                 <Text className="mt-2 text-center text-xs text-textSecondary">
-                  Còn {Math.max(0, axis.required - axis.current)} {axis.unit} nữa để đạt huy hiệu này
+                  Còn {Math.max(0, progress.target - progress.current)} {progress.unit} nữa để đạt huy hiệu này
                 </Text>
               </View>
             ) : locked ? (

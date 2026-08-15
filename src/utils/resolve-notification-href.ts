@@ -111,10 +111,11 @@ function resolveFieldWorkerHref(type: string, ref: string | null): Href | null {
     case 'ContractExpiry':
       return '/(staff)/settings' as Href;
 
-    // Lời mời tham gia team clean up — chỉ để thông báo, không redirect
-    // (event có thể chưa sẵn sàng ở phía BE, gây lỗi "không tìm thấy team").
+    // Được chỉ định làm Leader — event có thể chưa sẵn sàng ở phía BE ngay lúc
+    // gửi noti (gây lỗi "không tìm thấy team" nếu vào thẳng /community-lead/[id]),
+    // nên đưa về danh sách phân công thay vì màn chi tiết.
     case 'CommunityCleanupLeaderAssigned':
-      return null;
+      return '/(staff)/assignments' as Href;
 
     // LEO từ chối minh chứng hoàn thành — Leader quay lại màn quản lý để nộp lại.
     // LEO duyệt hoàn thành chương trình — referenceId = CommunityCleanupEvent id, không

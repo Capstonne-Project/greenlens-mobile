@@ -384,6 +384,21 @@ export default function ReportCreateWizardScreen() {
         setExpandedSection("description");
         return;
       }
+      if (submitResult.reason === "rate-limited") {
+        Alert.alert(
+          "Đã đạt giới hạn gửi báo cáo",
+          submitResult.apiErrorMessage ?? "Bạn đã gửi quá nhiều báo cáo. Vui lòng thử lại sau.",
+        );
+        return;
+      }
+      if (submitResult.reason === "content-rejected") {
+        setExpandedSection("description");
+        Alert.alert(
+          "Nội dung không phù hợp",
+          submitResult.apiErrorMessage ?? "Mô tả chứa nội dung không phù hợp. Vui lòng chỉnh sửa lại.",
+        );
+        return;
+      }
       if (submitResult.reason === "timeout" || submitResult.reason === "network") {
         Alert.alert(
           "Oops, mạng hơi đuối rồi 😅",
