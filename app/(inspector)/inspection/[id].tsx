@@ -207,7 +207,9 @@ export default function InspectionDetailScreen() {
     enabled: activeStep === 'arrival' && Boolean(detail?.canConfirmArrival),
   });
 
-  // Prefill từ server + tự chọn stage đang cần xử lý.
+  // Prefill từ server — CHỈ chạy khi mở hồ sơ (đổi `detail.id`), không chạy lại mỗi lần
+  // refetch (vd sau khi upload ảnh/video/ghi âm), nếu không sẽ ghi đè mất nội dung user
+  // đang gõ trong biên bản mà chưa bấm "Lưu checklist".
   useEffect(() => {
     if (!detail) return;
     const states = buildChecklistState(detail.checklistEvidence);
@@ -219,7 +221,12 @@ export default function InspectionDetailScreen() {
     );
     setOtherNote(states.find((s) => s.category === 'Other')?.note ?? '');
     if (detail.violationLevel) setViolationLevel(detail.violationLevel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail?.id]);
 
+  // Tự chọn stage đang cần xử lý — tách riêng khỏi prefill để không phụ thuộc lifecycle của nó.
+  useEffect(() => {
+    if (!detail) return;
     setActiveStep((current) => current ?? resolveNextStep(detail));
   }, [detail]);
 
