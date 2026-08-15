@@ -4,7 +4,6 @@ import { TapScale } from '@/components/layout/TapScale';
 import { SafeScreen } from '@/components/layout/SafeScreen';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/hooks/useAuth';
-import { useGoogleSignIn } from '@/hooks/useGoogleSignIn';
 import { onboardingColors } from '@/components/onboarding/constants';
 import { getApiErrorMessage } from '@/utils/api-error-message';
 import { getPostLoginHref } from '@/utils/post-login-route';
@@ -12,7 +11,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -26,13 +24,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function LoginScreen() {
   const { login } = useAuth();
-  const {
-    isAvailable: isGoogleAvailable,
-    isSigningIn: isGoogleSigningIn,
-    errorMessage: googleError,
-    clearError: clearGoogleError,
-    signIn: signInWithGoogle,
-  } = useGoogleSignIn();
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
@@ -72,14 +63,6 @@ export default function LoginScreen() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleGoogleLogin = async () => {
-    clearGoogleError();
-    const user = await signInWithGoogle();
-    if (!user) return; // huỷ hoặc lỗi — hook đã set errorMessage
-    if (router.canDismiss()) router.dismissAll();
-    router.replace(getPostLoginHref(user.role));
   };
 
   const dialogTop = getAuthDialogTop('login', height);
@@ -193,43 +176,6 @@ export default function LoginScreen() {
                   </Text>
                 </View>
               </TapScale>
-
-              <View className="mt-7 flex-row items-center">
-                <View className="h-px flex-1 bg-border" />
-                <Text className="mx-3 text-sm text-textSecondary">Sign in with</Text>
-                <View className="h-px flex-1 bg-border" />
-              </View>
-
-              <View
-                className="mt-5 items-center"
-                style={{ opacity: isGoogleSigningIn || isSubmitting ? 0.5 : 1 }}
-              >
-                <TapScale
-                  onPress={() => {
-                    if (!isGoogleAvailable) {
-                      Alert.alert(
-                        'Chưa khả dụng',
-                        'Đăng nhập Google chưa được cấu hình. Vui lòng dùng email và mật khẩu.',
-                      );
-                      return;
-                    }
-                    void handleGoogleLogin();
-                  }}
-                  className="h-14 w-14 items-center justify-center rounded-full border border-border bg-white"
-                >
-                  {isGoogleSigningIn ? (
-                    <ActivityIndicator size="small" color="#EA4335" />
-                  ) : (
-                    <Ionicons name="logo-google" size={24} color="#EA4335" />
-                  )}
-                </TapScale>
-
-                {googleError ? (
-                  <Text className="mt-3 px-4 text-center text-sm" style={{ color: '#EF4444' }}>
-                    {googleError}
-                  </Text>
-                ) : null}
-              </View>
 
               <View className="mt-8 flex-row items-center justify-center gap-1">
                 <Text className="text-sm text-textSecondary">Don&apos;t have an account?</Text>

@@ -23,6 +23,7 @@ type SubmitFailureReason =
   | 'network'
   | 'validation'
   | 'rate-limited'
+  | 'content-rejected'
   | 'unknown';
 
 interface UseSubmitPollutionReportResult {
@@ -34,8 +35,8 @@ interface UseSubmitPollutionReportResult {
   submitReport: () => Promise<{
     ok: boolean;
     reason: SubmitFailureReason | null;
-    /** Message BR-REP-010 từ BE (kèm số phút chờ) — chỉ có khi reason = 'rate-limited' */
-    rateLimitMessage?: string | null;
+    /** Message từ BE — có khi reason = 'rate-limited' hoặc 'content-rejected' */
+    apiErrorMessage?: string | null;
   }>;
   lastFailureReason: SubmitFailureReason | null;
   fieldErrors: FieldErrors;
@@ -76,6 +77,7 @@ function classifyUploadError(error: unknown): SubmitFailureReason {
     if (error.response?.status === 429 || body?.code === 'RATE_LIMIT_EXCEEDED') {
       return 'rate-limited';
     }
+    if (body?.code === 'INAPPROPRIATE_CONTENT') return 'content-rejected';
     if (error.response?.status === 422 || body?.code === 'VALIDATION_ERROR') return 'validation';
     if (error.code === 'ECONNABORTED') return 'timeout';
     if (!error.response) return 'network';
@@ -83,8 +85,8 @@ function classifyUploadError(error: unknown): SubmitFailureReason {
   return 'unknown';
 }
 
-/** Message BR-REP-010 đã kèm số phút chờ — dùng nguyên văn thay vì tự chế lại. */
-function extractRateLimitMessage(error: unknown): string | null {
+/** Message lỗi từ BE (rate-limit kèm số phút chờ, content-rejected nêu lý do…) — dùng nguyên văn thay vì tự chế lại. */
+function extractApiErrorMessage(error: unknown): string | null {
   if (!isAxiosError(error)) return null;
   const body = error.response?.data as Record<string, unknown> | undefined;
   const message = typeof body?.message === 'string' ? body.message : undefined;
@@ -337,7 +339,10 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
       return {
         ok: false as const,
         reason,
-        rateLimitMessage: reason === 'rate-limited' ? extractRateLimitMessage(error) : null,
+        apiErrorMessage:
+          reason === 'rate-limited' || reason === 'content-rejected'
+            ? extractApiErrorMessage(error)
+            : null,
       };
     } finally {
       console.log('[SUBMIT_REPORT] FINALLY', {

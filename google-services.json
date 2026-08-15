@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "472273559472",
+    "project_id": "greenlens-polution-app",
+    "storage_bucket": "greenlens-polution-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:472273559472:android:e78f7a932d56197d660075",
+        "android_client_info": {
+          "package_name": "greenlens.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "472273559472-fv8jeutieutom5vqjqr3dlou9tktfuj6.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAcXFPirarvVAgwRrI20Rp3VBoMcnVTrNA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "472273559472-fv8jeutieutom5vqjqr3dlou9tktfuj6.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "472273559472-n3v5qdl4hqia3t1qq22ck1m454ovjjds.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "greenlens.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

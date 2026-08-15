@@ -63,6 +63,79 @@ function toLatLngRing(ring: number[][]): LatLng[] {
   }));
 }
 
+/** Khoảng cách vuông góc từ điểm tới đường thẳng point-start→end (bình phương, tránh sqrt). */
+function perpendicularDistanceSq(point: LatLng, start: LatLng, end: LatLng): number {
+  const dx = end.longitude - start.longitude;
+  const dy = end.latitude - start.latitude;
+  const lengthSq = dx * dx + dy * dy;
+
+  if (lengthSq === 0) {
+    const ddx = point.longitude - start.longitude;
+    const ddy = point.latitude - start.latitude;
+    return ddx * ddx + ddy * ddy;
+  }
+
+  const cross = dx * (start.latitude - point.latitude) - dy * (start.longitude - point.longitude);
+  return (cross * cross) / lengthSq;
+}
+
+/**
+ * Douglas-Peucker — giảm số điểm của 1 ring mà vẫn giữ hình dạng, tránh render
+ * hàng chục nghìn coordinate lên MapView (native Polygon rất nặng, dễ OOM/crash
+ * khi ranh giới hành chính có độ chi tiết cao).
+ */
+function simplifyRing(ring: LatLng[], toleranceSq: number): LatLng[] {
+  if (ring.length <= 3) return ring;
+
+  let maxDistSq = 0;
+  let maxIndex = 0;
+  const last = ring.length - 1;
+
+  for (let i = 1; i < last; i++) {
+    const distSq = perpendicularDistanceSq(ring[i], ring[0], ring[last]);
+    if (distSq > maxDistSq) {
+      maxDistSq = distSq;
+      maxIndex = i;
+    }
+  }
+
+  if (maxDistSq <= toleranceSq) {
+    return [ring[0], ring[last]];
+  }
+
+  const left = simplifyRing(ring.slice(0, maxIndex + 1), toleranceSq);
+  const right = simplifyRing(ring.slice(maxIndex), toleranceSq);
+  return [...left.slice(0, -1), ...right];
+}
+
+/**
+ * Tolerance tính bằng độ (lat/lng) — ~0.0005 ≈ 55m ở xích đạo. Ranh giới hành
+ * chính chỉ cần đủ mịn để nhận diện hình dạng ở zoom level bản đồ di động,
+ * không cần độ chính xác đo đạc.
+ */
+const BOUNDARY_SIMPLIFY_TOLERANCE = 0.0005;
+
+/**
+ * Mỗi group render thành 1 native `<Polygon>` riêng — quá nhiều group (đảo nhỏ,
+ * mảnh vụn địa giới) cùng lúc là chi phí render nặng hơn cả số điểm/ring.
+ * Giữ tối đa N group lớn nhất (theo số điểm), đủ để thể hiện đúng hình dạng
+ * tổng thể của tỉnh/phường mà không kéo theo hàng chục mảnh nhỏ không đáng kể.
+ */
+const MAX_POLYGON_GROUPS = 8;
+
+function simplifyGroups(groups: LatLng[][][]): LatLng[][][] {
+  const toleranceSq = BOUNDARY_SIMPLIFY_TOLERANCE * BOUNDARY_SIMPLIFY_TOLERANCE;
+  const simplified = groups.map((rings) => rings.map((ring) => simplifyRing(ring, toleranceSq)));
+
+  if (simplified.length <= MAX_POLYGON_GROUPS) {
+    return simplified;
+  }
+
+  return [...simplified]
+    .sort((a, b) => b.reduce((sum, r) => sum + r.length, 0) - a.reduce((sum, r) => sum + r.length, 0))
+    .slice(0, MAX_POLYGON_GROUPS);
+}
+
 export function extractPolygonRings(geoJson: GeoJsonCollection): LatLng[][] {
   const rings: LatLng[][] = [];
 
@@ -131,7 +204,7 @@ export function extractPolygonGroups(geoJson: GeoJsonCollection): LatLng[][][] {
     pushGeometry(feature.geometry);
   });
 
-  return groups;
+  return simplifyGroups(groups);
 }
 
 /** Ward CDN files are FeatureCollections — filter by ward code (`code` or `ma_xa`) before drawing. */
@@ -150,6 +223,7 @@ export function extractWardPolygonGroups(geoJson: GeoJsonCollection, wardCode: s
     return [];
   }
 
+  // extractPolygonGroups đã simplify — không cần simplify lại ở đây.
   return extractPolygonGroups({ features: [feature] });
 }
 
