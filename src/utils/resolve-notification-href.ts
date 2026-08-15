@@ -117,7 +117,10 @@ function resolveFieldWorkerHref(type: string, ref: string | null): Href | null {
       return null;
 
     // LEO từ chối minh chứng hoàn thành — Leader quay lại màn quản lý để nộp lại.
+    // LEO duyệt hoàn thành chương trình — referenceId = CommunityCleanupEvent id, không
+    // phải assignmentId, nên phải cùng route quản lý cộng đồng của leader, không phải /assignment/[id].
     case 'CommunityCleanupVerificationRejected':
+    case 'CommunityCleanupVerified':
       if (ref) {
         return {
           pathname: '/community-lead/[id]',
@@ -125,6 +128,12 @@ function resolveFieldWorkerHref(type: string, ref: string | null): Href | null {
         } as Href;
       }
       return '/(staff)/assignments' as Href;
+
+    // Chưa có màn thành tích/badge riêng cho shell staff — chỉ đóng thông báo,
+    // tránh rơi vào default và bị ép sang /assignment/[id] (referenceId ở đây không phải assignmentId).
+    case 'BadgeEarned':
+    case 'BadgeProgressNear':
+      return null;
 
     case 'ReportAssigned':
     case 'ReportStatusChanged':
