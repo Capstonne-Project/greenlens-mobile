@@ -15,6 +15,7 @@ import {
 import { publicMapDtoToCitizenPin } from '@/utils/public-map-mapper';
 import { isAxiosError, isCancel } from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { Region } from 'react-native-maps';
 
 const DEBOUNCE_MS = 520;
 const DEFAULT_DETAIL_LIMIT = 200;
@@ -87,7 +88,7 @@ export interface UseViewportMapReportsResult {
   isLoading: boolean;
   isSummaryLoading: boolean;
   errorMessage: string | null;
-  onRegionChangeComplete: (bbox: ViewportBBox) => void;
+  onRegionChangeComplete: (region: Region) => void;
 }
 
 export function useViewportMapReports(
@@ -257,7 +258,8 @@ export function useViewportMapReports(
   );
 
   const onRegionChangeComplete = useCallback(
-    (bbox: ViewportBBox) => {
+    (region: Region) => {
+      const bbox = regionToBBox(region);
       lastBBoxRef.current = bbox;
       scheduleFetch(bbox, categoryId);
     },
