@@ -1,6 +1,6 @@
 import { catalogService } from '@/services/catalog.service';
 import { extractPolygonGroups, type GeoJsonCollection } from '@/utils/geojson-boundaries';
-import type { LatLng } from 'react-native-maps';
+import type { GeoLatLng as LatLng } from '@/types/map-viewport.types';
 
 async function loadBoundaryGeometry(
   code: string,

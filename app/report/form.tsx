@@ -132,8 +132,16 @@ export default function ReportFormScreen() {
       if (submitResult.reason === 'rate-limited') {
         Alert.alert(
           'Đã đạt giới hạn gửi báo cáo',
-          submitResult.rateLimitMessage ??
+          submitResult.apiErrorMessage ??
             'Bạn đã gửi quá nhiều báo cáo trong thời gian ngắn. Vui lòng thử lại sau.',
+          [{ text: 'Đã hiểu' }],
+        );
+        return;
+      }
+      if (submitResult.reason === 'content-rejected') {
+        Alert.alert(
+          'Nội dung không phù hợp',
+          submitResult.apiErrorMessage ?? 'Mô tả chứa nội dung không phù hợp. Vui lòng chỉnh sửa lại.',
           [{ text: 'Đã hiểu' }],
         );
         return;
