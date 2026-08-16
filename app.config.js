@@ -94,7 +94,6 @@ module.exports = ({ config }) => ({
       'react-native-compressor',
       'expo-video',
       '@react-native-google-signin/google-signin',
-      '@maplibre/maplibre-react-native',
     ],
     experiments: {
       typedRoutes: true,
