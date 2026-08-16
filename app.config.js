@@ -1,8 +1,3 @@
-/**
- * app.config.js thay app.json — cần đọc process.env để trỏ googleServicesFile tới file
- * EAS tự inject lúc build cloud (biến file-type "GOOGLE_SERVICES_JSON" đã tạo qua
- * `eas env:create`). Build local vẫn dùng thẳng ./google-services.json trên đĩa.
- */
 module.exports = ({ config }) => ({
   ...config,
   expo: {
@@ -45,7 +40,7 @@ module.exports = ({ config }) => ({
         'android.permission.MODIFY_AUDIO_SETTINGS',
       ],
       package: 'greenlens.app',
-      googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
+      googleServicesFile: './google-services.json',
     },
     web: {
       output: 'static',

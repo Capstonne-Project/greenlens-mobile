@@ -33,10 +33,6 @@ yarn-error.*
 # local env files
 .env*.local
 
-# Firebase config — chứa API key/OAuth client ID thật, không commit
-google-services.json
-GoogleService-Info.plist
-
 # typescript
 *.tsbuildinfo
 
