@@ -1,4 +1,4 @@
-import type { LatLng } from 'react-native-maps';
+import type { GeoLatLng as LatLng } from '@/types/map-viewport.types';
 
 /** Ray-casting — đủ chính xác cho bbox hành chính VN. */
 export function isPointInRing(point: LatLng, ring: LatLng[]): boolean {

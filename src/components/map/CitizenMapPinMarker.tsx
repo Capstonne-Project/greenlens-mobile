@@ -1,5 +1,5 @@
 import { Text, View } from 'react-native';
-import { Marker } from 'react-native-maps';
+import { Marker } from '@maplibre/maplibre-react-native';
 
 import type { CitizenMapPin } from '@/data/citizen-map-mock';
 import { colors } from '@/theme/colors';
@@ -33,17 +33,16 @@ export function CitizenMapPinMarker({
       : DOT_COLOR;
   const haloColor = isCommunity ? 'rgba(17, 24, 39, 0.22)' : 'rgba(239, 68, 68, 0.22)';
   // Dot box is always 28px, pinned to the bottom of the marker view; the community
-  // label (20px) sits above it. Anchor targets the dot's center so the coordinate
-  // stays correct whether or not the label is rendered.
+  // label (20px) sits above it. offset (px) shifts the marker up so the dot's
+  // center — not the view's top-left — lands on the coordinate.
   const totalHeight = isCommunity ? 48 : 28;
-  const anchorY = (totalHeight - 14) / totalHeight;
+  const dotCenterFromTop = totalHeight - 14;
 
   return (
     <Marker
-      coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-      anchor={{ x: 0.5, y: anchorY }}
-      stopPropagation
-      tracksViewChanges={selected}
+      lngLat={[pin.longitude, pin.latitude]}
+      anchor="center"
+      offset={[0, dotCenterFromTop - totalHeight / 2]}
       onPress={() => onPress(pin)}
     >
       <View className="items-center justify-center" style={{ width: 72, height: totalHeight }}>

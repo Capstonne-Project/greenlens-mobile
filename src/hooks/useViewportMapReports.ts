@@ -15,12 +15,14 @@ import {
 import { publicMapDtoToCitizenPin } from '@/utils/public-map-mapper';
 import { isAxiosError, isCancel } from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Region } from 'react-native-maps';
 
 const DEBOUNCE_MS = 520;
 const DEFAULT_DETAIL_LIMIT = 200;
 const DEFAULT_SUMMARY_DAYS = 30;
 const BBOX_DECIMALS = 4;
+/** BR: bị 429 thì lùi dần thời gian chờ trước khi cho fetch lại, tránh spam thêm request khi đang bị rate-limit. */
+const RATE_LIMIT_BACKOFF_MS = [3000, 6000, 15000, 30000];
+const RATE_LIMIT_MAX_BACKOFF_MS = RATE_LIMIT_BACKOFF_MS[RATE_LIMIT_BACKOFF_MS.length - 1];
 
 function roundBBox(b: ViewportBBox): ViewportBBox {
   const r = (n: number) =>
@@ -53,6 +55,10 @@ function getApiErrorCode(error: unknown): string | null {
   return body?.code ?? null;
 }
 
+function isRateLimitError(error: unknown): boolean {
+  return isAxiosError(error) && error.response?.status === 429;
+}
+
 function resolveViewportSummary(
   summaryResult: PromiseSettledResult<Awaited<ReturnType<typeof mapSummaryService.getViewportSummary>>>,
   reportItems: PublicMapReportDto[],
@@ -81,7 +87,7 @@ export interface UseViewportMapReportsResult {
   isLoading: boolean;
   isSummaryLoading: boolean;
   errorMessage: string | null;
-  onRegionChangeComplete: (region: Region) => void;
+  onRegionChangeComplete: (bbox: ViewportBBox) => void;
 }
 
 export function useViewportMapReports(
@@ -102,6 +108,10 @@ export function useViewportMapReports(
   const abortRef = useRef<AbortController | null>(null);
   const lastBBoxRef = useRef<ViewportBBox | null>(null);
   const lastSummaryRef = useRef<MapViewportSummaryData | null>(null);
+  const rateLimitUntilRef = useRef<number>(0);
+  const rateLimitStreakRef = useRef<number>(0);
+  const pendingRequestRef = useRef<{ bbox: ViewportBBox; catId?: string } | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const categoryId = filter === 'all' ? undefined : filter;
 
@@ -109,6 +119,13 @@ export function useViewportMapReports(
     async (bbox: ViewportBBox, catId?: string) => {
       const key = bboxCacheKey(bbox, catId);
       if (key === lastKeyRef.current) return;
+
+      const now = Date.now();
+      if (now < rateLimitUntilRef.current) {
+        // Đang trong thời gian chờ do bị rate-limit — hoãn fetch, không bắn thêm request.
+        pendingRequestRef.current = { bbox, catId };
+        return;
+      }
 
       abortRef.current?.abort();
       const ac = new AbortController();
@@ -152,6 +169,7 @@ export function useViewportMapReports(
         let reportItems: PublicMapReportDto[] = [];
 
         if (reportsResult.status === 'fulfilled') {
+          rateLimitStreakRef.current = 0;
           reportItems = reportsResult.value.data.data?.items ?? [];
           if (__DEV__) {
             console.log('[MapReports] returned:', reportItems.length, 'items');
@@ -163,6 +181,27 @@ export function useViewportMapReports(
             lastKeyRef.current = null;
             return;
           }
+          lastKeyRef.current = null;
+
+          if (isRateLimitError(reportsError)) {
+            const streak = Math.min(rateLimitStreakRef.current, RATE_LIMIT_BACKOFF_MS.length - 1);
+            const waitMs = RATE_LIMIT_BACKOFF_MS[streak] ?? RATE_LIMIT_MAX_BACKOFF_MS;
+            rateLimitStreakRef.current += 1;
+            rateLimitUntilRef.current = Date.now() + waitMs;
+            pendingRequestRef.current = { bbox, catId };
+            setErrorMessage(`Quá nhiều yêu cầu, đang thử lại sau ${Math.round(waitMs / 1000)}s…`);
+            if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = setTimeout(() => {
+              retryTimerRef.current = null;
+              const pending = pendingRequestRef.current;
+              pendingRequestRef.current = null;
+              if (pending) void fetchForBBox(pending.bbox, pending.catId);
+            }, waitMs);
+            setPins([]);
+            return;
+          }
+
+          rateLimitStreakRef.current = 0;
           const reportsCode = getApiErrorCode(reportsError);
           if (reportsCode === 'CATEGORY_NOT_FOUND') {
             onCategoryNotFound?.();
@@ -171,7 +210,6 @@ export function useViewportMapReports(
             ? (reportsError.response?.data as { message?: string } | undefined)?.message ?? reportsError.message
             : 'Không tải được báo cáo trên bản đồ.';
           setErrorMessage(typeof msg === 'string' ? msg : 'Lỗi mạng');
-          lastKeyRef.current = null;
           setPins([]);
         }
 
@@ -219,8 +257,7 @@ export function useViewportMapReports(
   );
 
   const onRegionChangeComplete = useCallback(
-    (region: Region) => {
-      const bbox = regionToBBox(region);
+    (bbox: ViewportBBox) => {
       lastBBoxRef.current = bbox;
       scheduleFetch(bbox, categoryId);
     },
@@ -239,6 +276,7 @@ export function useViewportMapReports(
     void fetchForBBox(bbox, categoryId);
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       abortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

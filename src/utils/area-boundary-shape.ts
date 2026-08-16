@@ -1,4 +1,4 @@
-import type { LatLng } from 'react-native-maps';
+import type { GeoLatLng as LatLng } from '@/types/map-viewport.types';
 
 /**
  * Diện tích tương đối của một ring (shoelace, đơn vị độ²).
