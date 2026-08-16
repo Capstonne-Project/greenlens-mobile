@@ -13,3 +13,9 @@ export interface MapViewportRegion {
   latitudeDelta: number;
   longitudeDelta: number;
 }
+
+/** Tọa độ độc lập thư viện map — thay cho `LatLng` của react-native-maps */
+export interface GeoLatLng {
+  latitude: number;
+  longitude: number;
+}

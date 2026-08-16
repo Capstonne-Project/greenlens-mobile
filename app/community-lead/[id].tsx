@@ -21,6 +21,7 @@ import { AssignmentActionButton } from '@/components/assignment/AssignmentAction
 import { EvidencePhotoPicker } from '@/components/assignment/EvidencePhotoPicker';
 import { ImageViewerModal } from '@/components/common/ImageViewerModal';
 import { StepTimeline } from '@/components/common/StepTimeline';
+import { CheckInCountdownDialog } from '@/components/community/CheckInCountdownDialog';
 import { CheckInOverrideDialog } from '@/components/community/CheckInOverrideDialog';
 import { ParticipantsListModal } from '@/components/community/ParticipantsListModal';
 import { ParticipantsSummaryCard } from '@/components/community/ParticipantsSummaryCard';
@@ -130,6 +131,7 @@ export default function CommunityLeadWorkspaceScreen() {
   const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
   const [pendingCheckIn, setPendingCheckIn] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isOverrideSubmitting, setOverrideSubmitting] = useState(false);
+  const [countdownDialogVisible, setCountdownDialogVisible] = useState(false);
   const [expandedStep, setExpandedStep] = useState<CleanupStepKey>('before');
   const stepInitializedRef = useRef(false);
   const [viewerImages, setViewerImages] = useState<string[] | null>(null);
@@ -178,11 +180,11 @@ export default function CommunityLeadWorkspaceScreen() {
     if (!event) return false;
     const startsAtMs = new Date(event.startsAt).getTime();
     if (Date.now() < startsAtMs) {
-      showToast(`Chưa đến giờ bắt đầu dọn dẹp. Dự kiến bắt đầu lúc ${formatStartsAt(event.startsAt)}.`, 'error');
+      setCountdownDialogVisible(true);
       return false;
     }
     return true;
-  }, [event, showToast]);
+  }, [event]);
 
   const handleStart = useCallback(async () => {
     if (!eventId || isActing || !guardStartTime()) return;
@@ -336,6 +338,7 @@ export default function CommunityLeadWorkspaceScreen() {
     }
   }, [eventId, isActing, afterImages, event?.reportId, load, showToast]);
 
+  const isBeforeStart = event ? Date.now() < new Date(event.startsAt).getTime() : false;
   const statusCfg = event ? (STATUS_CONFIG[event.status] ?? STATUS_CONFIG.OpenForJoin) : null;
   const severityCfg = event ? (SEVERITY_CONFIG[event.severity] ?? null) : null;
   const hasBeforeMedia = (event?.mediaSummary.beforeCount ?? 0) > 0;
@@ -470,22 +473,36 @@ export default function CommunityLeadWorkspaceScreen() {
 
           {(event.status === 'OpenForJoin' || event.status === 'JoinClosed') ? (
             <View className="mt-2 gap-2">
-              <AssignmentActionButton
-                label="Check-in tại điểm tập trung"
-                icon="location"
-                variant="secondary"
-                onPress={handleCheckIn}
-                loading={isActing}
-                disabled={isActing}
-              />
-              <AssignmentActionButton
-                label="Bắt đầu dọn dẹp"
-                icon="play"
-                variant="primary"
-                onPress={handleStart}
-                loading={isActing}
-                disabled={isActing}
-              />
+              {isBeforeStart ? (
+                <Pressable
+                  onPress={() => setCountdownDialogVisible(true)}
+                  className="flex-row items-center justify-center gap-1.5 rounded-xl border border-border py-3"
+                >
+                  <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+                  <Text className="text-sm font-semibold text-textSecondary">
+                    Chưa đến giờ · Bắt đầu lúc {formatStartsAt(event.startsAt)}
+                  </Text>
+                </Pressable>
+              ) : (
+                <>
+                  <AssignmentActionButton
+                    label="Check-in tại điểm tập trung"
+                    icon="location"
+                    variant="secondary"
+                    onPress={handleCheckIn}
+                    loading={isActing}
+                    disabled={isActing}
+                  />
+                  <AssignmentActionButton
+                    label="Bắt đầu dọn dẹp"
+                    icon="play"
+                    variant="primary"
+                    onPress={handleStart}
+                    loading={isActing}
+                    disabled={isActing}
+                  />
+                </>
+              )}
             </View>
           ) : null}
 
@@ -666,6 +683,12 @@ export default function CommunityLeadWorkspaceScreen() {
         targetLocation={targetLocation}
         onCancel={() => setPendingCheckIn(null)}
         onConfirm={handleOverrideConfirm}
+      />
+
+      <CheckInCountdownDialog
+        visible={countdownDialogVisible}
+        startsAt={event?.startsAt ?? null}
+        onClose={() => setCountdownDialogVisible(false)}
       />
 
       <ImageViewerModal

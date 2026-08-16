@@ -30,9 +30,14 @@ export function getBadgeProgress(badge: BadgeCatalogItem): BadgeProgress | null 
   const target = badge.targetProgressValue ?? null;
   if (!badge.progressMetric || target == null || target <= 0) return null;
 
+  // progressMetric đến từ API (JSON không được validate runtime) — BE có thể trả giá trị
+  // ngoài union đã biết trước khi FE kịp cập nhật; coi như badge chưa có thang đo số thay vì
+  // hiện "undefined" ra UI.
+  const unit = PROGRESS_UNIT_VI[badge.progressMetric];
+  if (!unit) return null;
+
   const current = badge.currentProgressValue ?? 0;
   const ratio = badge.isUnlocked ? 1 : Math.min(1, Math.max(0, current / target));
-  const unit = PROGRESS_UNIT_VI[badge.progressMetric];
   const clampedCurrent = Math.min(current, target);
 
   return {

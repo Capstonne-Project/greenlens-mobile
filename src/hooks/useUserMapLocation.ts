@@ -1,7 +1,10 @@
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useState } from 'react';
+import type { LngLat } from '@maplibre/maplibre-react-native';
 import type { Region } from 'react-native-maps';
 
+/** Zoom tương đương bán kính vùng ~0.04° delta cũ (react-native-maps) */
+const USER_LOCATION_ZOOM = 14;
 const USER_LOCATION_DELTA = {
   latitudeDelta: 0.04,
   longitudeDelta: 0.04,
@@ -19,6 +22,9 @@ export interface UseUserMapLocationResult {
   permissionDenied: boolean;
   ensurePermission: () => Promise<boolean>;
   refreshLocation: () => Promise<UserMapLocation | null>;
+  /** MapLibre (`@maplibre/maplibre-react-native`) — màn đã migrate */
+  toCenter: (coords: UserMapLocation) => { center: LngLat; zoom: number };
+  /** @deprecated react-native-maps — chỉ còn dùng ở màn chưa migrate sang MapLibre */
   toRegion: (coords: UserMapLocation) => Region;
 }
 
@@ -27,6 +33,14 @@ export function useUserMapLocation(): UseUserMapLocationResult {
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [location, setLocation] = useState<UserMapLocation | null>(null);
   const [isLocating, setIsLocating] = useState(false);
+
+  const toCenter = useCallback(
+    (coords: UserMapLocation): { center: LngLat; zoom: number } => ({
+      center: [coords.longitude, coords.latitude],
+      zoom: USER_LOCATION_ZOOM,
+    }),
+    []
+  );
 
   const toRegion = useCallback(
     (coords: UserMapLocation): Region => ({
@@ -87,6 +101,7 @@ export function useUserMapLocation(): UseUserMapLocationResult {
     permissionDenied,
     ensurePermission,
     refreshLocation,
+    toCenter,
     toRegion,
   };
 }

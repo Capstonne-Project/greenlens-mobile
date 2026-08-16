@@ -1,0 +1,111 @@
+module.exports = ({ config }) => ({
+  ...config,
+  expo: {
+    name: 'green-lens-app',
+    slug: 'green-lens-app',
+    version: '1.0.0',
+    orientation: 'portrait',
+    icon: './assets/images/icon.png',
+    scheme: 'greenlensapp',
+    jsEngine: 'hermes',
+    userInterfaceStyle: 'automatic',
+    newArchEnabled: true,
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: 'com.anonymous.greenlensapp',
+      jsEngine: 'jsc',
+      infoPlist: {
+        LSApplicationQueriesSchemes: ['comgooglemaps'],
+      },
+    },
+    android: {
+      usesCleartextTraffic: true,
+      adaptiveIcon: {
+        backgroundColor: '#E6F4FE',
+        foregroundImage: './assets/images/android-icon-foreground.png',
+        backgroundImage: './assets/images/android-icon-background.png',
+        monochromeImage: './assets/images/android-icon-monochrome.png',
+      },
+      edgeToEdgeEnabled: true,
+      predictiveBackGestureEnabled: false,
+      permissions: [
+        'android.permission.ACCESS_COARSE_LOCATION',
+        'android.permission.ACCESS_FINE_LOCATION',
+        'android.permission.ACCESS_MEDIA_LOCATION',
+        'android.permission.CAMERA',
+        'android.permission.RECORD_AUDIO',
+        'android.permission.READ_MEDIA_IMAGES',
+        'android.permission.READ_EXTERNAL_STORAGE',
+        'android.permission.POST_NOTIFICATIONS',
+        'android.permission.MODIFY_AUDIO_SETTINGS',
+      ],
+      package: 'greenlens.app',
+      googleServicesFile: './google-services.json',
+    },
+    web: {
+      output: 'static',
+      favicon: './assets/images/favicon.png',
+    },
+    plugins: [
+      'expo-router',
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/images/splash-icon.png',
+          imageWidth: 280,
+          resizeMode: 'contain',
+          backgroundColor: '#ffffff',
+          dark: {
+            backgroundColor: '#000000',
+          },
+        },
+      ],
+      [
+        'expo-location',
+        {
+          locationWhenInUsePermission: 'GreenLens cần vị trí để hiển thị bạn trên bản đồ.',
+        },
+      ],
+      [
+        'expo-image-picker',
+        {
+          photosPermission: 'GreenLens cần truy cập thư viện ảnh để chọn minh chứng báo cáo.',
+          cameraPermission: 'GreenLens cần camera để chụp ảnh báo cáo tại hiện trường.',
+        },
+      ],
+      'expo-font',
+      'expo-secure-store',
+      'expo-web-browser',
+      'expo-asset',
+      [
+        'expo-notifications',
+        {
+          icon: './assets/images/icon.png',
+          color: '#10B981',
+          defaultChannel: 'default',
+        },
+      ],
+      [
+        'expo-audio',
+        {
+          microphonePermission: 'GreenLens cần micro để thanh tra ghi âm bằng chứng tại hiện trường.',
+        },
+      ],
+      'react-native-compressor',
+      'expo-video',
+      '@react-native-google-signin/google-signin',
+      '@maplibre/maplibre-react-native',
+    ],
+    experiments: {
+      typedRoutes: true,
+      reactCompiler: true,
+    },
+    extra: {
+      router: {},
+      eas: {
+        projectId: 'e63bcec6-9189-4b92-b024-5085706170a1',
+      },
+    },
+    owner: 'phuchau23',
+  },
+});
