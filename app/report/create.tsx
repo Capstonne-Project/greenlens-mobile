@@ -3,6 +3,7 @@ import { TapScale } from "@/components/layout/TapScale";
 import { AiAnalysisBanner } from "@/components/report-create/AiAnalysisBanner";
 import { AiImagePickModal } from "@/components/report-create/AiImagePickModal";
 import { AiImageScanOverlay } from "@/components/report-create/AiImageScanOverlay";
+import { AiDetectionPreview } from "@/components/report-create/AiDetectionPreview";
 import { CategoryOptionGrid } from "@/components/report-create/CategoryOptionGrid";
 import { ReportFormHeader } from "@/components/report-create/ReportFormHeader";
 import {
@@ -148,6 +149,7 @@ export default function ReportCreateWizardScreen() {
   const reset = useCreateReportDraftStore((s) => s.reset);
   const useAi = useCreateReportDraftStore((s) => s.useAi);
   const aiResult = useCreateReportDraftStore((s) => s.aiResult);
+  const analyzedImageLocalUri = useCreateReportDraftStore((s) => s.analyzedImageLocalUri);
   const aiSuggestedCategory = useCreateReportDraftStore((s) => s.aiSuggestedCategory);
   const setUseAi = useCreateReportDraftStore((s) => s.setUseAi);
   const clearAiResult = useCreateReportDraftStore((s) => s.clearAiResult);
@@ -1362,6 +1364,18 @@ export default function ReportCreateWizardScreen() {
                 )}
               </View>
             </View>
+
+            {/* Ảnh đã phân tích kèm box detect */}
+            {aiResult && analyzedImageLocalUri ? (
+              (() => {
+                const boxes = aiResult.classify.predictions?.flatMap((p) => p.boxes ?? []) ?? [];
+                return boxes.length > 0 ? (
+                  <View className="mb-3">
+                    <AiDetectionPreview imageUri={analyzedImageLocalUri} boxes={boxes} />
+                  </View>
+                ) : null;
+              })()
+            ) : null}
 
             {/* AI stats card */}
             {aiResult ? <AiAnalysisBanner aiResult={aiResult} /> : null}
