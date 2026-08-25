@@ -20,15 +20,19 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import * as Location from 'expo-location';
+
 import { AssignmentActionButton } from '@/components/assignment/AssignmentActionButton';
 import { AssignmentScreenHeader } from '@/components/assignment/AssignmentScreenHeader';
 import { Toast, useToast } from '@/components/common/Toast';
+import { TooFarDialog } from '@/components/common/TooFarDialog';
 import { Text } from '@/components/ui/text';
 import { useTeamAccess } from '@/hooks/useTeamAccess';
 import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { colors } from '@/theme/colors';
 import { getCleanupErrorMessage } from '@/utils/cleanup-errors';
 import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
+import { getProgressTooFarDistanceMeters, isProgressTooFarError } from '@/utils/progress-too-far-error';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -158,12 +162,20 @@ export default function ProgressUpdateScreen() {
     currentPercent: currentPercentParam,
     lastUpdatedHoursAgo: hoursParam,
     historyJson,
+    siteLatitude,
+    siteLongitude,
   } = useLocalSearchParams<{
     reportId: string;
     currentPercent: string;
     lastUpdatedHoursAgo: string;
     historyJson: string;
+    siteLatitude: string;
+    siteLongitude: string;
   }>();
+
+  const targetLocation = siteLatitude && siteLongitude
+    ? { latitude: parseFloat(siteLatitude), longitude: parseFloat(siteLongitude) }
+    : null;
 
   const initPercent     = parseInt(currentPercentParam ?? '0', 10);
   const hoursAgo        = hoursParam ? parseInt(hoursParam, 10) : null;
@@ -178,6 +190,9 @@ export default function ProgressUpdateScreen() {
   const [submitting, setSubmit]   = useState(false);
   const [processing, setProcessing] = useState(false);
   const [apiError, setApiError]   = useState<string | null>(null);
+  const [tooFarMeters, setTooFarMeters] = useState<number | null>(null);
+  const [tooFarVisible, setTooFarVisible] = useState(false);
+  const [tooFarPhotoLocation, setTooFarPhotoLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const { toastState, show: showToast, hide: hideToast } = useToast();
   const { isLeader, isLoading: isAccessLoading, errorMessage: accessError } = useTeamAccess();
 
@@ -270,17 +285,37 @@ export default function ProgressUpdateScreen() {
     if (submitting || !isLeader || !reportId) return;
     setSubmit(true);
     setApiError(null);
+    let coords: { latitude: number; longitude: number } | null = null;
     try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        setApiError('Cần quyền truy cập vị trí để cập nhật tiến độ.');
+        setSubmit(false);
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+
       await cleanupAssignmentService.updateProgress(reportId, {
         progressPercent: percent,
         progressNote: note.trim() || undefined,
         images,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
       });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast('Đã cập nhật tiến độ thành công!');
       setTimeout(() => router.back(), 1400);
     } catch (err) {
-      setApiError(getCleanupErrorMessage(err));
+      if (coords && isProgressTooFarError(err)) {
+        setTooFarMeters(getProgressTooFarDistanceMeters(err));
+        setTooFarPhotoLocation(coords);
+        setTooFarVisible(true);
+      } else {
+        setApiError(getCleanupErrorMessage(err));
+      }
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setSubmit(false);
     }
@@ -510,6 +545,14 @@ export default function ProgressUpdateScreen() {
         type={toastState.type}
         message={toastState.message}
         onHide={hideToast}
+      />
+
+      <TooFarDialog
+        visible={tooFarVisible}
+        distanceMeters={tooFarMeters}
+        photoLocation={tooFarPhotoLocation}
+        targetLocation={targetLocation}
+        onClose={() => setTooFarVisible(false)}
       />
     </View>
   );
