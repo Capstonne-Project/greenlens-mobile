@@ -23,6 +23,7 @@ import { ImageViewerModal } from '@/components/common/ImageViewerModal';
 import { StepTimeline } from '@/components/common/StepTimeline';
 import { CheckInCountdownDialog } from '@/components/community/CheckInCountdownDialog';
 import { CheckInOverrideDialog } from '@/components/community/CheckInOverrideDialog';
+import { TooFarDialog } from '@/components/common/TooFarDialog';
 import { ParticipantsListModal } from '@/components/community/ParticipantsListModal';
 import { ParticipantsSummaryCard } from '@/components/community/ParticipantsSummaryCard';
 import { PercentSlider } from '@/components/community/PercentSlider';
@@ -36,6 +37,7 @@ import { colors } from '@/theme/colors';
 import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
 import { getApiErrorMessage } from '@/utils/api-error-message';
 import { isCheckInTooFarError } from '@/utils/community-checkin-error';
+import { getProgressTooFarDistanceMeters, isProgressTooFarError } from '@/utils/progress-too-far-error';
 import { firstRouteParam } from '@/utils/field-worker-task';
 import type {
   CommunityCleanupEventDetail,
@@ -132,6 +134,9 @@ export default function CommunityLeadWorkspaceScreen() {
   const [pendingCheckIn, setPendingCheckIn] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isOverrideSubmitting, setOverrideSubmitting] = useState(false);
   const [countdownDialogVisible, setCountdownDialogVisible] = useState(false);
+  const [tooFarMeters, setTooFarMeters] = useState<number | null>(null);
+  const [tooFarVisible, setTooFarVisible] = useState(false);
+  const [tooFarPhotoLocation, setTooFarPhotoLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [expandedStep, setExpandedStep] = useState<CleanupStepKey>('before');
   const stepInitializedRef = useRef(false);
   const [viewerImages, setViewerImages] = useState<string[] | null>(null);
@@ -300,7 +305,16 @@ export default function CommunityLeadWorkspaceScreen() {
     // Bắt buộc tăng so với tiến độ đã lưu — không cho cập nhật lại cùng mức hoặc thấp hơn.
     if (percent <= (event?.progressPercent ?? 0)) return;
     setActing(true);
+    let coords: { latitude: number; longitude: number } | null = null;
     try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        showToast('Cần quyền truy cập vị trí để cập nhật tiến độ.', 'error');
+        return;
+      }
+      const position = await Location.getCurrentPositionAsync({});
+      coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+
       const imageUrls = progressImages.length > 0
         ? await uploadAll(progressImages, 'Progress', event?.reportId ?? '')
         : undefined;
@@ -308,6 +322,8 @@ export default function CommunityLeadWorkspaceScreen() {
         percent,
         note: progressNote.trim() || undefined,
         imageUrls,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
       });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       showToast('Đã cập nhật tiến độ.', 'success');
@@ -315,7 +331,13 @@ export default function CommunityLeadWorkspaceScreen() {
       if (percent === 100) setExpandedStep('after');
       await load();
     } catch (err) {
-      showToast(getApiErrorMessage(err, 'Không thể cập nhật tiến độ.'), 'error');
+      if (coords && isProgressTooFarError(err)) {
+        setTooFarMeters(getProgressTooFarDistanceMeters(err));
+        setTooFarPhotoLocation(coords);
+        setTooFarVisible(true);
+      } else {
+        showToast(getApiErrorMessage(err, 'Không thể cập nhật tiến độ.'), 'error');
+      }
     } finally {
       setActing(false);
     }
@@ -689,6 +711,14 @@ export default function CommunityLeadWorkspaceScreen() {
         visible={countdownDialogVisible}
         startsAt={event?.startsAt ?? null}
         onClose={() => setCountdownDialogVisible(false)}
+      />
+
+      <TooFarDialog
+        visible={tooFarVisible}
+        distanceMeters={tooFarMeters}
+        photoLocation={tooFarPhotoLocation}
+        targetLocation={targetLocation}
+        onClose={() => setTooFarVisible(false)}
       />
 
       <ImageViewerModal

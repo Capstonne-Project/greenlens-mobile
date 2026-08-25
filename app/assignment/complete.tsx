@@ -133,6 +133,8 @@ export default function AssignmentCompleteScreen() {
                     currentPercent: String(detail.progressPercent),
                     lastUpdatedHoursAgo: '',
                     historyJson: '[]',
+                    siteLatitude: String(detail.latitude),
+                    siteLongitude: String(detail.longitude),
                   },
                 } as never),
             },

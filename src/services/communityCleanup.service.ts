@@ -60,7 +60,13 @@ export const communityCleanupService = {
   updateProgress: (eventId: string, payload: UpdateCommunityProgressPayload) =>
     api.put<ApiEnvelope<{ savedImageUrls: string[] }>>(
       `/community-cleanups/${eventId}/progress`,
-      payload,
+      {
+        percent: payload.percent,
+        note: payload.note,
+        imageUrls: payload.imageUrls,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+      },
     ),
 
   submitVerification: (eventId: string, imageUrls: string[]) =>

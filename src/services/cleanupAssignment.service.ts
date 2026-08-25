@@ -110,6 +110,8 @@ export const cleanupAssignmentService = {
       progressPercent: dto.progressPercent,
       progressNote: dto.progressNote ?? null,
       imageUrls,
+      latitude: dto.latitude,
+      longitude: dto.longitude,
     });
   },
 
