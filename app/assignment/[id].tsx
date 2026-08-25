@@ -414,6 +414,8 @@ export default function AssignmentDetailScreen() {
         reportId: task.reportId,
         currentPercent: String(task.progressPercent),
         lastUpdatedHoursAgo: hours !== null ? String(hours) : '',
+        siteLatitude: String(task.latitude),
+        siteLongitude: String(task.longitude),
         // Today's history — from progressNote as single entry if available
         historyJson: task.progressNote && task.progressUpdatedAt
           ? JSON.stringify([{
