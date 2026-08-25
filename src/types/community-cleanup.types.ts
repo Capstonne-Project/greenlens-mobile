@@ -145,4 +145,6 @@ export interface UpdateCommunityProgressPayload {
   percent: number;
   note?: string | null;
   imageUrls?: string[];
+  latitude: number;
+  longitude: number;
 }

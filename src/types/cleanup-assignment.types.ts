@@ -197,6 +197,8 @@ export interface UpdateProgressDto {
   progressPercent: number;
   progressNote?: string;
   images?: LocalImageUpload[];
+  latitude: number;
+  longitude: number;
 }
 
 export interface UpdateProgressResult {
