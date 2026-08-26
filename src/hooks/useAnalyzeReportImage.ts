@@ -150,7 +150,7 @@ export function useAnalyzeReportImage() {
 
       if (!useCreateReportDraftStore.getState().useAi) return 'cancelled';
 
-      setAiResult(data.tempImageId, data.aiResult, data.suggestedCategory, uri);
+      setAiResult(data.tempImageId, data.aiResult, data.suggestedCategory, uri, data.suggestedDescription);
 
       const decision = data.aiResult.decision;
       if (decision === 'IRRELEVANT_OR_SUSPECTED_ABUSIVE') return 'rejected';
