@@ -35,11 +35,24 @@ const SEVERITY_LABEL: Record<string, string> = {
   CRITICAL: 'Khẩn',
 };
 
+const TRASH_SUBTYPE_LABEL: Record<string, string> = {
+  CONSTRUCTION: 'Rác xây dựng',
+  ELECTRONIC: 'Rác điện tử',
+  HAZARDOUS: 'Rác nguy hại',
+  HOUSEHOLD: 'Rác sinh hoạt',
+  MEDICAL: 'Rác y tế',
+  ORGANIC: 'Rác hữu cơ',
+  RECYCLABLE: 'Rác tái chế',
+};
+
 export function AiAnalysisBanner({ aiResult, compact = false }: AiAnalysisBannerProps) {
   const meta = DECISION_META[aiResult.decision];
   const { classify } = aiResult;
   const confidencePct = Math.round(classify.confidence * 100);
   const severityLabel = SEVERITY_LABEL[classify.severity] ?? classify.severity;
+  const topSubtype = classify.predictions
+    ?.find((p) => p.class === 'TRASH')
+    ?.subtypes?.[0];
 
   if (compact) {
     return (
@@ -87,6 +100,18 @@ export function AiAnalysisBanner({ aiResult, compact = false }: AiAnalysisBanner
           </Text>
         </View>
       </View>
+
+      {topSubtype ? (
+        <View className="flex-row items-center gap-1.5 px-4 pb-3">
+          <Ionicons name="pricetag" size={12} color={colors.primary} />
+          <Text className="text-xs font-semibold text-primary">
+            {TRASH_SUBTYPE_LABEL[topSubtype.subtype] ?? topSubtype.subtype}
+          </Text>
+          <Text className="text-xs text-textSecondary">
+            ({Math.round(topSubtype.confidence * 100)}%)
+          </Text>
+        </View>
+      ) : null}
 
       {aiResult.reason ? (
         <View className="px-4 pb-3">

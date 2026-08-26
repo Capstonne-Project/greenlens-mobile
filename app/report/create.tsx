@@ -3,6 +3,7 @@ import { TapScale } from "@/components/layout/TapScale";
 import { AiAnalysisBanner } from "@/components/report-create/AiAnalysisBanner";
 import { AiImagePickModal } from "@/components/report-create/AiImagePickModal";
 import { AiImageScanOverlay } from "@/components/report-create/AiImageScanOverlay";
+import { AiDetectionPreview } from "@/components/report-create/AiDetectionPreview";
 import { CategoryOptionGrid } from "@/components/report-create/CategoryOptionGrid";
 import { ReportFormHeader } from "@/components/report-create/ReportFormHeader";
 import {
@@ -59,7 +60,20 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { router, type Href } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Linking, Modal, ScrollView, Switch, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Switch,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import MapView, { type LatLng, type Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -109,6 +123,7 @@ export default function ReportCreateWizardScreen() {
   // Local selections inside AI dialog — chỉ apply khi user bấm "Áp dụng"
   const [dialogCategoryId, setDialogCategoryId] = useState<string | null>(null);
   const [dialogSeverity, setDialogSeverity] = useState<PollutionSeverity | null>(null);
+  const [dialogDescription, setDialogDescription] = useState<string | null>(null);
   // Vị trí mới cách xa vị trí EXIF ảnh — chờ user xác nhận giữ hay phục hồi vị trí ảnh
   const [pendingLocationOverride, setPendingLocationOverride] = useState<{
     newLocation: { latitude: number; longitude: number };
@@ -148,7 +163,9 @@ export default function ReportCreateWizardScreen() {
   const reset = useCreateReportDraftStore((s) => s.reset);
   const useAi = useCreateReportDraftStore((s) => s.useAi);
   const aiResult = useCreateReportDraftStore((s) => s.aiResult);
+  const analyzedImageLocalUri = useCreateReportDraftStore((s) => s.analyzedImageLocalUri);
   const aiSuggestedCategory = useCreateReportDraftStore((s) => s.aiSuggestedCategory);
+  const aiSuggestedDescription = useCreateReportDraftStore((s) => s.aiSuggestedDescription);
   const setUseAi = useCreateReportDraftStore((s) => s.setUseAi);
   const clearAiResult = useCreateReportDraftStore((s) => s.clearAiResult);
 
@@ -1339,14 +1356,29 @@ export default function ReportCreateWizardScreen() {
               ? ({ LOW: "Low", MEDIUM: "Medium", HIGH: "High", CRITICAL: "Critical" } as const)[aiResult.classify.severity] ?? null
               : null,
           );
+          // Chỉ seed mô tả AI khi user chưa tự gõ gì — tránh ghi đè nội dung đang có.
+          setDialogDescription(description.trim().length === 0 ? aiSuggestedDescription : null);
         }}
       >
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="rounded-t-3xl bg-white px-5 pt-5" style={{ paddingBottom: Math.max(insets.bottom, 20) + 16 }}>
-            {/* Handle */}
-            <View className="mb-4 items-center">
-              <View className="h-1 w-10 rounded-full bg-border" />
-            </View>
+        <KeyboardAvoidingView
+          className="flex-1"
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <View className="flex-1 justify-end bg-black/50">
+            <Pressable className="flex-1" onPress={Keyboard.dismiss} />
+            <View className="max-h-[88%] rounded-t-3xl bg-white">
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{
+                  paddingHorizontal: 20,
+                  paddingTop: 20,
+                  paddingBottom: Math.max(insets.bottom, 20) + 16,
+                }}
+              >
+                {/* Handle */}
+                <View className="mb-4 items-center">
+                  <View className="h-1 w-10 rounded-full bg-border" />
+                </View>
 
             {/* Header */}
             <View className="mb-4 flex-row items-center gap-2.5">
@@ -1362,6 +1394,18 @@ export default function ReportCreateWizardScreen() {
                 )}
               </View>
             </View>
+
+            {/* Ảnh đã phân tích kèm box detect */}
+            {aiResult && analyzedImageLocalUri ? (
+              (() => {
+                const boxes = aiResult.classify.predictions?.flatMap((p) => p.boxes ?? []) ?? [];
+                return boxes.length > 0 ? (
+                  <View className="mb-3">
+                    <AiDetectionPreview imageUri={analyzedImageLocalUri} boxes={boxes} />
+                  </View>
+                ) : null;
+              })()
+            ) : null}
 
             {/* AI stats card */}
             {aiResult ? <AiAnalysisBanner aiResult={aiResult} /> : null}
@@ -1451,6 +1495,27 @@ export default function ReportCreateWizardScreen() {
               </View>
             </View>
 
+            {/* Mô tả gợi ý — chỉ hiện khi LLM tạo được */}
+            {dialogDescription ? (
+              <View className="mt-5 gap-3">
+                <View className="flex-row items-center gap-1.5 px-1">
+                  <Ionicons name="sparkles" size={12} color={colors.primary} />
+                  <Text className="text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">
+                    Mô tả gợi ý
+                  </Text>
+                </View>
+                <TextInput
+                  value={dialogDescription}
+                  onChangeText={setDialogDescription}
+                  multiline
+                  textAlignVertical="top"
+                  className="min-h-[72px] rounded-2xl bg-surface px-4 py-3 text-sm text-textPrimary"
+                  placeholder="Mô tả tình trạng ô nhiễm…"
+                  placeholderTextColor={colors.textDisabled}
+                />
+              </View>
+            ) : null}
+
             {/* Actions */}
             <View className="mt-5 gap-3">
               <TouchableOpacity
@@ -1461,6 +1526,9 @@ export default function ReportCreateWizardScreen() {
                   // Áp dụng lựa chọn từ dialog vào store
                   setCategoryId(dialogCategoryId);
                   if (dialogSeverity) setSeverity(dialogSeverity);
+                  if (dialogDescription && dialogDescription.trim().length > 0) {
+                    setDescription(dialogDescription.trim());
+                  }
                   setShowAiResult(false);
                   setPendingAiOutcome(null);
                   setExpandedSection("category");
@@ -1479,14 +1547,17 @@ export default function ReportCreateWizardScreen() {
                   setPendingAiOutcome(null);
                   setDialogCategoryId(null);
                   setDialogSeverity(null);
+                  setDialogDescription(null);
                 }}
                 className="items-center rounded-2xl bg-surface py-3.5"
               >
                 <Text className="text-base font-semibold text-textSecondary">Bỏ qua, tự điền</Text>
               </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <LocationOverrideDialog
