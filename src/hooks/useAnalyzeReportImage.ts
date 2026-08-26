@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { pollutionReportService } from '@/services/pollutionReport.service';
+import { wasteTagService } from '@/services/wasteTag.service';
 import { useCreateReportDraftStore } from '@/stores/createReportDraft.store';
 import type { UploadReportImageResult } from '@/types/pollution-report.types';
 
@@ -11,6 +12,36 @@ const SEVERITY_MAP = {
 } as const;
 
 const CONFIDENCE_THRESHOLD = 0.7;
+const SUBTYPE_CONFIDENCE_THRESHOLD = 0.7;
+
+/** AI subtype code → WasteTag.code (catalog uses a slightly different code for organic waste). */
+const SUBTYPE_TO_WASTE_TAG_CODE: Record<string, string> = {
+  ORGANIC: 'FOOD_ORGANIC',
+};
+
+/** Auto-select WasteTags whose `code` matches AI trash subtypes (e.g. "RECYCLABLE"). Best-effort, silent no-op on mismatch. */
+async function autoFillWasteTagsFromSubtypes(subtypeCodes: string[]): Promise<void> {
+  if (subtypeCodes.length === 0) return;
+
+  try {
+    const wasteTagCodes = subtypeCodes.map((code) => SUBTYPE_TO_WASTE_TAG_CODE[code] ?? code);
+    const res = await wasteTagService.getTags();
+    const tags = res.data.data.tags ?? [];
+    const matchedIds = tags
+      .filter((tag) => wasteTagCodes.includes(tag.code.toUpperCase()))
+      .map((tag) => tag.id);
+
+    if (matchedIds.length === 0) return;
+
+    const store = useCreateReportDraftStore.getState();
+    const current = new Set(store.wasteTagIds);
+    matchedIds.forEach((id) => {
+      if (!current.has(id)) store.toggleWasteTag(id);
+    });
+  } catch {
+    // Best-effort auto-fill — silently skip on failure, user can still pick tags manually.
+  }
+}
 
 async function ensureUploaded(
   uri: string,
@@ -119,7 +150,7 @@ export function useAnalyzeReportImage() {
 
       if (!useCreateReportDraftStore.getState().useAi) return 'cancelled';
 
-      setAiResult(data.tempImageId, data.aiResult, data.suggestedCategory, uri);
+      setAiResult(data.tempImageId, data.aiResult, data.suggestedCategory, uri, data.suggestedDescription);
 
       const decision = data.aiResult.decision;
       if (decision === 'IRRELEVANT_OR_SUSPECTED_ABUSIVE') return 'rejected';
@@ -130,6 +161,12 @@ export function useAnalyzeReportImage() {
         if (mappedSeverity) setSeverity(mappedSeverity);
         if (data.suggestedCategory) setCategoryId(data.suggestedCategory.id);
       }
+
+      const trashSubtypes = data.aiResult.classify.predictions?.find((p) => p.class === 'TRASH')?.subtypes;
+      const confidentSubtypeCodes = (trashSubtypes ?? [])
+        .filter((s) => s.confidence >= SUBTYPE_CONFIDENCE_THRESHOLD)
+        .map((s) => s.subtype);
+      void autoFillWasteTagsFromSubtypes(confidentSubtypeCodes);
 
       return decision === 'NEED_MANUAL_REVIEW' ? 'review' : 'accepted';
     } catch {

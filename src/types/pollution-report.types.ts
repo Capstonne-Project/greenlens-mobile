@@ -14,10 +14,40 @@ export type AiImageRelevance =
   | 'NOT_POLLUTION_OR_UNRELATED'
   | 'UNCLEAR_NEED_MANUAL_REVIEW';
 
+export type AiTrashSubtype =
+  | 'CONSTRUCTION'
+  | 'ELECTRONIC'
+  | 'HAZARDOUS'
+  | 'HOUSEHOLD'
+  | 'MEDICAL'
+  | 'ORGANIC'
+  | 'RECYCLABLE';
+
+export interface AiTrashSubtypePrediction {
+  subtype: AiTrashSubtype;
+  count: number;
+  confidence: number;
+}
+
+/** Toạ độ pixel tuyệt đối (xyxy) theo kích thước ảnh gốc đã upload. */
+export interface AiDetectedBox {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  confidence: number;
+  /** Chỉ có khi box thuộc prediction TRASH và model subtype đã load. */
+  subtype?: AiTrashSubtype | null;
+  subtypeConfidence?: number | null;
+}
+
 export interface AiPrediction {
   class: string;
   confidence: number;
   bboxCount: number;
+  /** Chỉ có khi `class === 'TRASH'` và model subtype đã load ở AI Service. */
+  subtypes?: AiTrashSubtypePrediction[] | null;
+  boxes?: AiDetectedBox[] | null;
 }
 
 export interface AiClassifyResult {
@@ -53,6 +83,8 @@ export interface AiAnalyzeResponse {
   expiresInSeconds: number;
   aiResult: AiAnalyzeResult;
   suggestedCategory: AiSuggestedCategory | null;
+  /** Mô tả tiếng Việt do LLM soạn sẵn từ category/severity/subtype — null nếu LLM không khả dụng. */
+  suggestedDescription: string | null;
 }
 
 export type ReportImageUploadStatus = 'pending' | 'uploading' | 'done' | 'error';

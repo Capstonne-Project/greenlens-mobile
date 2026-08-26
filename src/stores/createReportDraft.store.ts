@@ -31,6 +31,8 @@ interface CreateReportDraftState {
   analyzedImageLocalUri: string | null;
   aiResult: AiAnalyzeResult | null;
   aiSuggestedCategory: AiSuggestedCategory | null;
+  /** Mô tả do LLM soạn sẵn (best-effort) — null nếu LLM không khả dụng. */
+  aiSuggestedDescription: string | null;
   setSource: (source: ReportCaptureSource) => void;
   setImages: (images: ReportImageDraft[]) => void;
   addImage: (image: ReportImageDraft) => void;
@@ -54,6 +56,7 @@ interface CreateReportDraftState {
     aiResult: AiAnalyzeResult,
     suggestedCategory?: AiSuggestedCategory | null,
     analyzedImageLocalUri?: string | null,
+    suggestedDescription?: string | null,
   ) => void;
   clearAiResult: () => void;
   reset: () => void;
@@ -78,6 +81,7 @@ const initialState = {
   analyzedImageLocalUri: null as string | null,
   aiResult: null as AiAnalyzeResult | null,
   aiSuggestedCategory: null as AiSuggestedCategory | null,
+  aiSuggestedDescription: null as string | null,
 };
 
 export const useCreateReportDraftStore = create<CreateReportDraftState>((set) => ({
@@ -153,10 +157,29 @@ export const useCreateReportDraftStore = create<CreateReportDraftState>((set) =>
 
   setUseAi: (useAi) => set({ useAi }),
 
-  setAiResult: (tempImageId, aiResult, suggestedCategory = null, analyzedImageLocalUri = null) =>
-    set({ tempImageId, aiResult, aiSuggestedCategory: suggestedCategory, analyzedImageLocalUri }),
+  setAiResult: (
+    tempImageId,
+    aiResult,
+    suggestedCategory = null,
+    analyzedImageLocalUri = null,
+    suggestedDescription = null,
+  ) =>
+    set({
+      tempImageId,
+      aiResult,
+      aiSuggestedCategory: suggestedCategory,
+      analyzedImageLocalUri,
+      aiSuggestedDescription: suggestedDescription,
+    }),
 
-  clearAiResult: () => set({ tempImageId: null, aiResult: null, aiSuggestedCategory: null, analyzedImageLocalUri: null }),
+  clearAiResult: () =>
+    set({
+      tempImageId: null,
+      aiResult: null,
+      aiSuggestedCategory: null,
+      analyzedImageLocalUri: null,
+      aiSuggestedDescription: null,
+    }),
 
   reset: () => set({ ...initialState }),
 }));
