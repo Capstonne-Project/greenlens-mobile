@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -20,8 +20,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import * as Location from 'expo-location';
-
 import { AssignmentActionButton } from '@/components/assignment/AssignmentActionButton';
 import { AssignmentScreenHeader } from '@/components/assignment/AssignmentScreenHeader';
 import { Toast, useToast } from '@/components/common/Toast';
@@ -32,6 +30,7 @@ import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { colors } from '@/theme/colors';
 import { getCleanupErrorMessage } from '@/utils/cleanup-errors';
 import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
+import { parseLocationFromPickerAsset, type ExifGpsCoords } from '@/utils/exif-location';
 import { getProgressTooFarDistanceMeters, isProgressTooFarError } from '@/utils/progress-too-far-error';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -46,6 +45,7 @@ interface PickedImage {
   uri: string;
   mimeType: string;
   fileName: string;
+  exifCoords: ExifGpsCoords | null;
 }
 
 // ─── Quick percent chip ───────────────────────────────────────────────────────
@@ -173,9 +173,13 @@ export default function ProgressUpdateScreen() {
     siteLongitude: string;
   }>();
 
-  const targetLocation = siteLatitude && siteLongitude
-    ? { latitude: parseFloat(siteLatitude), longitude: parseFloat(siteLongitude) }
-    : null;
+  const targetLocation = useMemo(
+    () =>
+      siteLatitude && siteLongitude
+        ? { latitude: parseFloat(siteLatitude), longitude: parseFloat(siteLongitude) }
+        : null,
+    [siteLatitude, siteLongitude],
+  );
 
   const initPercent     = parseInt(currentPercentParam ?? '0', 10);
   const hoursAgo        = hoursParam ? parseInt(hoursParam, 10) : null;
@@ -217,6 +221,7 @@ export default function ProgressUpdateScreen() {
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 1,
+      exif: true,
     });
     if (result.canceled) return;
 
@@ -224,14 +229,17 @@ export default function ProgressUpdateScreen() {
     try {
       const assets = result.assets.slice(0, 5 - images.length);
       const picked = await Promise.all(
-        assets.map((a) =>
-          compressImage(a.uri, {
+        assets.map(async (a) => {
+          // Đọc GPS từ EXIF trước khi compress — nén JPEG sẽ strip metadata.
+          const exifCoords = parseLocationFromPickerAsset(a);
+          const compressed = await compressImage(a.uri, {
             ...UPLOAD_COMPRESS_PRESET,
             baseName: 'progress',
             sourceWidth: a.width,
             sourceHeight: a.height,
-          }),
-        ),
+          });
+          return { ...compressed, exifCoords };
+        }),
       );
       setImages((prev) => [...prev, ...picked].slice(0, 5));
     } finally {
@@ -248,19 +256,22 @@ export default function ProgressUpdateScreen() {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       quality: 1,
+      exif: true,
     });
     if (result.canceled) return;
 
     setProcessing(true);
     try {
       const asset = result.assets[0];
-      const picked = await compressImage(asset.uri, {
+      // Đọc GPS từ EXIF trước khi compress — nén JPEG sẽ strip metadata.
+      const exifCoords = parseLocationFromPickerAsset(asset);
+      const compressed = await compressImage(asset.uri, {
         ...UPLOAD_COMPRESS_PRESET,
         baseName: 'progress',
         sourceWidth: asset.width,
         sourceHeight: asset.height,
       });
-      setImages((current) => [...current, picked].slice(0, 5));
+      setImages((current) => [...current, { ...compressed, exifCoords }].slice(0, 5));
     } catch {
       setApiError('Không thể xử lý ảnh. Vui lòng thử lại.');
     } finally {
@@ -287,16 +298,17 @@ export default function ProgressUpdateScreen() {
     setApiError(null);
     let coords: { latitude: number; longitude: number } | null = null;
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        setApiError('Cần quyền truy cập vị trí để cập nhật tiến độ.');
+      // Có ảnh: check bằng vị trí chụp ảnh (EXIF), không phải vị trí máy.
+      // Không có ảnh: không có gì để đối chiếu — gửi thẳng tọa độ điểm rác để BE luôn pass
+      // (BE bắt buộc phải nhận lat/lng và luôn chạy check khoảng cách).
+      const photoCoords = images.find((img) => img.exifCoords)?.exifCoords ?? null;
+      coords = photoCoords ?? targetLocation;
+
+      if (!coords) {
+        setApiError('Không xác định được vị trí điểm rác. Vui lòng thử lại.');
         setSubmit(false);
         return;
       }
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
 
       await cleanupAssignmentService.updateProgress(reportId, {
         progressPercent: percent,
@@ -319,7 +331,7 @@ export default function ProgressUpdateScreen() {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setSubmit(false);
     }
-  }, [submitting, isLeader, reportId, percent, note, images, showToast]);
+  }, [submitting, isLeader, reportId, percent, note, images, targetLocation, showToast]);
 
   const validPercent = percent > initPercent && percent <= 100;
   const canSubmit = isLeader && validPercent && !submitting && !processing;
@@ -552,7 +564,11 @@ export default function ProgressUpdateScreen() {
         distanceMeters={tooFarMeters}
         photoLocation={tooFarPhotoLocation}
         targetLocation={targetLocation}
-        onClose={() => setTooFarVisible(false)}
+        onClose={() => {
+          setTooFarVisible(false);
+          // Ảnh chụp sai vị trí — xóa để người dùng chụp lại thay vì phải tự tìm và xóa.
+          setImages([]);
+        }}
       />
     </View>
   );
