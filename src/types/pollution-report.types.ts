@@ -83,6 +83,8 @@ export interface AiAnalyzeResponse {
   expiresInSeconds: number;
   aiResult: AiAnalyzeResult;
   suggestedCategory: AiSuggestedCategory | null;
+  /** Mô tả tiếng Việt do LLM soạn sẵn từ category/severity/subtype — null nếu LLM không khả dụng. */
+  suggestedDescription: string | null;
 }
 
 export type ReportImageUploadStatus = 'pending' | 'uploading' | 'done' | 'error';
