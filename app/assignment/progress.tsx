@@ -20,6 +20,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import * as Location from 'expo-location';
+
 import { AssignmentActionButton } from '@/components/assignment/AssignmentActionButton';
 import { AssignmentScreenHeader } from '@/components/assignment/AssignmentScreenHeader';
 import { Toast, useToast } from '@/components/common/Toast';
@@ -253,6 +255,8 @@ export default function ProgressUpdateScreen() {
       setApiError('Cần quyền camera để chụp ảnh tiến độ.');
       return;
     }
+    // Camera hệ thống chỉ ghi GPS vào EXIF nếu app đã có quyền vị trí — xin trước khi mở camera.
+    await Location.requestForegroundPermissionsAsync();
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       quality: 1,

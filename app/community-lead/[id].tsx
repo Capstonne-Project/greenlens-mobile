@@ -38,6 +38,7 @@ import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
 import { getApiErrorMessage } from '@/utils/api-error-message';
 import { isCheckInTooFarError } from '@/utils/community-checkin-error';
 import { getProgressTooFarDistanceMeters, isProgressTooFarError } from '@/utils/progress-too-far-error';
+import { parseLocationFromPickerAsset, type ExifGpsCoords } from '@/utils/exif-location';
 import { firstRouteParam } from '@/utils/field-worker-task';
 import type {
   CommunityCleanupEventDetail,
@@ -48,6 +49,7 @@ interface PickedImage {
   uri: string;
   mimeType: string;
   fileName: string;
+  exifCoords: ExifGpsCoords | null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -84,23 +86,30 @@ async function pickAndCompress(
   if (source === 'camera') {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) throw new Error('CAMERA_PERMISSION_DENIED');
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
+    // Camera hệ thống chỉ ghi GPS vào EXIF nếu app đã có quyền vị trí — xin trước khi mở camera.
+    await Location.requestForegroundPermissionsAsync();
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1, exif: true });
     if (result.canceled) return [];
     const asset = result.assets[0];
+    // Đọc GPS từ EXIF trước khi compress — nén JPEG sẽ strip metadata.
+    const exifCoords = parseLocationFromPickerAsset(asset);
     const compressed = await compressImage(asset.uri, {
       ...UPLOAD_COMPRESS_PRESET, baseName, sourceWidth: asset.width, sourceHeight: asset.height,
     });
-    return [compressed];
+    return [{ ...compressed, exifCoords }];
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'], allowsMultipleSelection: true,
-    selectionLimit: Math.max(1, maxCount - currentCount), quality: 1,
+    selectionLimit: Math.max(1, maxCount - currentCount), quality: 1, exif: true,
   });
   if (result.canceled) return [];
   return Promise.all(
-    result.assets.slice(0, maxCount - currentCount).map((a) =>
-      compressImage(a.uri, { ...UPLOAD_COMPRESS_PRESET, baseName, sourceWidth: a.width, sourceHeight: a.height })),
+    result.assets.slice(0, maxCount - currentCount).map(async (a) => {
+      const exifCoords = parseLocationFromPickerAsset(a);
+      const compressed = await compressImage(a.uri, { ...UPLOAD_COMPRESS_PRESET, baseName, sourceWidth: a.width, sourceHeight: a.height });
+      return { ...compressed, exifCoords };
+    }),
   );
 }
 
@@ -307,13 +316,16 @@ export default function CommunityLeadWorkspaceScreen() {
     setActing(true);
     let coords: { latitude: number; longitude: number } | null = null;
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        showToast('Cần quyền truy cập vị trí để cập nhật tiến độ.', 'error');
+      // Có ảnh: check bằng vị trí chụp ảnh (EXIF), không phải vị trí máy.
+      // Không có ảnh: không có gì để đối chiếu — gửi thẳng tọa độ điểm rác để BE luôn pass
+      // (BE bắt buộc phải nhận lat/lng và luôn chạy check khoảng cách).
+      const photoCoords = progressImages.find((img) => img.exifCoords)?.exifCoords ?? null;
+      coords = photoCoords ?? (event ? { latitude: event.reportLatitude, longitude: event.reportLongitude } : null);
+
+      if (!coords) {
+        showToast('Không xác định được vị trí điểm rác. Vui lòng thử lại.', 'error');
         return;
       }
-      const position = await Location.getCurrentPositionAsync({});
-      coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
 
       const imageUrls = progressImages.length > 0
         ? await uploadAll(progressImages, 'Progress', event?.reportId ?? '')
@@ -341,7 +353,7 @@ export default function CommunityLeadWorkspaceScreen() {
     } finally {
       setActing(false);
     }
-  }, [eventId, isActing, percentInput, progressNote, progressImages, event?.reportId, event?.progressPercent, load, showToast]);
+  }, [eventId, isActing, percentInput, progressNote, progressImages, event, load, showToast]);
 
   const handleSubmitVerification = useCallback(async () => {
     if (!eventId || isActing || afterImages.length < 2) return;
@@ -718,7 +730,11 @@ export default function CommunityLeadWorkspaceScreen() {
         distanceMeters={tooFarMeters}
         photoLocation={tooFarPhotoLocation}
         targetLocation={targetLocation}
-        onClose={() => setTooFarVisible(false)}
+        onClose={() => {
+          setTooFarVisible(false);
+          // Ảnh chụp sai vị trí — xóa để người dùng chụp lại thay vì phải tự tìm và xóa.
+          setProgressImages([]);
+        }}
       />
 
       <ImageViewerModal
