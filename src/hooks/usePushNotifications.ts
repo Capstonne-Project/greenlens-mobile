@@ -9,11 +9,21 @@ import { useNotificationStore } from '@/stores/notification.store';
 import { resolveNotificationHref } from '@/utils/resolve-notification-href';
 import { resolveUnreadCount } from '@/utils/notification-unread';
 
+/** Lời mời tham gia đội Cleaner/Inspector chỉ dành cho Citizen — user đã lên staff/phường thì không tính vào badge. */
+function isVisibleForRole(
+  item: { type?: string },
+  role: string | undefined,
+): boolean {
+  if (role === 'Citizen') return true;
+  return item.type !== 'StaffInvitationReceived';
+}
+
 async function syncUnreadCount(): Promise<void> {
   try {
     const res = await notificationService.getMyNotifications({ page: 1, pageSize: 20 });
     const data = res.data.data;
-    const items = data.items ?? [];
+    const role = useAuthStore.getState().user?.role;
+    const items = (data.items ?? []).filter((item) => isVisibleForRole(item, role));
     useNotificationStore.getState().setUnreadCount(resolveUnreadCount(data, items));
   } catch {
     // Badge sync is best-effort

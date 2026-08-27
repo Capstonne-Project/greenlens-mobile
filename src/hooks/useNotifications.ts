@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { notificationService } from '@/services/notification.service';
+import { useAuthStore } from '@/stores/auth.store';
 import { useNotificationStore } from '@/stores/notification.store';
 import type { AppNotification } from '@/types/notification.types';
 import { resolveUnreadCount } from '@/utils/notification-unread';
+
+/** Lời mời tham gia đội Cleaner/Inspector chỉ dành cho Citizen — user đã lên staff/phường thì ẩn đi. */
+function filterVisibleNotifications(
+  items: AppNotification[],
+  role: string | undefined,
+): AppNotification[] {
+  if (role === 'Citizen') return items;
+  return items.filter((n) => n.type !== 'StaffInvitationReceived');
+}
 
 export type NotificationsReadFilter = 'all' | 'unread';
 
@@ -42,6 +52,7 @@ export function useNotifications(
 
   const { enabled, filter } = params;
   const isReadParam = filter === 'unread' ? false : undefined;
+  const userRole = useAuthStore((s) => s.user?.role);
 
   const setUnreadCount = useNotificationStore((s) => s.setUnreadCount);
   const clearUnread = useNotificationStore((s) => s.clearUnread);
@@ -71,11 +82,13 @@ export function useNotifications(
           isRead: isReadParam,
         });
         const data = res.data.data;
-        const nextItems = data.items ?? [];
+        const rawItems = data.items ?? [];
+        const nextItems = filterVisibleNotifications(rawItems, userRole);
+        const hiddenCount = rawItems.length - nextItems.length;
 
         setItems((prev) => (mode === 'append' ? [...prev, ...nextItems] : nextItems));
         setPage(nextPage);
-        setTotalCount(data.totalCount ?? nextItems.length);
+        setTotalCount(Math.max(0, (data.totalCount ?? rawItems.length) - hiddenCount));
         setUnreadCount(
           resolveUnreadCount(data, nextItems, { isUnreadOnly: isReadParam === false }),
         );
@@ -87,7 +100,7 @@ export function useNotifications(
         setIsLoadingMore(false);
       }
     },
-    [isReadParam, setUnreadCount],
+    [isReadParam, setUnreadCount, userRole],
   );
 
   const refetch = useCallback(async () => {
