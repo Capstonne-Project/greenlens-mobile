@@ -1,5 +1,5 @@
 import { isPointInAnyPolygonGroup } from '@/utils/point-in-polygon';
-import type { LatLng } from 'react-native-maps';
+import type { LatLng } from '@/components/map/GoongMapView';
 
 export interface PinBoundaryValidationInput {
   point: LatLng;

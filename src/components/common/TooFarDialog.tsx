@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { RouteMiniMap } from '@/components/map/RouteMiniMap';
 import { Text } from '@/components/ui/text';
 import { goongService } from '@/services/goong.service';
 import { colors } from '@/theme/colors';
@@ -52,15 +52,6 @@ export function TooFarDialog({
     };
   }, [visible, photoLocation, targetLocation]);
 
-  const mapRegion = useMemo(() => {
-    if (!photoLocation || !targetLocation) return null;
-    const latitude = (photoLocation.latitude + targetLocation.latitude) / 2;
-    const longitude = (photoLocation.longitude + targetLocation.longitude) / 2;
-    const latitudeDelta = Math.max(Math.abs(photoLocation.latitude - targetLocation.latitude) * 2.2, 0.006);
-    const longitudeDelta = Math.max(Math.abs(photoLocation.longitude - targetLocation.longitude) * 2.2, 0.006);
-    return { latitude, longitude, latitudeDelta, longitudeDelta };
-  }, [photoLocation, targetLocation]);
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View className="flex-1 justify-end">
@@ -87,26 +78,16 @@ export function TooFarDialog({
             </View>
           </View>
 
-          {mapRegion && photoLocation && targetLocation ? (
-            <View className="mb-3 overflow-hidden rounded-xl border border-border" style={{ height: 160 }}>
-              <MapView
-                style={{ flex: 1 }}
-                region={mapRegion}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                rotateEnabled={false}
-                pitchEnabled={false}
-                showsUserLocation={false}
-              >
-                <Marker coordinate={photoLocation} title="Vị trí chụp ảnh" pinColor={colors.error} />
-                <Marker coordinate={targetLocation} title="Vị trí điểm rác" pinColor={colors.primary} />
-                <Polyline
-                  coordinates={routePath ?? [photoLocation, targetLocation]}
-                  strokeColor={colors.error}
-                  strokeWidth={3}
-                  lineDashPattern={routePath ? undefined : [6, 4]}
-                />
-              </MapView>
+          {photoLocation && targetLocation ? (
+            <View className="mb-3">
+              <RouteMiniMap
+                origin={photoLocation}
+                destination={targetLocation}
+                routePath={routePath}
+                originColor={colors.error}
+                destinationColor={colors.primary}
+                routeColor={colors.error}
+              />
               <View className="absolute bottom-1.5 right-1.5 rounded-full bg-white/95 px-2.5 py-1" style={{ elevation: 2 }}>
                 <Text className="text-[11px] font-bold" style={{ color: colors.error }}>
                   Cách {distanceMeters !== null ? formatDistance(distanceMeters / 1000) : '?'}

@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
 import { Modal, Pressable, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { RouteMiniMap } from '@/components/map/RouteMiniMap';
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
 import { formatDistance, haversineKm } from '@/utils/geo';
@@ -42,15 +42,6 @@ export function LocationOverrideDialog({
     );
   }, [exifLocation, newLocation]);
 
-  const mapRegion = useMemo(() => {
-    if (!exifLocation || !newLocation) return null;
-    const latitude = (exifLocation.latitude + newLocation.latitude) / 2;
-    const longitude = (exifLocation.longitude + newLocation.longitude) / 2;
-    const latitudeDelta = Math.max(Math.abs(exifLocation.latitude - newLocation.latitude) * 2.2, 0.01);
-    const longitudeDelta = Math.max(Math.abs(exifLocation.longitude - newLocation.longitude) * 2.2, 0.01);
-    return { latitude, longitude, latitudeDelta, longitudeDelta };
-  }, [exifLocation, newLocation]);
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onKeepNew}>
       <View className="flex-1 justify-end">
@@ -75,26 +66,15 @@ export function LocationOverrideDialog({
             </View>
           </View>
 
-          {mapRegion && exifLocation && newLocation ? (
-            <View className="mb-3 overflow-hidden rounded-xl border border-border" style={{ height: 160 }}>
-              <MapView
-                style={{ flex: 1 }}
-                region={mapRegion}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                rotateEnabled={false}
-                pitchEnabled={false}
-                showsUserLocation={false}
-              >
-                <Marker coordinate={exifLocation} title="Vị trí ảnh (EXIF)" pinColor={colors.primary} />
-                <Marker coordinate={newLocation} title="Vị trí mới chọn" pinColor={colors.error} />
-                <Polyline
-                  coordinates={[exifLocation, newLocation]}
-                  strokeColor={colors.textSecondary}
-                  strokeWidth={2}
-                  lineDashPattern={[6, 4]}
-                />
-              </MapView>
+          {exifLocation && newLocation ? (
+            <View className="mb-3">
+              <RouteMiniMap
+                origin={exifLocation}
+                destination={newLocation}
+                originColor={colors.primary}
+                destinationColor={colors.error}
+                routeColor={colors.textSecondary}
+              />
               <View className="absolute bottom-1.5 right-1.5 rounded-full bg-white/95 px-2.5 py-1" style={{ elevation: 2 }}>
                 <Text className="text-[11px] font-bold" style={{ color: colors.error }}>
                   Cách {distanceKm !== null ? formatDistance(distanceKm) : '?'}

@@ -1,5 +1,5 @@
 import { Pressable, View } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { Camera, Map, Marker } from '@maplibre/maplibre-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, {
@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Text } from '@/components/ui/text';
+import { getGoongStyleUrl } from '@/constants/map-config';
 import { colors } from '@/theme/colors';
 import { openGoogleMapsDirections } from '@/utils/open-directions';
 
@@ -131,31 +132,18 @@ export function ReportLocationMap({
       ) : null}
 
       <View className="overflow-hidden rounded-2xl border border-border">
-        <MapView
+        <Map
           style={{ width: '100%', height: 168 }}
-          mapType="standard"
+          mapStyle={getGoongStyleUrl()}
           pointerEvents="none"
-          scrollEnabled={false}
-          zoomEnabled={false}
-          pitchEnabled={false}
-          rotateEnabled={false}
-          toolbarEnabled={false}
-          showsUserLocation={false}
-          showsMyLocationButton={false}
-          showsCompass={false}
-          showsPointsOfInterest={false}
-          initialRegion={{
-            latitude,
-            longitude,
-            latitudeDelta: 0.008,
-            longitudeDelta: 0.008,
-          }}
+          dragPan={false}
+          touchZoom={false}
+          touchPitch={false}
+          touchRotate={false}
+          compass={false}
         >
-          <Marker
-            coordinate={{ latitude, longitude }}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
+          <Camera initialViewState={{ center: [longitude, latitude], zoom: 16 }} />
+          <Marker id="report-location-dot" lngLat={[longitude, latitude]} anchor="center">
             <View className="items-center justify-center" style={{ width: 28, height: 28 }}>
               <View
                 className="absolute rounded-full"
@@ -180,7 +168,7 @@ export function ReportLocationMap({
               />
             </View>
           </Marker>
-        </MapView>
+        </Map>
         {!hideDirectionsButton ? (
           <DirectionsButton latitude={latitude} longitude={longitude} address={address} />
         ) : null}

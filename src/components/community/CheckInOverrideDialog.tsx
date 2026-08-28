@@ -9,9 +9,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { RouteMiniMap } from '@/components/map/RouteMiniMap';
 import { Text } from '@/components/ui/text';
 import { goongService } from '@/services/goong.service';
 import { colors } from '@/theme/colors';
@@ -59,15 +59,6 @@ export function CheckInOverrideDialog({
       targetLocation.latitude,
       targetLocation.longitude,
     );
-  }, [userLocation, targetLocation]);
-
-  const mapRegion = useMemo(() => {
-    if (!userLocation || !targetLocation) return null;
-    const latitude = (userLocation.latitude + targetLocation.latitude) / 2;
-    const longitude = (userLocation.longitude + targetLocation.longitude) / 2;
-    const latitudeDelta = Math.max(Math.abs(userLocation.latitude - targetLocation.latitude) * 2.2, 0.006);
-    const longitudeDelta = Math.max(Math.abs(userLocation.longitude - targetLocation.longitude) * 2.2, 0.006);
-    return { latitude, longitude, latitudeDelta, longitudeDelta };
   }, [userLocation, targetLocation]);
 
   useEffect(() => {
@@ -126,26 +117,16 @@ export function CheckInOverrideDialog({
             </View>
           </View>
 
-          {mapRegion && userLocation && targetLocation ? (
-            <View className="mb-3 overflow-hidden rounded-xl border border-border" style={{ height: 160 }}>
-              <MapView
-                style={{ flex: 1 }}
-                region={mapRegion}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                rotateEnabled={false}
-                pitchEnabled={false}
-                showsUserLocation={false}
-              >
-                <Marker coordinate={userLocation} title="Vị trí của bạn" pinColor={colors.error} />
-                <Marker coordinate={targetLocation} title="Điểm tập trung" pinColor={colors.primary} />
-                <Polyline
-                  coordinates={routePath ?? [userLocation, targetLocation]}
-                  strokeColor={colors.error}
-                  strokeWidth={3}
-                  lineDashPattern={routePath ? undefined : [6, 4]}
-                />
-              </MapView>
+          {userLocation && targetLocation ? (
+            <View className="mb-3">
+              <RouteMiniMap
+                origin={userLocation}
+                destination={targetLocation}
+                routePath={routePath}
+                originColor={colors.error}
+                destinationColor={colors.primary}
+                routeColor={colors.error}
+              />
               <View className="absolute bottom-1.5 right-1.5 rounded-full bg-white/95 px-2.5 py-1" style={{ elevation: 2 }}>
                 <Text className="text-[11px] font-bold" style={{ color: colors.error }}>
                   Cách {distanceKm !== null ? formatDistance(distanceKm) : '?'}

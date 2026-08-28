@@ -1,8 +1,9 @@
 module.exports = ({ config }) => ({
   ...config,
   expo: {
-    name: 'green-lens-app',
+    name: 'Greens',
     slug: 'green-lens-app',
+    owner: 'phuchau23',
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/images/icon.png',
@@ -94,6 +95,15 @@ module.exports = ({ config }) => ({
       'react-native-compressor',
       'expo-video',
       '@react-native-google-signin/google-signin',
+      '@maplibre/maplibre-react-native',
+      [
+        'expo-build-properties',
+        {
+          android: {
+            usesCleartextTraffic: true,
+          },
+        },
+      ],
     ],
     experiments: {
       typedRoutes: true,
@@ -101,6 +111,9 @@ module.exports = ({ config }) => ({
     },
     extra: {
       router: {},
+      eas: {
+        projectId: 'e63bcec6-9189-4b92-b024-5085706170a1',
+      },
     },
   },
 });

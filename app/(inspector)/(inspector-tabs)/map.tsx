@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, View } from 'react-native';
-import MapView, { type Region } from 'react-native-maps';
+import { UserLocation } from '@maplibre/maplibre-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GoongMapView, type GoongMapViewRef, type Region } from '@/components/map/GoongMapView';
 import {
   InspectionMapListCard,
   InspectionMapPinMarker,
@@ -32,7 +33,7 @@ const FOCUS_DELTA = { latitudeDelta: 0.01, longitudeDelta: 0.01 } as const;
 
 export default function InspectorMapScreen() {
   const insets = useSafeAreaInsets();
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<GoongMapViewRef | null>(null);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -110,15 +111,13 @@ export default function InspectorMapScreen() {
 
   return (
     <View className="flex-1 bg-surface">
-      <MapView
+      <GoongMapView
         ref={mapRef}
         style={{ flex: 1 }}
         initialRegion={initialRegion}
-        showsUserLocation={canShowUserLocation}
-        showsMyLocationButton={false}
-        toolbarEnabled={false}
         onPress={() => setSelectedId(null)}
       >
+        {canShowUserLocation ? <UserLocation /> : null}
         {pins.map((item) => (
           <InspectionMapPinMarker
             key={item.id}
@@ -127,7 +126,7 @@ export default function InspectorMapScreen() {
             onPress={focusItem}
           />
         ))}
-      </MapView>
+      </GoongMapView>
 
       {/* Chú thích màu pin — nổi trên map */}
       <View className="absolute left-4" style={{ top: insets.top + 8 }}>

@@ -15,7 +15,7 @@ import { validatePinAgainstBoundary } from '@/utils/validate-pin-boundary';
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, View } from 'react-native';
-import type { LatLng } from 'react-native-maps';
+import type { LatLng } from '@/components/map/GoongMapView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ReportAddressScreen() {

@@ -15,7 +15,7 @@ import {
 import { publicMapDtoToCitizenPin } from '@/utils/public-map-mapper';
 import { isAxiosError, isCancel } from 'axios';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Region } from 'react-native-maps';
+import type { Region } from '@/components/map/GoongMapView';
 
 const DEBOUNCE_MS = 520;
 const DEFAULT_DETAIL_LIMIT = 200;

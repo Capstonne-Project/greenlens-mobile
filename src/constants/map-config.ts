@@ -1,8 +1,13 @@
 /**
- * Bản đồ nền: **react-native-maps** (Apple MapKit / Google Maps) — không dùng style URL Goong trên map.
+ * Bản đồ nền: **MapLibre** (`@maplibre/maplibre-react-native`) dùng style URL Goong Maptiles.
+ * Google Maps SDK yêu cầu `com.google.android.geo.API_KEY` trong AndroidManifest — không có
+ * key này thì `react-native-maps` (PROVIDER_GOOGLE mặc định trên Android) crash ngay khi mở
+ * màn hình bản đồ. Chuyển sang MapLibre + Goong style tránh phụ thuộc Google Maps key.
  *
- * **Goong REST API** (Geocode, Directions, Places, …) vẫn có thể gọi qua `axios` + API key riêng khi cần;
- * đặt biến env theo tài liệu Goong (vd. `EXPO_PUBLIC_GOONG_API_KEY`) khi tích hợp service đó.
- *
- * @see https://docs.goong.io/
+ * @see https://docs.goong.io/maptiles
  */
+export const GOONG_MAPTILES_KEY = process.env.EXPO_PUBLIC_GOONG_MAPTILES_KEY;
+
+export function getGoongStyleUrl(): string {
+  return `https://tiles.goong.io/assets/goong_map_web.json?api_key=${GOONG_MAPTILES_KEY ?? ''}`;
+}

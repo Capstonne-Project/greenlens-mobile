@@ -74,7 +74,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import MapView, { type LatLng, type Region } from "react-native-maps";
+import type { GoongMapViewRef, LatLng, Region } from "@/components/map/GoongMapView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type SubmitPhase = "idle" | "validate" | "upload" | "submit" | "done";
@@ -129,7 +129,7 @@ export default function ReportCreateWizardScreen() {
     newLocation: { latitude: number; longitude: number };
     apply: () => void;
   } | null>(null);
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<GoongMapViewRef>(null);
   const mapRegion: Region = {
     latitude: 10.7769,
     longitude: 106.7009,

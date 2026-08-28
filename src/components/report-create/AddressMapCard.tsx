@@ -1,4 +1,5 @@
 import { CatalogPicker } from '@/components/report-create/CatalogPicker';
+import { GoongMapView, type GoongMapViewRef, type LatLng, type Region } from '@/components/map/GoongMapView';
 import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { useReportLocationMapCamera } from '@/hooks/useReportLocationMapCamera';
@@ -6,7 +7,7 @@ import { colors } from '@/theme/colors';
 import type { CatalogProvince, CatalogWard } from '@/types/catalog.types';
 import { useRef } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import MapView, { Marker, Polygon, type LatLng, type Region } from 'react-native-maps';
+import { GeoJSONSource, Layer, Marker } from '@maplibre/maplibre-react-native';
 
 interface AddressMapCardProps {
   provinces: CatalogProvince[];
@@ -32,6 +33,33 @@ const DEFAULT_REGION: Region = {
   longitudeDelta: 0.08,
 };
 
+// `id`/`key` PHẢI ổn định (không phụ thuộc provinceCode/wardCode) — nếu đổi theo code, mỗi lần
+// chọn tỉnh/phường mới React sẽ unmount + mount lại GeoJSONSource native view. Khi việc này xảy ra
+// đồng thời với fitToCoordinates() (camera đang animate trong requestAnimationFrame), Fabric có thể
+// nhận 2 mount batch chồng nhau trong cùng 1 frame và cố addViewAt một view đã có parent, dẫn tới
+// crash: "IllegalStateException: The specified child already has a parent." Giữ id cố định theo
+// `kind` (province/ward), chỉ để `data` prop thay đổi — MapLibre tự update layer tại chỗ.
+function polygonSource(kind: string, rings: LatLng[][], strokeColor: string, fillColor: string) {
+  return rings.map((ring, index) => {
+    const coords = ring.map((p) => [p.longitude, p.latitude]);
+    const first = coords[0];
+    const last = coords[coords.length - 1];
+    if (first && last && (first[0] !== last[0] || first[1] !== last[1])) coords.push(first);
+
+    const id = `${kind}-${index}`;
+    return (
+      <GeoJSONSource
+        key={id}
+        id={id}
+        data={{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [coords] } }}
+      >
+        <Layer id={`${id}-fill`} type="fill" paint={{ 'fill-color': fillColor }} />
+        <Layer id={`${id}-line`} type="line" paint={{ 'line-color': strokeColor, 'line-width': 2 }} />
+      </GeoJSONSource>
+    );
+  });
+}
+
 export function AddressMapCard({
   provinces,
   wards,
@@ -48,7 +76,7 @@ export function AddressMapCard({
   onAddressChange,
   onMarkerChange,
 }: AddressMapCardProps) {
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<GoongMapViewRef | null>(null);
 
   useReportLocationMapCamera({
     enabled: true,
@@ -113,40 +141,18 @@ export function AddressMapCard({
       </View>
 
       <View className="overflow-hidden rounded-2xl border border-border">
-        <MapView
-          // react-native-maps (Android) không luôn redraw Polygon khi coordinates đổi
-          // trên MapView đã mount — remount toàn bộ map khi ranh giới đổi để đảm bảo
-          // ranh giới mới hiện ngay, không cần đóng/mở lại section.
-          key={`${provinceCode ?? 'none'}-${wardCode ?? 'none'}`}
+        <GoongMapView
           ref={mapRef}
           style={{ width: '100%', height: 280 }}
           initialRegion={DEFAULT_REGION}
-          onPress={(event) => onMarkerChange(event.nativeEvent.coordinate)}
+          onMapPress={(coords) => onMarkerChange(coords)}
         >
-          {provincePolygons.map((ring, index) => (
-            <Polygon
-              key={`province-${provinceCode}-${index}`}
-              coordinates={ring}
-              strokeColor={colors.primary}
-              fillColor="rgba(16, 185, 129, 0.12)"
-              strokeWidth={2}
-            />
-          ))}
-          {wardPolygons.map((ring, index) => (
-            <Polygon
-              key={`ward-${wardCode}-${index}`}
-              coordinates={ring}
-              strokeColor={colors.info}
-              fillColor="rgba(59, 130, 246, 0.14)"
-              strokeWidth={2}
-            />
-          ))}
-          <Marker
-            coordinate={marker}
-            draggable
-            onDragEnd={(event) => onMarkerChange(event.nativeEvent.coordinate)}
-          />
-        </MapView>
+          {polygonSource('province', provincePolygons, colors.primary, 'rgba(16, 185, 129, 0.12)')}
+          {polygonSource('ward', wardPolygons, colors.info, 'rgba(59, 130, 246, 0.14)')}
+          <Marker id="address-map-marker" lngLat={[marker.longitude, marker.latitude]} anchor="bottom">
+            <View className="h-6 w-6 rounded-full border-2 border-white" style={{ backgroundColor: colors.primary }} />
+          </Marker>
+        </GoongMapView>
       </View>
     </View>
   );

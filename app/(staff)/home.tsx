@@ -3,10 +3,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
-import MapView from 'react-native-maps';
+import { UserLocation } from '@maplibre/maplibre-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
+import { GoongMapView } from '@/components/map/GoongMapView';
 import { StaffMapPinMarker } from '@/components/map/StaffMapPinMarker';
 import { Text } from '@/components/ui/text';
 import { HCM_INITIAL_REGION } from '@/constants/map-region';
@@ -122,27 +123,19 @@ function MiniMapSection({ pins, totalCount }: MiniMapSectionProps) {
 
       {/* MapView thật */}
       <View className="mx-4 overflow-hidden rounded-xl" style={{ height: 220 }}>
-        <MapView
+        <GoongMapView
           style={{ flex: 1 }}
           initialRegion={{
             ...HCM_INITIAL_REGION,
             latitudeDelta: 0.06,
             longitudeDelta: 0.06,
           }}
-          scrollEnabled
-          zoomEnabled
-          rotateEnabled={false}
-          pitchEnabled={false}
-          toolbarEnabled={false}
-          showsUserLocation
-          showsMyLocationButton={false}
-          showsCompass={false}
-          showsScale={false}
         >
+          <UserLocation />
           {pins.map((pin) => (
             <StaffMapPinMarker key={pin.id} pin={pin} />
           ))}
-        </MapView>
+        </GoongMapView>
 
         {/* Nút "Xem toàn bộ" góc dưới phải — không chặn gesture map */}
         <Pressable

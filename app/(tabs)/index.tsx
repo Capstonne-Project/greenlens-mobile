@@ -11,6 +11,7 @@ import {
 } from '@/constants/map-layers';
 import { AreaDimMask } from '@/components/map/AreaDimMask';
 import { AreaFocusChip } from '@/components/map/AreaFocusChip';
+import { GoongMapView, regionToZoom, type GoongMapViewRef, type LatLng, type Region } from '@/components/map/GoongMapView';
 import { PlaceSearchOverlay } from '@/components/map/PlaceSearchOverlay';
 import { HCM_INITIAL_REGION } from '@/constants/map-region';
 import type { CitizenMapPin } from '@/data/citizen-map-mock';
@@ -28,21 +29,21 @@ import { isPointInAnyPolygonGroup } from '@/utils/point-in-polygon';
 import { useRouter, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Text, View } from 'react-native';
-import MapView, { type Camera, type Region } from 'react-native-maps';
+import { UserLocation } from '@maplibre/maplibre-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-
-
-/** Trang chủ citizen — `react-native-maps` (MapKit / Google Maps), chạy được trên Expo Go. */
+/** Trang chủ citizen — MapLibre + Goong style. */
 
 /** Padding đáy khi focus — khớp sheet card, để pin nằm giữa vùng map còn trống */
 const FOCUS_MAP_BOTTOM_PADDING = 380;
 const FOCUS_CAMERA_ZOOM = 17;
-/** iOS MapKit — mét; Google Maps bỏ qua, dùng zoom */
-const FOCUS_CAMERA_ALTITUDE = 700;
+const FOCUS_CAMERA_PITCH = 55;
 
-function latitudeDeltaToZoom(latitudeDelta: number): number {
-  return Math.max(2, Math.min(20, Math.log2(360 / Math.max(latitudeDelta, 1e-6))));
+interface CameraSnapshot {
+  center: LatLng;
+  zoom: number;
+  pitch: number;
+  bearing: number;
 }
 
 export default function CitizenHomeScreen() {
@@ -52,15 +53,16 @@ export default function CitizenHomeScreen() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<GoongMapViewRef | null>(null);
   const pitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const orbitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const orbitCancelRef = useRef<(() => void) | null>(null);
   const isCinematicRef = useRef(false);
   const pressTokenRef = useRef(0);
   /** Region/camera trước khi focus pin — restore khi xóa focus (map + list khớp nhau) */
   const lastInteractiveRegionRef = useRef<Region>(HCM_INITIAL_REGION);
   const preFocusRegionRef = useRef<Region | null>(null);
-  const preFocusCameraRef = useRef<Camera | null>(null);
+  const preFocusCameraRef = useRef<CameraSnapshot | null>(null);
 
   const [filter, setFilter] = useState<CategoryFilterId>('all');
 
@@ -172,6 +174,10 @@ export default function CitizenHomeScreen() {
       clearTimeout(orbitTimerRef.current);
       orbitTimerRef.current = null;
     }
+    if (orbitCancelRef.current) {
+      orbitCancelRef.current();
+      orbitCancelRef.current = null;
+    }
     isCinematicRef.current = false;
   }, []);
 
@@ -190,19 +196,16 @@ export default function CitizenHomeScreen() {
     // (đè mất pins đã fetch đúng cho toàn khu vực trước focus).
     isCinematicRef.current = true;
 
-    // Một lệnh camera đầy đủ (center + zoom + pitch/heading) — không gọi
-    // animateCamera({ pitch, heading }) riêng vì sẽ giữ zoom focus → map 1 pin / list 8.
+    // Một lệnh camera đầy đủ (center + zoom + pitch/bearing) — không gọi
+    // easeTo({ pitch, bearing }) riêng vì sẽ giữ zoom focus → map 1 pin / list 8.
     if (restoreCamera?.center) {
-      mapRef.current?.animateCamera(
-        {
-          center: restoreCamera.center,
-          pitch: 0,
-          heading: 0,
-          zoom: restoreCamera.zoom ?? latitudeDeltaToZoom(restoreRegion.latitudeDelta),
-          altitude: restoreCamera.altitude,
-        },
-        { duration: 420 },
-      );
+      mapRef.current?.easeTo({
+        center: restoreCamera.center,
+        pitch: 0,
+        bearing: 0,
+        zoom: restoreCamera.zoom ?? regionToZoom(restoreRegion.latitudeDelta),
+        duration: 420,
+      });
     } else {
       mapRef.current?.animateToRegion(restoreRegion, 420);
     }
@@ -226,7 +229,7 @@ export default function CitizenHomeScreen() {
       exitFocusCamera();
     } else {
       clearCameraAnimations();
-      mapRef.current?.animateCamera({ pitch: 0, heading: 0 }, { duration: 350 });
+      mapRef.current?.easeTo({ pitch: 0, bearing: 0, duration: 350 });
     }
   }, [selected, exitFocusCamera, clearCameraAnimations]);
 
@@ -253,7 +256,7 @@ export default function CitizenHomeScreen() {
       const pinCenter = { latitude: pin.latitude, longitude: pin.longitude };
 
       // Khóa camera tại vị trí hiện tại ngay lập tức để hủy animation (pitch/orbit) đang
-      // chạy dở trên native — tránh 2 animateCamera tranh chấp khi bấm marker liên tiếp.
+      // chạy dở — tránh 2 easeTo tranh chấp khi bấm marker liên tiếp.
       const currentCamera = await mapRef.current?.getCamera();
       if (token !== pressTokenRef.current) return; // đã có lần bấm marker mới hơn — bỏ qua
       if (currentCamera) {
@@ -261,12 +264,11 @@ export default function CitizenHomeScreen() {
           preFocusCameraRef.current = {
             center: currentCamera.center ?? pinCenter,
             pitch: 0,
-            heading: 0,
+            bearing: 0,
             zoom: currentCamera.zoom,
-            altitude: currentCamera.altitude,
           };
         }
-        mapRef.current?.animateCamera(currentCamera, { duration: 0 });
+        mapRef.current?.easeTo({ ...currentCamera, duration: 0 });
       }
 
       const zoomDuration = 750;
@@ -277,33 +279,44 @@ export default function CitizenHomeScreen() {
 
       // Luôn center đúng tọa độ pin — xoay quanh chấm, không lệch màn
       // (mapPadding đáy đẩy “tâm nhìn” lên trên sheet)
-      const focusCamera = (heading: number, pitch: number) => ({
+      mapRef.current?.easeTo({
         center: pinCenter,
-        pitch,
-        heading,
+        pitch: 0,
+        bearing: 0,
         zoom: FOCUS_CAMERA_ZOOM,
-        altitude: FOCUS_CAMERA_ALTITUDE,
+        duration: zoomDuration,
       });
-
-      mapRef.current?.animateCamera(focusCamera(0, 0), { duration: zoomDuration });
 
       pitchTimerRef.current = setTimeout(() => {
         pitchTimerRef.current = null;
         if (token !== pressTokenRef.current) return;
-        mapRef.current?.animateCamera(focusCamera(0, 55), { duration: pitchDuration });
+        mapRef.current?.easeTo({
+          center: pinCenter,
+          pitch: FOCUS_CAMERA_PITCH,
+          bearing: 0,
+          zoom: FOCUS_CAMERA_ZOOM,
+          duration: pitchDuration,
+        });
 
         pitchTimerRef.current = setTimeout(() => {
           pitchTimerRef.current = null;
           if (token !== pressTokenRef.current) return;
 
           // Orbit quanh pin: center cố định = chấm đỏ
-          mapRef.current?.animateCamera(focusCamera(45, 55), { duration: orbitDuration });
-
-          orbitTimerRef.current = setTimeout(() => {
-            orbitTimerRef.current = null;
-            // Không refetch bbox zoom sát — giữ pins khu vực trước focus
-            isCinematicRef.current = false;
-          }, orbitDuration);
+          orbitCancelRef.current = mapRef.current?.orbit({
+            center: pinCenter,
+            zoom: FOCUS_CAMERA_ZOOM,
+            pitch: FOCUS_CAMERA_PITCH,
+            fromBearing: 0,
+            toBearing: 45,
+            duration: orbitDuration,
+            onDone: () => {
+              orbitCancelRef.current = null;
+              orbitTimerRef.current = null;
+              // Không refetch bbox zoom sát — giữ pins khu vực trước focus
+              isCinematicRef.current = false;
+            },
+          }) ?? null;
         }, pitchDuration + pitchToOrbitGap);
       }, zoomDuration + zoomToPitchGap);
     },
@@ -403,9 +416,9 @@ export default function CitizenHomeScreen() {
 
         <Text className="text-center text-base text-textSecondary">
 
-          Bản đồ native (`react-native-maps`) hiện không được cấu hình cho web trong project này. Dùng iOS /
+          Bản đồ native (MapLibre) hiện không được cấu hình cho web trong project này. Dùng iOS /
 
-          Android hoặc Expo Go trên thiết bị.
+          Android trên thiết bị.
 
         </Text>
 
@@ -421,21 +434,13 @@ export default function CitizenHomeScreen() {
 
     <View className="flex-1 bg-white">
 
-      <MapView
+      <GoongMapView
 
         ref={mapRef}
 
         style={{ flex: 1 }}
 
         initialRegion={HCM_INITIAL_REGION}
-
-        mapType={activeMapLayer.mapType}
-
-        showsUserLocation={canShowUserLocation}
-
-        showsMyLocationButton={false}
-
-        followsUserLocation={followUserLocation}
 
         mapPadding={
           selected
@@ -445,15 +450,12 @@ export default function CitizenHomeScreen() {
 
         onPress={onMapPress}
 
-        onPanDrag={clearCameraAnimations}
+        onPanDrag={() => {
+          setFollowUserLocation(false);
+          clearCameraAnimations();
+        }}
 
-        onRegionChangeComplete={(region, details) => {
-
-          if (details?.isGesture) {
-
-            setFollowUserLocation(false);
-
-          }
+        onRegionChangeComplete={(region) => {
 
           if (isCinematicRef.current) return;
 
@@ -463,6 +465,8 @@ export default function CitizenHomeScreen() {
         }}
 
       >
+
+        {canShowUserLocation ? <UserLocation /> : null}
 
         {/* Lớp mờ đã tự vẽ viền ranh giới — không thêm <Polygon> riêng, tránh viền đôi */}
         {areaFocus ? <AreaDimMask polygonGroups={areaFocus.polygonGroups} /> : null}
@@ -475,7 +479,7 @@ export default function CitizenHomeScreen() {
             onPress={onMarkerPress}
           />
         ))}
-      </MapView>
+      </GoongMapView>
 
       {(isLoading || isLocating) && (
 
@@ -524,40 +528,46 @@ export default function CitizenHomeScreen() {
 
 
       <View className="pointer-events-box-none absolute left-0 right-0 top-0 px-4" style={{ paddingTop: insets.top + 8 }}>
-        {selected ? (
-          <View className="items-start">
-            <TapScale onPress={onClearFocus}>
-              <View
-                className="rounded-full px-3.5 py-2.5 shadow-sm shadow-black/15"
-                style={{ backgroundColor: colors.error }}
-              >
-                <Text className="text-sm font-semibold text-white">Xóa focus</Text>
-              </View>
-            </TapScale>
-          </View>
-        ) : (
-          <>
-            <CitizenHomeHeader
-              onProfilePress={() => router.push('/(tabs)/profile' as Href)}
-              onSearchPress={() => setSearchOpen(true)}
-              activeAreaName={areaFocus?.name ?? null}
-            />
-            {areaFocus ? (
-              <View className="mt-2.5">
-                <AreaFocusChip
-                  name={areaFocus.name}
-                  reportCount={visiblePins.length}
-                  isLoading={isBoundaryLoading}
-                  hasNoBoundary={hasNoBoundary}
-                  onClear={clearFocus}
-                />
-              </View>
-            ) : null}
-            <View className="mt-3">
-              <CategoryFilterChips selected={filter} categories={categories} onChange={setFilter} />
+        {/*
+          Giữ cả 2 nhánh luôn mounted, chỉ ẩn/hiện bằng style (display/pointerEvents) thay vì
+          unmount hẳn nhánh cũ khi `selected` đổi. Trước đây dùng `selected ? A : B` — khi bấm
+          marker/bỏ chọn trong lúc camera đang cinematic (easeTo/orbit theo chuỗi setTimeout),
+          React unmount toàn bộ CitizenHomeHeader/AreaFocusChip/CategoryFilterChips (nhiều
+          ReactTextView) và mount nút "Xóa focus" trong cùng 1 frame. Fabric nhận 2 mount batch
+          chồng nhau và cố addViewAt một view đã có parent → crash
+          "IllegalStateException: View already has a parent".
+        */}
+        <View className="items-start" style={{ display: selected ? 'flex' : 'none' }} pointerEvents={selected ? 'box-none' : 'none'}>
+          <TapScale onPress={onClearFocus}>
+            <View
+              className="rounded-full px-3.5 py-2.5 shadow-sm shadow-black/15"
+              style={{ backgroundColor: colors.error }}
+            >
+              <Text className="text-sm font-semibold text-white">Xóa focus</Text>
             </View>
-          </>
-        )}
+          </TapScale>
+        </View>
+        <View style={{ display: selected ? 'none' : 'flex' }} pointerEvents={selected ? 'none' : 'box-none'}>
+          <CitizenHomeHeader
+            onProfilePress={() => router.push('/(tabs)/profile' as Href)}
+            onSearchPress={() => setSearchOpen(true)}
+            activeAreaName={areaFocus?.name ?? null}
+          />
+          {areaFocus ? (
+            <View className="mt-2.5">
+              <AreaFocusChip
+                name={areaFocus.name}
+                reportCount={visiblePins.length}
+                isLoading={isBoundaryLoading}
+                hasNoBoundary={hasNoBoundary}
+                onClear={clearFocus}
+              />
+            </View>
+          ) : null}
+          <View className="mt-3">
+            <CategoryFilterChips selected={filter} categories={categories} onChange={setFilter} />
+          </View>
+        </View>
       </View>
 
       {sheetSnap !== 'full' ? (

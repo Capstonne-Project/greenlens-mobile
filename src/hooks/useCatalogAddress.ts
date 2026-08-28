@@ -5,7 +5,7 @@ import {
   fetchProvinceBoundaryGroups,
   fetchWardBoundaryGroups,
 } from '@/utils/ward-boundary';
-import type { LatLng } from 'react-native-maps';
+import type { LatLng } from '@/components/map/GoongMapView';
 
 interface UseCatalogAddressResult {
   provinces: CatalogProvince[];

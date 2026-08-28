@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { View } from 'react-native';
-import { Marker } from 'react-native-maps';
+import { Marker } from '@maplibre/maplibre-react-native';
 import { colors } from '@/theme/colors';
 import type { StaffMapPin } from '@/hooks/useStaffMapPins';
 
@@ -21,10 +21,9 @@ export function StaffMapPinMarker({ pin, onPress }: StaffMapPinMarkerProps) {
 
   return (
     <Marker
-      coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-      anchor={{ x: 0.5, y: 1 }}
-      tracksViewChanges={false}
-      stopPropagation
+      id={`staff-pin-${pin.id}`}
+      lngLat={[pin.longitude, pin.latitude]}
+      anchor="bottom"
       onPress={() => onPress?.(pin)}
     >
       <View className="items-center">

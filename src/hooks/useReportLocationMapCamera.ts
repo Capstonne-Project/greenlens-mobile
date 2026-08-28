@@ -1,10 +1,9 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import type MapView from 'react-native-maps';
-import type { LatLng } from 'react-native-maps';
+import type { GoongMapViewRef, LatLng } from '@/components/map/GoongMapView';
 
 interface UseReportLocationMapCameraOptions {
   enabled: boolean;
-  mapRef: RefObject<MapView | null>;
+  mapRef: RefObject<GoongMapViewRef | null>;
   marker: LatLng | null;
   provinceCode: string | null;
   wardCode: string | null;

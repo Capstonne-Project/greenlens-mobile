@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { View } from 'react-native';
-import { Marker } from 'react-native-maps';
+import { Marker } from '@maplibre/maplibre-react-native';
 
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
@@ -18,10 +18,9 @@ interface StaffCommunityPinMarkerProps {
 export function StaffCommunityPinMarker({ pin, onPress }: StaffCommunityPinMarkerProps) {
   return (
     <Marker
-      coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-      anchor={{ x: 0.5, y: 1 }}
-      tracksViewChanges={false}
-      stopPropagation
+      id={`staff-community-pin-${pin.id}`}
+      lngLat={[pin.longitude, pin.latitude]}
+      anchor="bottom"
       onPress={() => onPress?.(pin)}
     >
       <View className="items-center">

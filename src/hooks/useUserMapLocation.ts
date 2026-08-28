@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useState } from 'react';
-import type { Region } from 'react-native-maps';
+import type { Region } from '@/components/map/GoongMapView';
 
 const USER_LOCATION_DELTA = {
   latitudeDelta: 0.04,

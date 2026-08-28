@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { memo } from 'react';
 import { View } from 'react-native';
-import { Marker } from 'react-native-maps';
+import { Marker } from '@maplibre/maplibre-react-native';
 
 import { colors } from '@/theme/colors';
 import type { InspectionQueueItem, InspectionStatus } from '@/types/inspection.types';
@@ -34,12 +34,9 @@ function InspectionMapPinMarkerBase({
 
   return (
     <Marker
-      coordinate={{ latitude: item.latitude, longitude: item.longitude }}
-      anchor={{ x: 0.5, y: 1 }}
-      // Phải bật khi selected để marker vẽ lại theo kích thước mới.
-      tracksViewChanges={selected}
-      stopPropagation
-      zIndex={selected ? 10 : 1}
+      id={`inspection-pin-${item.id}`}
+      lngLat={[item.longitude, item.latitude]}
+      anchor="bottom"
       onPress={() => onPress(item)}
     >
       <View className="items-center">

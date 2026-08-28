@@ -2,10 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
-import MapView from 'react-native-maps';
+import { UserLocation } from '@maplibre/maplibre-react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { GoongMapView, type GoongMapViewRef } from '@/components/map/GoongMapView';
 import { StaffCommunityCalloutCard } from '@/components/map/StaffCommunityCalloutCard';
 import { StaffCommunityPinMarker } from '@/components/map/StaffCommunityPinMarker';
 import { StaffMapCalloutCard } from '@/components/map/StaffMapCalloutCard';
@@ -56,7 +57,7 @@ function LegendDotRow({ label, color }: { label: string; color: string }) {
 
 export default function StaffMapScreen() {
   const insets = useSafeAreaInsets();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<GoongMapViewRef>(null);
 
   const { pins, isLoading } = useStaffMapPins();
   const { pins: communityPins, isLoading: isCommunityLoading } = useStaffCommunityPins();
@@ -124,7 +125,7 @@ export default function StaffMapScreen() {
   return (
     <View className="flex-1 bg-background">
       {/* MapView full screen */}
-      <MapView
+      <GoongMapView
         ref={mapRef}
         style={{ flex: 1 }}
         initialRegion={{
@@ -132,12 +133,10 @@ export default function StaffMapScreen() {
           latitudeDelta: 0.08,
           longitudeDelta: 0.08,
         }}
-        showsUserLocation={canShowUserLocation}
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
         onPress={clearSelection}
       >
+        {canShowUserLocation ? <UserLocation /> : null}
+
         {pins.map((pin) => (
           <StaffMapPinMarker key={pin.id} pin={pin} onPress={handlePinPress} />
         ))}
@@ -150,7 +149,7 @@ export default function StaffMapScreen() {
               onPress={handleCommunityPinPress}
             />
           ))}
-      </MapView>
+      </GoongMapView>
 
       {/* Header overlay */}
       <View

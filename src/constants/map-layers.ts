@@ -1,18 +1,17 @@
-import type { MapType } from 'react-native-maps';
-
-export type CitizenMapLayerId = 'standard' | 'satellite' | 'hybrid';
+export type CitizenMapLayerId = 'standard';
 
 export interface CitizenMapLayerOption {
   id: CitizenMapLayerId;
   label: string;
-  mapType: MapType;
 }
 
-/** Lớp bản đồ citizen home — `mapType` của react-native-maps */
+/**
+ * Lớp bản đồ citizen home — Goong style qua MapLibre chỉ có 1 style nền
+ * (`goong_map_web`), không có sẵn satellite/hybrid như Google Maps SDK cũ.
+ * Giữ danh sách 1 phần tử để không phải sửa lại chỗ gọi `onChooseMapLayer`.
+ */
 export const CITIZEN_MAP_LAYERS: CitizenMapLayerOption[] = [
-  { id: 'standard', label: 'Bản đồ', mapType: 'standard' },
-  { id: 'satellite', label: 'Vệ tinh', mapType: 'satellite' },
-  { id: 'hybrid', label: 'Hỗn hợp', mapType: 'hybrid' },
+  { id: 'standard', label: 'Bản đồ' },
 ];
 
 export const DEFAULT_CITIZEN_MAP_LAYER_ID: CitizenMapLayerId = 'standard';
