@@ -74,8 +74,12 @@ export default function ForceChangePasswordScreen() {
       await changePassword({ currentPassword, newPassword });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       if (user) setUser({ ...user, mustChangePassword: false });
+      // Xem comment tương tự trong login.tsx — tách dismissAll() và replace() ra 2 tick
+      // để tránh Fabric nhận 2 batch mount/unmount chồng nhau ("View already has a parent").
       if (router.canDismiss()) router.dismissAll();
-      router.replace(getPostLoginHref(user?.role ?? 'Citizen'));
+      setTimeout(() => {
+        router.replace(getPostLoginHref(user?.role ?? 'Citizen'));
+      }, 0);
     } catch (error) {
       setFormError(getApiErrorMessage(error, 'Không đổi được mật khẩu. Vui lòng thử lại.'));
     } finally {

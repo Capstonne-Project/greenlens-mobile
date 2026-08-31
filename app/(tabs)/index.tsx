@@ -275,7 +275,10 @@ export default function CitizenHomeScreen() {
       const zoomToPitchGap = 120;
       const pitchDuration = 600;
       const pitchToOrbitGap = 120;
-      const orbitDuration = 3200;
+      // 360° trọn vòng — orbit chạy bằng setInterval 60fps gọi jumpTo() qua JS bridge, kéo
+      // càng dài càng dễ bị giật khi JS thread bận việc khác (fetch pins, render list). Giữ
+      // ngắn (~4.5s) để nhịp đều tay hơn thay vì orbit 10s dễ khựng giữa chừng.
+      const orbitDuration = 4500;
 
       // Luôn center đúng tọa độ pin — xoay quanh chấm, không lệch màn
       // (mapPadding đáy đẩy “tâm nhìn” lên trên sheet)
@@ -302,13 +305,13 @@ export default function CitizenHomeScreen() {
           pitchTimerRef.current = null;
           if (token !== pressTokenRef.current) return;
 
-          // Orbit quanh pin: center cố định = chấm đỏ
+          // Orbit quanh pin: center cố định = chấm đỏ, xoay trọn 1 vòng 360°
           orbitCancelRef.current = mapRef.current?.orbit({
             center: pinCenter,
             zoom: FOCUS_CAMERA_ZOOM,
             pitch: FOCUS_CAMERA_PITCH,
             fromBearing: 0,
-            toBearing: 45,
+            toBearing: 360,
             duration: orbitDuration,
             onDone: () => {
               orbitCancelRef.current = null;
@@ -466,7 +469,14 @@ export default function CitizenHomeScreen() {
 
       >
 
-        {canShowUserLocation ? <UserLocation /> : null}
+        {/*
+          Luôn mount <UserLocation/> (không unmount theo canShowUserLocation) — component tự
+          return null bên trong khi chưa có currentPosition. Unmount/mount có điều kiện ở đây
+          từng đụng độ với setState dồn dập của useUserMapLocation/useViewportMapReports lúc
+          mới mount màn hình, khiến Fabric nhận 2 mount batch chồng nhau trên cùng annotation
+          layer và crash "View already has a parent" — xem comment tương tự bên dưới.
+        */}
+        <UserLocation />
 
         {/* Lớp mờ đã tự vẽ viền ranh giới — không thêm <Polygon> riêng, tránh viền đôi */}
         {areaFocus ? <AreaDimMask polygonGroups={areaFocus.polygonGroups} /> : null}

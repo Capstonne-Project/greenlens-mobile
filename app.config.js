@@ -96,6 +96,7 @@ module.exports = ({ config }) => ({
       'expo-video',
       '@react-native-google-signin/google-signin',
       '@maplibre/maplibre-react-native',
+      '@lottiefiles/dotlottie-react-native/plugin',
       [
         'expo-build-properties',
         {

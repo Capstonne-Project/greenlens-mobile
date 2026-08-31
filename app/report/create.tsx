@@ -4,6 +4,8 @@ import { AiAnalysisBanner } from "@/components/report-create/AiAnalysisBanner";
 import { AiImagePickModal } from "@/components/report-create/AiImagePickModal";
 import { AiImageScanOverlay } from "@/components/report-create/AiImageScanOverlay";
 import { AiDetectionPreview } from "@/components/report-create/AiDetectionPreview";
+import { AiRobotHero } from "@/components/report-create/AiRobotHero";
+import { AiSourcePickSheet } from "@/components/report-create/AiSourcePickSheet";
 import { CategoryOptionGrid } from "@/components/report-create/CategoryOptionGrid";
 import { ReportFormHeader } from "@/components/report-create/ReportFormHeader";
 import {
@@ -13,7 +15,6 @@ import {
 import { ReportFormSubmitBar } from "@/components/report-create/ReportFormSubmitBar";
 import { ReportLocationPanel } from "@/components/report-create/ReportLocationPanel";
 import { LocationOverrideDialog } from "@/components/report-create/LocationOverrideDialog";
-import { ReportCapturePanel } from "@/components/report-create/ReportCapturePanel";
 import { SeverityPillGroup } from "@/components/report-create/SeverityPillGroup";
 import { SubmitProgressOverlay, type SubmitStep, type SubmitStepStatus } from "@/components/report-create/SubmitProgressOverlay";
 import { ReportGalleryShelf } from "@/components/report-create/ReportGalleryShelf";
@@ -32,10 +33,7 @@ import { useCreateReportDraftStore } from "@/stores/createReportDraft.store";
 import { colors } from "@/theme/colors";
 import type { PollutionSeverity, ReportLocationDraft } from "@/types/pollution-report.types";
 import { MAX_WASTE_TAG_SELECTION } from "@/types/waste-tag.types";
-import {
-  buildLocationDraftFromCoords,
-  resolveCaptureLocation,
-} from "@/utils/capture-location";
+import { buildLocationDraftFromCoords } from "@/utils/capture-location";
 import {
   parseAllLocationsFromPickerAssets,
   parseLocationFromPickerAsset,
@@ -113,6 +111,7 @@ export default function ReportCreateWizardScreen() {
   const [tagDraft, setTagDraft] = useState("");
   const [wasteTagLimitMessage, setWasteTagLimitMessage] = useState<string | null>(null);
   const [showAiResult, setShowAiResult] = useState(false);
+  const [showSourceSheet, setShowSourceSheet] = useState(false);
   // URI ảnh đang được AI phân tích — dùng cho overlay, tránh hardcode ảnh đầu tiên.
   const [analyzingImageUri, setAnalyzingImageUri] = useState<string | null>(null);
   const [pendingAiOutcome, setPendingAiOutcome] = useState<"accepted" | "review" | null>(null);
@@ -489,27 +488,26 @@ export default function ReportCreateWizardScreen() {
       const asset = result.assets[0];
 
       // Đọc GPS từ EXIF trước khi compress (nén JPEG sẽ strip metadata).
+      // Chỉ dùng vị trí của ảnh — không fallback sang GPS hiện tại của thiết bị.
       const exifCoords = parseLocationFromPickerAsset(asset);
       if (__DEV__) console.log('[handlePickCamera] exifCoords:', exifCoords);
-      const captured = exifCoords
-        ? await buildLocationDraftFromCoords(exifCoords)
-        : await resolveCaptureLocation();
 
-      if (!captured) {
+      if (!exifCoords) {
         Alert.alert(
           "Thiếu vị trí",
-          "Ảnh không có GPS trong EXIF. Vui lòng cho phép vị trí thiết bị để tiếp tục.",
+          "Ảnh không có GPS trong EXIF. Vui lòng bật định vị camera hoặc chọn ảnh khác có vị trí.",
         );
         return;
       }
 
+      const captured = await buildLocationDraftFromCoords(exifCoords);
       const resolved =
         provinces.length > 0 ? await enrichLocationWithGoong(captured, provinces) : captured;
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSource("camera");
       setLocation(resolved);
-      setExifLocation(exifCoords ?? null);
+      setExifLocation(exifCoords);
       let compressed;
       try {
         // compressImage encode JPEG mới → EXIF bị xóa trước khi upload R2.
@@ -547,28 +545,6 @@ export default function ReportCreateWizardScreen() {
       setIsPicking(false);
     }
   }, [prepareImage, provinces, setImages, setLocation, setSource, useAi]);
-
-  const ensureLocationSeed = useCallback(async () => {
-    const existing = useCreateReportDraftStore.getState().location;
-    if (existing) return;
-    await refreshLocation();
-    const seed = await resolveCaptureLocation();
-    if (seed) {
-      const resolved = provinces.length > 0 ? await enrichLocationWithGoong(seed, provinces) : seed;
-      setLocation(resolved);
-      return;
-    }
-
-    if (userLocation) {
-      const fallback = {
-        latitude: userLocation.latitude,
-        longitude: userLocation.longitude,
-        capturedAt: new Date().toISOString(),
-      };
-      const resolved = provinces.length > 0 ? await enrichLocationWithGoong(fallback, provinces) : fallback;
-      setLocation(resolved);
-    }
-  }, [provinces, refreshLocation, setLocation, userLocation]);
 
   const assertPinInsideBoundary = useCallback(
     async (
@@ -829,9 +805,6 @@ export default function ReportCreateWizardScreen() {
         return;
       }
       setImages(drafted);
-      if (!exifCoords) {
-        await ensureLocationSeed();
-      }
 
       // Nhiều ảnh + AI bật → không tự đoán ảnh nào, để user chọn ảnh detect.
       if (useAi && drafted.length > 1) {
@@ -881,7 +854,6 @@ export default function ReportCreateWizardScreen() {
     pendingAiPick,
     prepareImage,
     uploadDraftImage,
-    ensureLocationSeed,
     provinces,
     setImages,
     setLocation,
@@ -1072,6 +1044,7 @@ export default function ReportCreateWizardScreen() {
       />
       <ReportFormHeader title="Tạo báo cáo" onBack={handleClose} />
 
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
@@ -1083,6 +1056,14 @@ export default function ReportCreateWizardScreen() {
           gap: 12,
         }}
       >
+        <AiRobotHero
+          disabled={isPicking || isAnalyzing || pendingAiPick !== null}
+          onPress={() => {
+            if (!useAi) setUseAi(true);
+            setShowSourceSheet(true);
+          }}
+        />
+
         <ReportFormSection
           icon="images-outline"
           title="Hình ảnh"
@@ -1092,29 +1073,6 @@ export default function ReportCreateWizardScreen() {
           onToggle={() => toggleSection("images")}
         >
           <View className="gap-5">
-            <View className="flex-row items-center justify-between rounded-2xl border border-border px-3 py-3">
-              <View className="flex-row items-center gap-2.5 flex-1 pr-4">
-                <Ionicons name="sparkles" size={20} color={useAi ? colors.primary : colors.textDisabled} />
-                <View className="flex-1">
-                  <Text className="text-[15px] font-semibold text-textPrimary">Phân tích bằng AI</Text>
-                  <Text className="mt-0.5 text-sm text-textSecondary">
-                    {useAi ? "AI sẽ tự động nhận diện loại và mức độ ô nhiễm" : "Tự điền ở mục Phân loại"}
-                  </Text>
-                </View>
-              </View>
-              <Switch
-                value={useAi}
-                onValueChange={(val) => {
-                  setUseAi(val);
-                  if (!val) clearAiResult();
-                }}
-                trackColor={{ false: colors.border, true: colors.primaryLight }}
-                thumbColor={useAi ? colors.primary : colors.white}
-              />
-            </View>
-
-            <ReportCapturePanel disabled={isPicking || isAnalyzing} onCapturePress={() => void handlePickCamera()} />
-
             {isAnalyzing ? (
               <View className="flex-row items-center gap-2 rounded-2xl bg-surface px-4 py-3.5">
                 <Ionicons name={useAi ? "sparkles" : "cloud-upload-outline"} size={16} color={colors.primary} />
@@ -1132,6 +1090,7 @@ export default function ReportCreateWizardScreen() {
 
             <ReportGalleryShelf
               items={galleryItems}
+              onOpenCamera={() => void handlePickCamera()}
               onOpenLibrary={() => void handlePickLibrary()}
               onRemoveItem={(uri) => {
                 removeImage(uri);
@@ -1327,6 +1286,7 @@ export default function ReportCreateWizardScreen() {
         isBusy={isPicking || isAnalyzing || isUploading || isSubmitting}
         onSubmit={() => void handleSubmit()}
       />
+      </KeyboardAvoidingView>
 
       {/* Scan overlay CHỈ khi phân tích bằng AI. Tắt AI → upload thuần, đã có
           banner "Đang tải ảnh lên server..." + badge trạng thái trên từng ảnh. */}
@@ -1341,6 +1301,19 @@ export default function ReportCreateWizardScreen() {
         items={(pendingAiPick ?? []).map((img) => ({ uri: img.localUri }))}
         onSelect={(index) => void handleAiPickSelect(index)}
         onSkip={handleAiPickSkip}
+      />
+
+      <AiSourcePickSheet
+        visible={showSourceSheet}
+        onCamera={() => {
+          setShowSourceSheet(false);
+          void handlePickCamera();
+        }}
+        onLibrary={() => {
+          setShowSourceSheet(false);
+          void handlePickLibrary();
+        }}
+        onClose={() => setShowSourceSheet(false)}
       />
 
       {/* AI Result dialog */}

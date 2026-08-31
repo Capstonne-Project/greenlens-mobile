@@ -91,30 +91,30 @@ export function ReportFormSection({
       style={cardStyle}
     >
       <TapScale onPress={onToggle}>
-        <View className="min-h-[76px] flex-row items-center gap-4 px-5 py-5">
+        <View className="min-h-[54px] flex-row items-center gap-2.5 px-3.5 py-3">
           <Ionicons
             name={icon}
-            size={26}
+            size={19}
             color={completed ? colors.primary : colors.textSecondary}
           />
 
           <View className="flex-1">
-            <View className="flex-row items-center gap-2">
-              <Text className="text-[17px] font-semibold text-textPrimary">{title}</Text>
+            <View className="flex-row items-center gap-1.5">
+              <Text className="text-[13.5px] font-semibold text-textPrimary">{title}</Text>
               {optional ? (
-                <Text className="text-xs text-textDisabled">tuỳ chọn</Text>
+                <Text className="text-[10px] text-textDisabled">tuỳ chọn</Text>
               ) : null}
               {completed ? (
-                <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                <Ionicons name="checkmark-circle" size={13} color={colors.primary} />
               ) : null}
             </View>
-            <Text className="mt-1 text-[15px] text-textSecondary" numberOfLines={2}>
+            <Text className="mt-0.5 text-[11.5px] text-textSecondary" numberOfLines={2}>
               {subtitle}
             </Text>
           </View>
 
           <Animated.View style={chevronStyle}>
-            <Ionicons name="chevron-down" size={20} color={colors.textDisabled} />
+            <Ionicons name="chevron-down" size={15} color={colors.textDisabled} />
           </Animated.View>
         </View>
       </TapScale>
@@ -123,7 +123,7 @@ export function ReportFormSection({
         <Animated.View
           entering={FadeInDown.duration(OPEN_MS).easing(Easing.out(Easing.cubic))}
           exiting={FadeOutUp.duration(CLOSE_MS).easing(Easing.in(Easing.cubic))}
-          className="border-t px-4 pb-4 pt-3"
+          className="border-t px-3 pb-3 pt-2"
           style={{ borderTopColor: completed ? colors.primaryLight : colors.border }}
         >
           {children}

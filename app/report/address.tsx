@@ -14,7 +14,7 @@ import {
 import { validatePinAgainstBoundary } from '@/utils/validate-pin-boundary';
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import type { LatLng } from '@/components/map/GoongMapView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -179,6 +179,7 @@ export default function ReportAddressScreen() {
         onBack={() => router.back()}
       />
 
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         className="flex-1"
         keyboardShouldPersistTaps="handled"
@@ -240,6 +241,7 @@ export default function ReportAddressScreen() {
           <Text className="font-semibold text-primary-foreground">Tiếp tục</Text>
         </Button>
       </View>
+      </KeyboardAvoidingView>
     </SafeScreen>
   );
 }

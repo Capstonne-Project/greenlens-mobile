@@ -4,10 +4,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BadgeDetailModal } from '@/components/badges/BadgeDetailModal';
+import { BadgeProgressRing } from '@/components/badges/BadgeProgressRing';
 import { TapScale } from '@/components/layout/TapScale';
 import { Text } from '@/components/ui/text';
 import { gamificationService } from '@/services/gamification.service';
@@ -29,16 +30,6 @@ const CARD_3D_SHADOW = Platform.select({
   android: { elevation: 5 },
 }) as object;
 
-const FEATURED_GLOW = Platform.select({
-  ios: {
-    shadowColor: colors.primary,
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  android: { elevation: 6 },
-}) as object;
-
 function BadgeCell({
   item,
   isUpdating,
@@ -51,84 +42,92 @@ function BadgeCell({
   const locked = !item.isUnlocked;
   const progress = locked ? getBadgeProgress(item) : null;
 
+  const iconBox = (
+    <View className="relative">
+      {item.isFeatured ? (
+        <LinearGradient
+          colors={[colors.primary, colors.primaryDark]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 999,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {item.iconUrl ? (
+            <Image source={{ uri: item.iconUrl }} style={{ width: 34, height: 34 }} contentFit="contain" />
+          ) : (
+            <Ionicons name="ribbon" size={28} color={colors.white} />
+          )}
+        </LinearGradient>
+      ) : locked ? (
+        <BadgeProgressRing ratio={progress?.ratio ?? 0} size={56}>
+          <View className="h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: colors.white, opacity: 0.6 }}>
+            {item.iconUrl ? (
+              <Image
+                source={{ uri: item.iconUrl }}
+                style={{ width: 30, height: 30, opacity: 0.55 }}
+                contentFit="contain"
+              />
+            ) : (
+              <Ionicons name="ribbon-outline" size={24} color={colors.textSecondary} />
+            )}
+          </View>
+        </BadgeProgressRing>
+      ) : (
+        <View className="h-14 w-14 items-center justify-center rounded-full" style={{ backgroundColor: colors.white }}>
+          {item.iconUrl ? (
+            <Image source={{ uri: item.iconUrl }} style={{ width: 34, height: 34 }} contentFit="contain" />
+          ) : (
+            <Ionicons name="ribbon" size={28} color={colors.primary} />
+          )}
+        </View>
+      )}
+
+      {isUpdating ? (
+        <View className="absolute inset-0 items-center justify-center rounded-full bg-black/35">
+          <ActivityIndicator size="small" color={colors.white} />
+        </View>
+      ) : item.isFeatured ? (
+        <View
+          className="absolute -right-0.5 -top-0.5 h-6 w-6 items-center justify-center rounded-full border-2 border-white"
+          style={{ backgroundColor: colors.warning }}
+        >
+          <Ionicons name="star" size={11} color={colors.white} />
+        </View>
+      ) : locked ? (
+        <View
+          className="absolute -right-0.5 -top-0.5 h-5 w-5 items-center justify-center rounded-full border-2 border-white"
+          style={{ backgroundColor: colors.textSecondary }}
+        >
+          <Ionicons name="lock-closed" size={9} color={colors.white} />
+        </View>
+      ) : null}
+    </View>
+  );
+
   return (
     <View className="w-1/3 px-1.5 py-2">
-      <Pressable disabled={isUpdating} onPress={onPress}>
+      <TapScale onPress={onPress} disabled={isUpdating}>
         <View
           className="items-center rounded-2xl px-2 py-3.5"
           style={[
-            {
-              backgroundColor: item.isFeatured ? `${colors.primary}12` : colors.white,
-              borderWidth: 1.5,
-              borderColor: item.isFeatured ? colors.primary : colors.border,
-            },
-            item.isFeatured ? FEATURED_GLOW : undefined,
+            { backgroundColor: colors.white },
+            item.isFeatured
+              ? Platform.select({
+                  ios: { shadowColor: colors.primary, shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+                  android: { elevation: 3, borderWidth: 1, borderColor: colors.primaryLight },
+                })
+              : Platform.select({
+                  ios: { shadowColor: '#0F172A', shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
+                  android: { elevation: 1, borderWidth: 1, borderColor: colors.border },
+                }),
           ]}
         >
-          <View className="relative">
-            {item.isFeatured ? (
-              <LinearGradient
-                colors={[colors.primary, colors.primaryDark]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 999,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {item.iconUrl ? (
-                  <Image source={{ uri: item.iconUrl }} style={{ width: 34, height: 34 }} contentFit="contain" />
-                ) : (
-                  <Ionicons name="ribbon" size={28} color={colors.white} />
-                )}
-              </LinearGradient>
-            ) : (
-              <View
-                className="h-14 w-14 items-center justify-center rounded-full"
-                style={{
-                  backgroundColor: locked ? colors.surface : `${colors.primary}1A`,
-                  opacity: locked ? 0.55 : 1,
-                }}
-              >
-                {item.iconUrl ? (
-                  <Image
-                    source={{ uri: item.iconUrl }}
-                    style={{ width: 34, height: 34, opacity: locked ? 0.5 : 1 }}
-                    contentFit="contain"
-                  />
-                ) : (
-                  <Ionicons
-                    name={locked ? 'ribbon-outline' : 'ribbon'}
-                    size={28}
-                    color={locked ? colors.textSecondary : colors.primary}
-                  />
-                )}
-              </View>
-            )}
-
-            {isUpdating ? (
-              <View className="absolute inset-0 items-center justify-center rounded-full bg-black/35">
-                <ActivityIndicator size="small" color={colors.white} />
-              </View>
-            ) : locked ? (
-              <View
-                className="absolute -right-0.5 -top-0.5 h-6 w-6 items-center justify-center rounded-full border-2 border-white"
-                style={{ backgroundColor: colors.textSecondary }}
-              >
-                <Ionicons name="lock-closed" size={11} color={colors.white} />
-              </View>
-            ) : item.isFeatured ? (
-              <View
-                className="absolute -right-0.5 -top-0.5 h-6 w-6 items-center justify-center rounded-full border-2 border-white"
-                style={{ backgroundColor: colors.warning }}
-              >
-                <Ionicons name="star" size={11} color={colors.white} />
-              </View>
-            ) : null}
-          </View>
+          {iconBox}
 
           <Text
             className="mt-2 text-center text-xs font-bold"
@@ -158,7 +157,7 @@ function BadgeCell({
             </Text>
           )}
         </View>
-      </Pressable>
+      </TapScale>
     </View>
   );
 }

@@ -3,6 +3,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   TextInput,
@@ -440,11 +442,10 @@ export default function InspectionDetailScreen() {
         />
       </View>
 
-      <View className="flex-1">
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets
         >
           <InspectionFeedbackBanner
             errorMessage={actionError}
@@ -870,7 +871,7 @@ export default function InspectionDetailScreen() {
             ))}
           </View>
         ) : null}
-      </View>
+      </KeyboardAvoidingView>
 
       <EvidencePlayerModal
         visible={previewItem !== null}

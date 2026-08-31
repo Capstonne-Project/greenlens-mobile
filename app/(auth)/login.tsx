@@ -48,12 +48,17 @@ export default function LoginScreen() {
       const user = await login({ email, password });
       // Session cũ có thể đã được restore vào shell khác (vd. (inspector)) trước
       // khi user login lại — dismiss stack đó rồi mới sang shell của role mới.
+      // `replace` được gọi ở frame kế tiếp (setTimeout 0) để Fabric hoàn tất batch unmount
+      // của dismissAll() trước khi nhận batch mount mới — gọi liền tay trong cùng tick từng
+      // gây "IllegalStateException: View already has a parent" khi 2 batch chồng nhau.
       if (router.canDismiss()) router.dismissAll();
-      if (user.mustChangePassword) {
-        router.replace('/(auth)/force-change-password');
-        return;
-      }
-      router.replace(getPostLoginHref(user.role));
+      setTimeout(() => {
+        if (user.mustChangePassword) {
+          router.replace('/(auth)/force-change-password');
+          return;
+        }
+        router.replace(getPostLoginHref(user.role));
+      }, 0);
     } catch (err) {
       const message = getApiErrorMessage(
         err,

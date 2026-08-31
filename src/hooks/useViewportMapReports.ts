@@ -268,13 +268,8 @@ export function useViewportMapReports(
 
   useEffect(() => {
     const bbox = lastBBoxRef.current ?? regionToBBox(initialRegionLike());
-    lastKeyRef.current = null;
-    void fetchForBBox(bbox, categoryId);
-  }, [categoryId, fetchForBBox]);
-
-  useEffect(() => {
-    const bbox = regionToBBox(initialRegionLike());
     lastBBoxRef.current = bbox;
+    lastKeyRef.current = null;
     void fetchForBBox(bbox, categoryId);
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -282,7 +277,7 @@ export function useViewportMapReports(
       abortRef.current?.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [categoryId, fetchForBBox]);
 
   return {
     pins,

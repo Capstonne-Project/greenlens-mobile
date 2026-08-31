@@ -47,6 +47,8 @@ export interface ReportDetailBodyProps {
   onOpenUserProfile: (userId: string) => void;
   /** Nhảy sang tab "Báo cáo của tôi" và highlight đúng báo cáo này — chỉ hiện khi mở từ map + là chủ báo cáo */
   onViewInMyReports?: () => void;
+  /** Sheet cha có thể ở "peek" (~28% màn hình) — mở rộng full khi focus ô nhận xét đánh giá. */
+  onRequestExpand?: () => void;
   comments: {
     threads: CommentThread[];
     isLoading: boolean;
@@ -164,9 +166,11 @@ interface RateSectionProps {
   detail: ReportDetail;
   isActionBusy: boolean;
   onRate: (dto: RateReportDto) => Promise<void>;
+  /** Sheet cha có thể ở "peek" (~28% màn hình) — mở rộng full khi focus input để bàn phím không che. */
+  onFocusComment?: () => void;
 }
 
-function RateSection({ detail, isActionBusy, onRate }: RateSectionProps) {
+function RateSection({ detail, isActionBusy, onRate, onFocusComment }: RateSectionProps) {
   const alreadyRated = Boolean(detail.hasCurrentUserRated || detail.satisfaction);
   const [isSatisfied, setIsSatisfied] = useState<boolean | null>(null);
   const [rating, setRating] = useState(0);
@@ -248,6 +252,7 @@ function RateSection({ detail, isActionBusy, onRate }: RateSectionProps) {
         <TextInput
           value={comment}
           onChangeText={setComment}
+          onFocus={onFocusComment}
           placeholder="Nhận xét thêm (tuỳ chọn)"
           placeholderTextColor={colors.textSecondary}
           multiline
@@ -411,6 +416,7 @@ export function ReportDetailBody({
   onOpenMergedReport,
   onOpenUserProfile,
   onViewInMyReports,
+  onRequestExpand,
   comments,
 }: ReportDetailBodyProps) {
   const severity = SEVERITY_CONFIG[detail.severity] ?? SEVERITY_CONFIG.Medium;
@@ -591,7 +597,7 @@ export function ReportDetailBody({
       ) : null}
 
       {onRate && isOwner && canRateStatus ? (
-        <RateSection detail={detail} isActionBusy={isActionBusy} onRate={onRate} />
+        <RateSection detail={detail} isActionBusy={isActionBusy} onRate={onRate} onFocusComment={onRequestExpand} />
       ) : null}
 
       {!isOwner && detail.satisfaction ? (

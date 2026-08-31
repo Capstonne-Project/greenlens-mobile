@@ -11,30 +11,46 @@ interface GalleryPreviewItem {
 
 interface ReportGalleryShelfProps {
   items: GalleryPreviewItem[];
+  onOpenCamera: () => void;
   onOpenLibrary: () => void;
   onRemoveItem?: (uri: string) => void;
   disabled?: boolean;
 }
 
-export function ReportGalleryShelf({ items, onOpenLibrary, onRemoveItem, disabled = false }: ReportGalleryShelfProps) {
+export function ReportGalleryShelf({
+  items,
+  onOpenCamera,
+  onOpenLibrary,
+  onRemoveItem,
+  disabled = false,
+}: ReportGalleryShelfProps) {
   return (
     <View className="gap-3">
       <Text className="px-1 text-xs font-semibold uppercase tracking-[1.2px] text-textSecondary">
-        Ảnh từ thư viện
+        Thêm ảnh
       </Text>
 
-      <TapScale onPress={onOpenLibrary} disabled={disabled}>
-        <View
-          className="flex-row items-center justify-between rounded-3xl border border-border bg-white px-4 py-4"
-          style={disabled ? { opacity: 0.5 } : undefined}
-        >
-          <View className="flex-row items-center gap-3">
-            <Ionicons name="images-outline" size={22} color={colors.primary} />
-            <Text className="text-base font-semibold text-textPrimary">Chọn ảnh</Text>
+      <View className="flex-row gap-3">
+        <TapScale className="flex-1" onPress={onOpenCamera} disabled={disabled}>
+          <View
+            className="flex-1 items-center gap-2 rounded-3xl border border-border bg-white px-3 py-4"
+            style={disabled ? { opacity: 0.5 } : undefined}
+          >
+            <Ionicons name="camera-outline" size={22} color={colors.primary} />
+            <Text className="text-sm font-semibold text-textPrimary">Chụp ảnh</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textDisabled} />
-        </View>
-      </TapScale>
+        </TapScale>
+
+        <TapScale className="flex-1" onPress={onOpenLibrary} disabled={disabled}>
+          <View
+            className="flex-1 items-center gap-2 rounded-3xl border border-border bg-white px-3 py-4"
+            style={disabled ? { opacity: 0.5 } : undefined}
+          >
+            <Ionicons name="images-outline" size={22} color={colors.primary} />
+            <Text className="text-sm font-semibold text-textPrimary">Chọn ảnh</Text>
+          </View>
+        </TapScale>
+      </View>
 
       {items.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>

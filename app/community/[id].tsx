@@ -1,30 +1,41 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, ScrollView, View, useWindowDimensions } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
+import { TapScale } from '@/components/layout/TapScale';
 import { ImageViewerModal } from '@/components/common/ImageViewerModal';
 import { Toast, useToast } from '@/components/common/Toast';
 import { CheckInOverrideDialog } from '@/components/community/CheckInOverrideDialog';
+import { ParticipantRing } from '@/components/community/ParticipantRing';
 import { communityCleanupService } from '@/services/communityCleanup.service';
 import { colors } from '@/theme/colors';
+import { fonts } from '@/theme/fonts';
 import { getApiErrorMessage } from '@/utils/api-error-message';
 import { isCheckInTooFarError } from '@/utils/community-checkin-error';
 import { firstRouteParam } from '@/utils/field-worker-task';
 import type { CommunityCleanupEventDetail } from '@/types/community-cleanup.types';
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  OpenForJoin: { label: 'Đang mở đăng ký', color: '#065F46', bg: '#D1FAE5' },
-  JoinClosed: { label: 'Đã đóng đăng ký', color: '#92400E', bg: '#FEF3C7' },
-  InProgress: { label: 'Đang dọn dẹp', color: '#1E40AF', bg: '#DBEAFE' },
-  PendingVerification: { label: 'Chờ LEO duyệt', color: '#6D28D9', bg: '#EDE9FE' },
-  Completed: { label: 'Hoàn thành', color: '#374151', bg: '#F3F4F6' },
-  Cancelled: { label: 'Đã hủy', color: '#991B1B', bg: '#FEE2E2' },
+const INK = '#0F1B14';
+const PAPER = '#FFFFFF';
+const PAPER_RAISED = '#F5F5F3';
+const HAIRLINE = 'rgba(15, 27, 20, 0.10)';
+const CLAY = '#C2703F';
+
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  OpenForJoin: { label: 'Đang mở đăng ký', color: colors.primaryDark },
+  JoinClosed: { label: 'Đã đóng đăng ký', color: '#92400E' },
+  InProgress: { label: 'Đang dọn dẹp', color: '#1E40AF' },
+  PendingVerification: { label: 'Chờ LEO duyệt', color: '#6D28D9' },
+  Completed: { label: 'Hoàn thành', color: '#374151' },
+  Cancelled: { label: 'Đã hủy', color: '#991B1B' },
 };
 
 function formatDateTime(dateStr: string | null): string {
@@ -35,10 +46,34 @@ function formatDateTime(dateStr: string | null): string {
   });
 }
 
+/** 1 dòng dữ kiện trong sổ tay — nhãn mono nhỏ bên trái, giá trị serif/body bên phải. */
+function FieldLine({
+  icon,
+  label,
+  children,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View className="flex-row items-start gap-3 py-2.5" style={{ borderBottomWidth: 1, borderBottomColor: HAIRLINE }}>
+      <View className="w-24 flex-row items-center gap-1.5 pt-0.5">
+        <Ionicons name={icon} size={13} color="rgba(15,27,20,0.4)" />
+        <Text style={{ fontFamily: fonts.mono, fontSize: 10, color: 'rgba(15,27,20,0.4)', letterSpacing: 0.3 }}>
+          {label}
+        </Text>
+      </View>
+      <View className="flex-1">{children}</View>
+    </View>
+  );
+}
+
 export default function CommunityDetailScreen() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const eventId = firstRouteParam(params.id);
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { toastState, show: showToast, hide: hideToast } = useToast();
 
   const [event, setEvent] = useState<CommunityCleanupEventDetail | null>(null);
@@ -155,154 +190,225 @@ export default function CommunityDetailScreen() {
       }
     : null;
 
+  const heroHeight = Math.round(width * 0.92);
+
   return (
-    <View className="flex-1 bg-background">
+    <View className="flex-1" style={{ backgroundColor: PAPER }}>
       <View
         className="absolute left-0 right-0 z-10 flex-row items-center justify-between px-4"
         style={{ top: insets.top + 8 }}
       >
-        <Pressable
-          onPress={() => router.back()}
-          className="h-9 w-9 items-center justify-center rounded-full bg-white"
-          style={{ elevation: 4, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8 }}
-        >
-          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-        </Pressable>
+        <TapScale onPress={() => router.back()}>
+          <View className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: 'rgba(15,27,20,0.35)' }}>
+            <Ionicons name="chevron-back" size={22} color={PAPER} />
+          </View>
+        </TapScale>
         {statusCfg ? (
-          <View className="rounded-full bg-white px-3 py-1.5" style={{ elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6 }}>
-            <Text className="text-xs font-bold" style={{ color: statusCfg.color }}>{statusCfg.label}</Text>
+          <View className="flex-row items-center gap-1.5 rounded-full px-3.5 py-2" style={{ backgroundColor: 'rgba(15,27,20,0.35)' }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: statusCfg.color }} />
+            <Text style={{ fontFamily: fonts.bodySemiBold, fontSize: 11.5, color: PAPER }}>{statusCfg.label}</Text>
           </View>
         ) : null}
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
         {isLoading ? (
-          <View className="h-56 w-full bg-surface" />
+          <View style={{ height: heroHeight, width: '100%', backgroundColor: PAPER_RAISED }} />
         ) : errorMessage ? (
           <View className="items-center justify-center px-6 py-32">
-            <Ionicons name="alert-circle-outline" size={56} color={colors.error} />
-            <Text className="mt-3 text-base font-semibold text-textPrimary">{errorMessage}</Text>
-            <Pressable onPress={load} className="mt-4 rounded-xl px-6 py-2.5" style={{ backgroundColor: colors.primary }}>
-              <Text className="font-semibold text-white">Thử lại</Text>
-            </Pressable>
+            <Ionicons name="alert-circle-outline" size={48} color={CLAY} />
+            <Text style={{ fontFamily: fonts.display, fontSize: 17, color: INK, marginTop: 12, textAlign: 'center' }}>
+              {errorMessage}
+            </Text>
+            <TapScale onPress={load}>
+              <View className="mt-4 rounded-full px-6 py-2.5" style={{ backgroundColor: INK }}>
+                <Text style={{ fontFamily: fonts.bodySemiBold, fontSize: 13, color: PAPER }}>Thử lại</Text>
+              </View>
+            </TapScale>
           </View>
         ) : event ? (
           <>
-            {event.thumbnailUrl ? (
-              <Pressable onPress={() => setViewerVisible(true)}>
-                <Image source={{ uri: event.thumbnailUrl }} style={{ width: '100%', height: 220 }} contentFit="cover" />
-              </Pressable>
-            ) : (
-              <View className="w-full items-center justify-center" style={{ height: 180, backgroundColor: '#ECFDF5' }}>
-                <Ionicons name="leaf-outline" size={48} color={colors.primary} />
+            {/* Hero — ảnh full-bleed đè gradient tối + tiêu đề serif lớn ngay trên ảnh, giống
+                trang bìa một mục nhật ký hiện trường thay vì ảnh nhỏ tách rời khỏi text. */}
+            <TapScale onPress={() => (event.thumbnailUrl ? setViewerVisible(true) : undefined)}>
+              <View style={{ width: '100%', height: heroHeight }}>
+                {event.thumbnailUrl ? (
+                  <Image source={{ uri: event.thumbnailUrl }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+                ) : (
+                  <View className="h-full w-full items-center justify-center" style={{ backgroundColor: '#DCEEE5' }}>
+                    <Ionicons name="leaf-outline" size={52} color={colors.primaryDark} />
+                  </View>
+                )}
+                <LinearGradient
+                  colors={['rgba(15,27,20,0)', 'rgba(15,27,20,0.15)', 'rgba(15,27,20,0.82)']}
+                  locations={[0, 0.5, 1]}
+                  style={{ position: 'absolute', inset: 0 }}
+                />
+                <View className="absolute bottom-0 left-0 right-0 px-5 pb-5">
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 11, color: 'rgba(251,248,241,0.75)', letterSpacing: 0.6 }}>
+                    {event.reportCode} · {event.categoryName}
+                  </Text>
+                  <Text style={{ fontFamily: fonts.displayBlack, fontSize: 27, color: PAPER, marginTop: 4, lineHeight: 32 }}>
+                    {event.title}
+                  </Text>
+                </View>
               </View>
-            )}
+            </TapScale>
 
-            <View className="px-4 pt-4">
-              <Text className="mb-1 text-xs text-textSecondary">{event.reportCode} · {event.categoryName}</Text>
-              <Text className="mb-2 text-xl font-bold text-textPrimary">{event.title}</Text>
-
-              <View className="gap-3">
-                <View className="flex-row items-start gap-2.5">
-                  <Ionicons name="location-outline" size={16} color={colors.textSecondary} style={{ marginTop: 1 }} />
-                  <Text className="flex-1 text-sm text-textSecondary">
-                    {event.meetingNote ?? event.reportAddress ?? 'Chưa có địa chỉ'}
-                  </Text>
-                </View>
-
-                <View className="flex-row items-center gap-2.5">
-                  <Ionicons name="person-circle-outline" size={16} color={colors.primary} />
-                  <Text className="text-sm text-textPrimary">Leader: {event.leader.fullName}</Text>
-                </View>
-
-                <View className="flex-row items-center gap-2.5">
-                  <Ionicons name="people-outline" size={16} color={colors.primary} />
-                  <Text className="text-sm text-textPrimary">
-                    {event.participantCount}/{event.maxParticipants} · còn {event.spotsLeft} chỗ
-                  </Text>
-                </View>
-
-                <View className="flex-row items-start gap-2.5">
-                  <Ionicons name="time-outline" size={16} color={colors.textSecondary} style={{ marginTop: 1 }} />
-                  <View className="flex-1 gap-0.5">
-                    <Text className="text-sm text-textPrimary">Bắt đầu: {formatDateTime(event.startsAt)}</Text>
-                    {event.endsAt ? <Text className="text-sm text-textPrimary">Kết thúc: {formatDateTime(event.endsAt)}</Text> : null}
-                    {event.joinClosesAt ? <Text className="text-sm text-textSecondary">Đóng đăng ký: {formatDateTime(event.joinClosesAt)}</Text> : null}
+            <Animated.View entering={FadeInDown.duration(400)} className="px-5 pt-5">
+              {/* Ring + leader — khối mở đầu "ai, bao nhiêu người" đặt ngang hàng cân đối */}
+              <View className="flex-row items-center gap-4 pb-4" style={{ borderBottomWidth: 1, borderBottomColor: HAIRLINE }}>
+                <ParticipantRing count={event.participantCount} capacity={event.maxParticipants} />
+                <View className="flex-1 gap-2">
+                  <View>
+                    <Text style={{ fontFamily: fonts.mono, fontSize: 9.5, color: 'rgba(15,27,20,0.4)', letterSpacing: 0.4 }}>
+                      NGƯỜI DẪN ĐẦU
+                    </Text>
+                    <Text style={{ fontFamily: fonts.bodySemiBold, fontSize: 14.5, color: INK, marginTop: 1 }}>
+                      {event.leader.fullName}
+                    </Text>
+                  </View>
+                  <View className="flex-row items-center gap-1.5">
+                    <Ionicons name="location-outline" size={13} color="rgba(15,27,20,0.45)" />
+                    <Text
+                      numberOfLines={1}
+                      style={{ fontFamily: fonts.body, fontSize: 12, color: 'rgba(15,27,20,0.55)', flex: 1 }}
+                    >
+                      {event.meetingNote ?? event.reportAddress ?? 'Chưa có địa chỉ'}
+                    </Text>
                   </View>
                 </View>
+              </View>
+
+              {/* Field lines — thời gian, dữ kiện dạng nhãn mono trái / giá trị phải */}
+              <View className="mt-1">
+                <FieldLine icon="play-outline" label="BẮT ĐẦU">
+                  <Text style={{ fontFamily: fonts.bodyMedium, fontSize: 13.5, color: INK }}>
+                    {formatDateTime(event.startsAt)}
+                  </Text>
+                </FieldLine>
+                {event.endsAt ? (
+                  <FieldLine icon="stop-outline" label="KẾT THÚC">
+                    <Text style={{ fontFamily: fonts.bodyMedium, fontSize: 13.5, color: INK }}>
+                      {formatDateTime(event.endsAt)}
+                    </Text>
+                  </FieldLine>
+                ) : null}
+                {event.joinClosesAt ? (
+                  <FieldLine icon="lock-closed-outline" label="ĐÓNG ĐK">
+                    <Text style={{ fontFamily: fonts.body, fontSize: 13, color: 'rgba(15,27,20,0.55)' }}>
+                      {formatDateTime(event.joinClosesAt)}
+                    </Text>
+                  </FieldLine>
+                ) : null}
 
                 {(event.status === 'InProgress' || event.status === 'PendingVerification') && (
-                  <View className="flex-row items-start gap-2.5">
-                    <Ionicons name="trending-up-outline" size={16} color={colors.primary} style={{ marginTop: 1 }} />
-                    <View className="flex-1">
-                      <View className="mb-1.5 flex-row items-center justify-between">
-                        <Text className="text-sm text-textPrimary">Tiến độ</Text>
-                        <Text className="text-sm font-bold" style={{ color: colors.primary }}>{event.progressPercent}%</Text>
+                  <FieldLine icon="trending-up-outline" label="TIẾN ĐỘ">
+                    <View>
+                      <View className="flex-row items-center justify-between">
+                        <View className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ backgroundColor: PAPER_RAISED }}>
+                          <View
+                            className="h-full rounded-full"
+                            style={{ width: `${event.progressPercent}%` as `${number}%`, backgroundColor: colors.primaryDark }}
+                          />
+                        </View>
+                        <Text style={{ fontFamily: fonts.monoSemiBold, fontSize: 12, color: colors.primaryDark, marginLeft: 8 }}>
+                          {event.progressPercent}%
+                        </Text>
                       </View>
-                      <View className="h-1.5 overflow-hidden rounded-full bg-surface">
-                        <View className="h-full rounded-full" style={{ width: `${event.progressPercent}%` as `${number}%`, backgroundColor: colors.primary }} />
-                      </View>
-                      {event.progressNote ? <Text className="mt-1 text-xs text-textSecondary">{event.progressNote}</Text> : null}
+                      {event.progressNote ? (
+                        <Text style={{ fontFamily: fonts.displayItalic, fontSize: 12.5, color: 'rgba(15,27,20,0.55)', marginTop: 6 }}>
+                          “{event.progressNote}”
+                        </Text>
+                      ) : null}
                     </View>
-                  </View>
+                  </FieldLine>
                 )}
               </View>
 
               {event.description ? (
-                <View className="mt-4 border-t border-border pt-4">
-                  <Text className="text-sm leading-5 text-textPrimary">{event.description}</Text>
+                <View className="mt-5 rounded-2xl px-4 py-4" style={{ backgroundColor: PAPER_RAISED }}>
+                  <Text style={{ fontFamily: fonts.mono, fontSize: 9.5, color: 'rgba(15,27,20,0.4)', letterSpacing: 0.4, marginBottom: 6 }}>
+                    GHI CHÚ
+                  </Text>
+                  <Text style={{ fontFamily: fonts.displayRegular, fontSize: 14.5, color: INK, lineHeight: 21 }}>
+                    {event.description}
+                  </Text>
                 </View>
               ) : null}
-            </View>
+            </Animated.View>
           </>
         ) : null}
       </ScrollView>
 
       {!isLoading && !errorMessage && event ? (
-        <SafeAreaView edges={['bottom']} className="border-t border-border bg-white px-4 pt-3" style={{ elevation: 8, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: -2 } }}>
+        <SafeAreaView
+          edges={['bottom']}
+          style={{ backgroundColor: PAPER, borderTopWidth: 1, borderTopColor: HAIRLINE, paddingHorizontal: 20, paddingTop: 14 }}
+        >
           {event.isLeader ? (
-            <Pressable
-              onPress={() => router.push({ pathname: '/community-lead/[id]', params: { id: event.id } } as never)}
-              className="h-12 flex-row items-center justify-center gap-2 rounded-xl"
-              style={{ backgroundColor: colors.primary }}
-            >
-              <Ionicons name="construct-outline" size={18} color="#fff" />
-              <Text className="font-bold text-white">Vào không gian điều phối</Text>
-            </Pressable>
+            <TapScale onPress={() => router.push({ pathname: '/community-lead/[id]', params: { id: event.id } } as never)}>
+              <View className="flex-row items-center justify-center gap-2 rounded-2xl" style={{ height: 52, backgroundColor: INK }}>
+                <Ionicons name="construct-outline" size={18} color={PAPER} />
+                <Text style={{ fontFamily: fonts.bodyBold, fontSize: 14.5, color: PAPER }}>Vào không gian điều phối</Text>
+              </View>
+            </TapScale>
           ) : event.myParticipation?.status === 'Joined' && (event.status === 'OpenForJoin' || event.status === 'JoinClosed') ? (
             <View className="flex-row gap-3">
-              <Pressable onPress={handleWithdraw} disabled={isActing} className="flex-1 h-12 items-center justify-center rounded-xl border-2" style={{ borderColor: colors.error }}>
-                <Text className="font-bold" style={{ color: colors.error }}>Rút khỏi</Text>
-              </Pressable>
-              <Pressable onPress={handleCheckIn} disabled={isActing} className="flex-1 h-12 items-center justify-center rounded-xl" style={{ backgroundColor: colors.primary }}>
-                {isActing ? <ActivityIndicator size="small" color="#fff" /> : <Text className="font-bold text-white">Check-in</Text>}
-              </Pressable>
+              <TapScale onPress={isActing ? () => {} : handleWithdraw}>
+                <View className="items-center justify-center rounded-2xl px-6" style={{ height: 52, borderWidth: 1.5, borderColor: CLAY, opacity: isActing ? 0.5 : 1 }}>
+                  <Text style={{ fontFamily: fonts.bodyBold, fontSize: 14, color: CLAY }}>Rút khỏi</Text>
+                </View>
+              </TapScale>
+              <View style={{ flex: 1 }}>
+                <TapScale onPress={isActing ? () => {} : handleCheckIn}>
+                  <View className="items-center justify-center rounded-2xl" style={{ height: 52, backgroundColor: INK, opacity: isActing ? 0.7 : 1 }}>
+                    {isActing ? <ActivityIndicator size="small" color={PAPER} /> : (
+                      <Text style={{ fontFamily: fonts.bodyBold, fontSize: 14.5, color: PAPER }}>Check-in</Text>
+                    )}
+                  </View>
+                </TapScale>
+              </View>
             </View>
           ) : event.myParticipation?.status === 'Joined' && event.status === 'InProgress' ? (
-            <Pressable onPress={handleCheckIn} disabled={isActing} className="h-12 items-center justify-center rounded-xl" style={{ backgroundColor: colors.primary }}>
-              {isActing ? <ActivityIndicator size="small" color="#fff" /> : <Text className="font-bold text-white">Check-in</Text>}
-            </Pressable>
+            <TapScale onPress={isActing ? () => {} : handleCheckIn}>
+              <View className="items-center justify-center rounded-2xl" style={{ height: 52, backgroundColor: INK, opacity: isActing ? 0.7 : 1 }}>
+                {isActing ? <ActivityIndicator size="small" color={PAPER} /> : (
+                  <Text style={{ fontFamily: fonts.bodyBold, fontSize: 14.5, color: PAPER }}>Check-in</Text>
+                )}
+              </View>
+            </TapScale>
           ) : event.myParticipation?.status === 'CheckedIn' ? (
-            <View className="h-12 flex-row items-center justify-center gap-2 rounded-xl" style={{ backgroundColor: '#ECFDF5' }}>
-              <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
-              <Text className="font-bold" style={{ color: colors.primary }}>Đã check-in</Text>
+            <View className="flex-row items-center justify-center gap-2 rounded-2xl" style={{ height: 52, backgroundColor: 'rgba(16,185,129,0.14)' }}>
+              <Ionicons name="checkmark-circle" size={20} color={colors.primaryDark} />
+              <Text style={{ fontFamily: fonts.bodyBold, fontSize: 14.5, color: colors.primaryDark }}>Đã check-in</Text>
             </View>
           ) : event.myParticipation ? (
-            <View className="h-12 items-center justify-center rounded-xl bg-surface">
-              <Text className="font-semibold text-textSecondary">Bạn đã rời chương trình này</Text>
+            <View className="items-center justify-center rounded-2xl" style={{ height: 52, backgroundColor: PAPER_RAISED }}>
+              <Text style={{ fontFamily: fonts.bodySemiBold, fontSize: 13.5, color: 'rgba(15,27,20,0.5)' }}>
+                Bạn đã rời chương trình này
+              </Text>
             </View>
           ) : event.status === 'OpenForJoin' ? (
-            <Pressable onPress={handleJoin} disabled={isActing} className="h-12 flex-row items-center justify-center gap-2 rounded-xl" style={{ backgroundColor: colors.primary }}>
-              {isActing ? <ActivityIndicator size="small" color="#fff" /> : (
-                <>
-                  <Ionicons name="hand-left-outline" size={18} color="#fff" />
-                  <Text className="font-bold text-white">Tham gia (Vote)</Text>
-                </>
-              )}
-            </Pressable>
+            <TapScale onPress={isActing ? () => {} : handleJoin}>
+              <View className="flex-row items-center justify-center gap-2 rounded-2xl" style={{ height: 52, backgroundColor: colors.primaryDark, opacity: isActing ? 0.7 : 1 }}>
+                {isActing ? <ActivityIndicator size="small" color={PAPER} /> : (
+                  <>
+                    <Animated.View entering={FadeIn.duration(300)}>
+                      <Ionicons name="hand-left" size={19} color={PAPER} />
+                    </Animated.View>
+                    <Text style={{ fontFamily: fonts.bodyBold, fontSize: 15, color: PAPER, letterSpacing: 0.2 }}>
+                      Tham gia (Vote)
+                    </Text>
+                  </>
+                )}
+              </View>
+            </TapScale>
           ) : (
-            <View className="h-12 items-center justify-center rounded-xl bg-surface">
-              <Text className="font-semibold text-textSecondary">Chương trình không nhận đăng ký</Text>
+            <View className="items-center justify-center rounded-2xl" style={{ height: 52, backgroundColor: PAPER_RAISED }}>
+              <Text style={{ fontFamily: fonts.bodySemiBold, fontSize: 13.5, color: 'rgba(15,27,20,0.5)' }}>
+                Chương trình không nhận đăng ký
+              </Text>
             </View>
           )}
         </SafeAreaView>

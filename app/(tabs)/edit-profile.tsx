@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { SafeScreen } from '@/components/layout/SafeScreen';
@@ -86,7 +86,13 @@ export default function EditProfileScreen() {
   };
 
   return (
-    <SafeScreen className="flex-1 bg-background px-6 pt-2">
+    <SafeScreen className="flex-1 bg-background">
+    <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <ScrollView
+      className="px-6 pt-2"
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{ paddingBottom: 24 }}
+    >
       <View className="flex-row items-center justify-between">
         <Pressable
           onPress={() => router.replace('/(tabs)/profile' as Href)}
@@ -193,6 +199,8 @@ export default function EditProfileScreen() {
           <Text className="font-semibold text-primary-foreground">Lưu thay đổi</Text>
         </Button>
       </View>
+    </ScrollView>
+    </KeyboardAvoidingView>
     </SafeScreen>
   );
 }

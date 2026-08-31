@@ -26,6 +26,7 @@ import {
   FlatList,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Platform,
   Pressable,
   View,
   type ViewToken,
@@ -35,6 +36,7 @@ import Animated, {
   Extrapolation,
   interpolate,
   runOnJS,
+  useAnimatedKeyboard,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -292,6 +294,15 @@ export function ReportDetailView({
   const dragStartHeight = useSharedValue(SNAP_HEIGHTS.peek);
   const scrollY = useSharedValue(0);
   const isSheetDragging = useSharedValue(false);
+  // Ô "Nhận xét thêm" (RateSection) nằm cuối ScrollView bên trong sheet — sheet dùng height
+  // animate tuyệt đối nên KeyboardAvoidingView không ăn khớp, thay bằng spacer cao bằng bàn
+  // phím để nội dung cuối luôn cuộn lên khỏi vùng bị che. Chỉ áp dụng trên iOS — Android đã tự
+  // resize window theo windowSoftInputMode="adjustResize" (AndroidManifest), thêm spacer nữa
+  // sẽ đẩy dư 2 lần.
+  const keyboard = useAnimatedKeyboard();
+  const keyboardSpacerStyle = useAnimatedStyle(() => ({
+    height: Platform.OS === 'ios' ? keyboard.height.value : 0,
+  }));
 
   // Primary sau merge có thể không phải của user — ưu tiên so khớp reporterId.
   const isOwner =
@@ -666,6 +677,7 @@ export function ReportDetailView({
               onOpenMergedReport={onOpenMergedReport}
               onOpenUserProfile={onOpenUserProfile}
               onViewInMyReports={onViewInMyReports}
+              onRequestExpand={expandSheet}
               comments={{
                 threads,
                 isLoading: isCommentsLoading,
@@ -677,6 +689,7 @@ export function ReportDetailView({
                 onRetry: () => void refetchComments(),
               }}
             />
+            <Animated.View style={keyboardSpacerStyle} />
           </Animated.ScrollView>
         </GestureDetector>
 

@@ -16,7 +16,7 @@ export function TapScale({ onPress, children, className = '', disabled = false }
   }));
 
   return (
-    <Animated.View style={animatedStyle}>
+    <Animated.View style={animatedStyle} className={className}>
       <Pressable
         disabled={disabled}
         onPress={onPress}
@@ -26,7 +26,6 @@ export function TapScale({ onPress, children, className = '', disabled = false }
         onPressOut={() => {
           scale.value = withSpring(1, { damping: 18, stiffness: 260 });
         }}
-        className={className}
       >
         {children}
       </Pressable>

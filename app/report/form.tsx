@@ -18,7 +18,7 @@ import {
 } from '@/utils/report-validation';
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, Switch, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ReportFormScreen() {
@@ -163,6 +163,7 @@ export default function ReportFormScreen() {
         onBack={() => router.back()}
       />
 
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
@@ -283,6 +284,7 @@ export default function ReportFormScreen() {
           </Text>
         </Button>
       </View>
+      </KeyboardAvoidingView>
     </SafeScreen>
   );
 }
