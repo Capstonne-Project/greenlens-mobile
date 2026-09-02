@@ -31,6 +31,9 @@ interface ReportLocationPanelProps {
   onMapPress: (coordinate: LatLng) => void;
   onLocatePress: () => void;
   onPermissionPress: () => void;
+  /** Chặn ScrollView cha cuộn trong lúc ngón tay đang kéo/zoom map — tránh map bị "nuốt" pan gesture. */
+  onMapTouchStart?: () => void;
+  onMapTouchEnd?: () => void;
 }
 
 // `id`/`key` PHẢI ổn định (không phụ thuộc provinceCode/wardCode) — nếu đổi theo code, mỗi lần
@@ -82,6 +85,8 @@ export function ReportLocationPanel({
   onMapPress,
   onLocatePress,
   onPermissionPress,
+  onMapTouchStart,
+  onMapTouchEnd,
 }: ReportLocationPanelProps) {
   return (
     <View className="gap-5">
@@ -133,7 +138,12 @@ export function ReportLocationPanel({
         </View>
       </View>
 
-      <View className="overflow-hidden rounded-2xl border border-border">
+      <View
+        className="overflow-hidden rounded-2xl border border-border"
+        onTouchStart={onMapTouchStart}
+        onTouchEnd={onMapTouchEnd}
+        onTouchCancel={onMapTouchEnd}
+      >
         <GoongMapView
           ref={mapRef}
           style={{ height: 280, width: '100%' }}

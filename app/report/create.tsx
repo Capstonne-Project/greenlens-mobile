@@ -143,6 +143,9 @@ export default function ReportCreateWizardScreen() {
     apply: () => void;
   } | null>(null);
   const mapRef = useRef<GoongMapViewRef>(null);
+  // Khoá cuộn ScrollView khi ngón tay đang thao tác trên map — MapView là native view thuần,
+  // không tự "thắng" được pan-responder của ScrollView cha nên phải chặn thủ công.
+  const [mapScrollLocked, setMapScrollLocked] = useState(false);
   const mapRegion: Region = {
     latitude: 10.7769,
     longitude: 106.7009,
@@ -1093,6 +1096,7 @@ export default function ReportCreateWizardScreen() {
         className="flex-1"
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={!mapScrollLocked}
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 14,
@@ -1219,6 +1223,8 @@ export default function ReportCreateWizardScreen() {
             onMapPress={(coordinate) => void handleMapPress(coordinate)}
             onLocatePress={() => void handleLocatePress()}
             onPermissionPress={() => void handlePermissionPress()}
+            onMapTouchStart={() => setMapScrollLocked(true)}
+            onMapTouchEnd={() => setMapScrollLocked(false)}
           />
         </ReportFormSection>
 

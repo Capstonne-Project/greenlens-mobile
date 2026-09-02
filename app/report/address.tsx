@@ -37,6 +37,9 @@ export default function ReportAddressScreen() {
     refetchWards,
   } = useCatalogAddress();
   const { location: userLocation, refreshLocation } = useUserMapLocation();
+  // Khoá cuộn ScrollView khi ngón tay đang thao tác trên map — MapView là native view thuần,
+  // không tự "thắng" được pan-responder của ScrollView cha nên phải chặn thủ công.
+  const [mapScrollLocked, setMapScrollLocked] = useState(false);
 
   const [provinceCode, setProvinceCode] = useState<string | null>(null);
   const [wardCode, setWardCode] = useState<string | null>(null);
@@ -183,6 +186,7 @@ export default function ReportAddressScreen() {
       <ScrollView
         className="flex-1"
         keyboardShouldPersistTaps="handled"
+        scrollEnabled={!mapScrollLocked}
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 16,
@@ -216,6 +220,8 @@ export default function ReportAddressScreen() {
             onWardChange={(code) => void handleWardChange(code)}
             onAddressChange={setAddressLine}
             onMarkerChange={(coords) => void handleMarkerChange(coords)}
+            onMapTouchStart={() => setMapScrollLocked(true)}
+            onMapTouchEnd={() => setMapScrollLocked(false)}
           />
         )}
 

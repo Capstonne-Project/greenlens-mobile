@@ -24,6 +24,9 @@ interface AddressMapCardProps {
   onWardChange: (code: string | null) => void;
   onAddressChange: (value: string) => void;
   onMarkerChange: (coords: LatLng) => void;
+  /** Chặn ScrollView cha cuộn trong lúc ngón tay đang kéo/zoom map — tránh map bị "nuốt" pan gesture. */
+  onMapTouchStart?: () => void;
+  onMapTouchEnd?: () => void;
 }
 
 const DEFAULT_REGION: Region = {
@@ -75,6 +78,8 @@ export function AddressMapCard({
   onWardChange,
   onAddressChange,
   onMarkerChange,
+  onMapTouchStart,
+  onMapTouchEnd,
 }: AddressMapCardProps) {
   const mapRef = useRef<GoongMapViewRef | null>(null);
 
@@ -140,7 +145,12 @@ export function AddressMapCard({
         </View>
       </View>
 
-      <View className="overflow-hidden rounded-2xl border border-border">
+      <View
+        className="overflow-hidden rounded-2xl border border-border"
+        onTouchStart={onMapTouchStart}
+        onTouchEnd={onMapTouchEnd}
+        onTouchCancel={onMapTouchEnd}
+      >
         <GoongMapView
           ref={mapRef}
           style={{ width: '100%', height: 280 }}
