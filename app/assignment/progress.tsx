@@ -32,7 +32,12 @@ import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { colors } from '@/theme/colors';
 import { getCleanupErrorMessage } from '@/utils/cleanup-errors';
 import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
-import { parseLocationFromPickerAsset, type ExifGpsCoords } from '@/utils/exif-location';
+import {
+  ensureMediaLocationPermission,
+  parseLocationFromPickerAsset,
+  readGpsFromFileExif,
+  type ExifGpsCoords,
+} from '@/utils/exif-location';
 import { getProgressTooFarDistanceMeters, isProgressTooFarError } from '@/utils/progress-too-far-error';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -219,11 +224,16 @@ export default function ProgressUpdateScreen() {
   }, []);
 
   const pickImages = useCallback(async () => {
+    // Android 10+ strip GPS khỏi EXIF khi thiếu quyền ACCESS_MEDIA_LOCATION.
+    await ensureMediaLocationPermission();
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       quality: 1,
       exif: true,
+      // Android Photo Picker (mặc định) không bao giờ trả EXIF/GPS dù exif:true.
+      // Ép dùng picker cũ để đọc được GPS EXIF khi chọn ảnh từ thư viện.
+      legacy: true,
     });
     if (result.canceled) return;
 
@@ -233,7 +243,10 @@ export default function ProgressUpdateScreen() {
       const picked = await Promise.all(
         assets.map(async (a) => {
           // Đọc GPS từ EXIF trước khi compress — nén JPEG sẽ strip metadata.
-          const exifCoords = parseLocationFromPickerAsset(a);
+          let exifCoords = parseLocationFromPickerAsset(a);
+          if (!exifCoords) {
+            exifCoords = await readGpsFromFileExif(a.uri);
+          }
           const compressed = await compressImage(a.uri, {
             ...UPLOAD_COMPRESS_PRESET,
             baseName: 'progress',
@@ -257,6 +270,8 @@ export default function ProgressUpdateScreen() {
     }
     // Camera hệ thống chỉ ghi GPS vào EXIF nếu app đã có quyền vị trí — xin trước khi mở camera.
     await Location.requestForegroundPermissionsAsync();
+    // Android 10+ strip GPS khỏi EXIF khi thiếu quyền ACCESS_MEDIA_LOCATION.
+    await ensureMediaLocationPermission();
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       quality: 1,
@@ -268,7 +283,10 @@ export default function ProgressUpdateScreen() {
     try {
       const asset = result.assets[0];
       // Đọc GPS từ EXIF trước khi compress — nén JPEG sẽ strip metadata.
-      const exifCoords = parseLocationFromPickerAsset(asset);
+      let exifCoords = parseLocationFromPickerAsset(asset);
+      if (!exifCoords) {
+        exifCoords = await readGpsFromFileExif(asset.uri);
+      }
       const compressed = await compressImage(asset.uri, {
         ...UPLOAD_COMPRESS_PRESET,
         baseName: 'progress',

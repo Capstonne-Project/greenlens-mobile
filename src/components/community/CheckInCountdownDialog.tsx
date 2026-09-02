@@ -26,7 +26,7 @@ export function CheckInCountdownDialog({ visible, startsAt, onClose }: CheckInCo
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 justify-end">
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 justify-end">
         <Pressable className="absolute inset-0 bg-black/40" onPress={onClose} />
         <View className="rounded-t-2xl bg-white px-4 pt-2" style={{ paddingBottom: insets.bottom + 16 }}>
           <View className="mb-3 items-center">

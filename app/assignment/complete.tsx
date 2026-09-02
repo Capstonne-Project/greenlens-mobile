@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, ScrollView, View } from 'react-native';
@@ -18,11 +19,17 @@ import { cleanupAssignmentService } from '@/services/cleanupAssignment.service';
 import { colors } from '@/theme/colors';
 import { getResolveErrorCode, getResolveErrorMessage } from '@/utils/cleanup-resolve-error';
 import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
+import {
+  ensureMediaLocationPermission,
+  parseLocationFromPickerAsset,
+  readGpsFromFileExif,
+} from '@/utils/exif-location';
 import { firstRouteParam } from '@/utils/field-worker-task';
 
 interface LocalImageFile extends EvidencePhoto {
   mimeType: string;
   fileName: string;
+  hasExifLocation: boolean;
 }
 
 const MIN_AFTER_IMAGES = 2;
@@ -51,17 +58,30 @@ export default function AssignmentCompleteScreen() {
       setApiError(null);
       try {
         const available = MAX_AFTER_IMAGES - images.length;
+        const picked = assets.slice(0, available);
         const compressed = await Promise.all(
-          assets.slice(0, available).map((asset) =>
-            compressImage(asset.uri, {
+          picked.map(async (asset) => {
+            // Đọc GPS từ EXIF trước khi compress — nén JPEG sẽ strip metadata.
+            let exifCoords = parseLocationFromPickerAsset(asset);
+            if (!exifCoords) {
+              exifCoords = await readGpsFromFileExif(asset.uri);
+            }
+            const result = await compressImage(asset.uri, {
               ...UPLOAD_COMPRESS_PRESET,
               baseName: 'after',
               sourceWidth: asset.width,
               sourceHeight: asset.height,
-            }),
-          ),
+            });
+            return { ...result, hasExifLocation: exifCoords !== null };
+          }),
         );
         setImages((current) => [...current, ...compressed].slice(0, MAX_AFTER_IMAGES));
+        if (compressed.some((img) => !img.hasExifLocation)) {
+          Alert.alert(
+            'Ảnh không có vị trí',
+            'Một số ảnh không có GPS trong EXIF. Hãy chắc chắn ảnh được chụp trực tiếp tại hiện trường.',
+          );
+        }
       } catch {
         setApiError('Không thể xử lý ảnh. Vui lòng thử ảnh khác.');
       } finally {
@@ -77,19 +97,30 @@ export default function AssignmentCompleteScreen() {
       setApiError('Cần quyền camera để chụp ảnh sau xử lý.');
       return;
     }
+    // Camera hệ thống chỉ ghi GPS vào EXIF nếu app đã có quyền vị trí — xin trước khi mở camera.
+    await Location.requestForegroundPermissionsAsync();
+    // Android 10+ strip GPS khỏi EXIF khi thiếu quyền ACCESS_MEDIA_LOCATION.
+    await ensureMediaLocationPermission();
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
       quality: 1,
+      exif: true,
     });
     if (!result.canceled) await appendAssets(result.assets);
   }, [appendAssets]);
 
   const chooseLibrary = useCallback(async () => {
+    // Android 10+ strip GPS khỏi EXIF khi thiếu quyền ACCESS_MEDIA_LOCATION.
+    await ensureMediaLocationPermission();
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsMultipleSelection: true,
       selectionLimit: MAX_AFTER_IMAGES - images.length,
       quality: 1,
+      exif: true,
+      // Android Photo Picker (mặc định) không bao giờ trả EXIF/GPS dù exif:true.
+      // Ép dùng picker cũ để đọc được GPS EXIF khi chọn ảnh từ thư viện.
+      legacy: true,
     });
     if (!result.canceled) await appendAssets(result.assets);
   }, [appendAssets, images.length]);

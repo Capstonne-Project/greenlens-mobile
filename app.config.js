@@ -74,6 +74,14 @@ module.exports = ({ config }) => ({
           cameraPermission: 'GreenLens cần camera để chụp ảnh báo cáo tại hiện trường.',
         },
       ],
+      [
+        'expo-media-library',
+        {
+          photosPermission: 'GreenLens cần truy cập thư viện ảnh để chọn minh chứng báo cáo.',
+          savePhotosPermission: 'GreenLens cần lưu ảnh vào thư viện.',
+          isAccessMediaLocationEnabled: true,
+        },
+      ],
       'expo-font',
       'expo-secure-store',
       'expo-web-browser',

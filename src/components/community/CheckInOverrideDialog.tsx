@@ -93,7 +93,7 @@ export function CheckInOverrideDialog({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1 justify-end"
       >
         <Pressable className="absolute inset-0 bg-black/40" onPress={handleClose} />

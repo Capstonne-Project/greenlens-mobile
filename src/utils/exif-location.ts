@@ -1,5 +1,20 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import { gps as exifrGps } from 'exifr';
+
+/**
+ * Android 10+ mặc định strip GPS khỏi EXIF khi đọc ảnh qua content URI (MediaStore) —
+ * quyền `READ_MEDIA_IMAGES`/`requestMediaLibraryPermissionsAsync` của expo-image-picker
+ * KHÔNG bao gồm `ACCESS_MEDIA_LOCATION`. Phải xin riêng qua expo-media-library, nếu không
+ * mọi ảnh (kể cả vừa chụp) sẽ luôn thiếu GPS khi đọc lại trên thiết bị thật.
+ */
+export async function ensureMediaLocationPermission(): Promise<void> {
+  try {
+    await MediaLibrary.requestPermissionsAsync(false);
+  } catch {
+    // Không chặn luồng chọn/chụp ảnh nếu quyền bị từ chối — fallback vẫn cảnh báo thiếu GPS.
+  }
+}
 
 export interface ExifGpsCoords {
   latitude: number;

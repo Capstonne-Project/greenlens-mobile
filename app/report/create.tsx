@@ -35,6 +35,7 @@ import type { PollutionSeverity, ReportLocationDraft } from "@/types/pollution-r
 import { MAX_WASTE_TAG_SELECTION } from "@/types/waste-tag.types";
 import { buildLocationDraftFromCoords } from "@/utils/capture-location";
 import {
+  ensureMediaLocationPermission,
   parseAllLocationsFromPickerAssets,
   parseLocationFromPickerAsset,
   parseLocationFromPickerAssets,
@@ -57,6 +58,7 @@ import { compressImage, UPLOAD_COMPRESS_PRESET } from "@/utils/compress-image";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { router, type Href } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -483,6 +485,10 @@ export default function ReportCreateWizardScreen() {
         Alert.alert("Thiếu quyền camera", "Vui lòng cho phép camera để chụp ảnh.");
         return;
       }
+      // Camera hệ thống chỉ ghi GPS vào EXIF nếu app đã có quyền vị trí — xin trước khi mở camera.
+      await Location.requestForegroundPermissionsAsync();
+      // Android 10+ strip GPS khỏi EXIF khi thiếu quyền ACCESS_MEDIA_LOCATION.
+      await ensureMediaLocationPermission();
 
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ["images"],
@@ -771,6 +777,8 @@ export default function ReportCreateWizardScreen() {
         Alert.alert("Thiếu quyền thư viện", "Vui lòng cho phép truy cập thư viện ảnh.");
         return;
       }
+      // Android 10+ strip GPS khỏi EXIF khi thiếu quyền ACCESS_MEDIA_LOCATION.
+      await ensureMediaLocationPermission();
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],

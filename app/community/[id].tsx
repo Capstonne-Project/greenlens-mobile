@@ -146,6 +146,17 @@ export default function CommunityDetailScreen() {
       coords = { latitude: position.coords.latitude, longitude: position.coords.longitude };
       await communityCleanupService.checkIn(eventId, coords.latitude, coords.longitude);
       showToast('Check-in thành công!', 'success');
+      // Cập nhật ngay để nút check-in bị disable dù refetch chưa kịp phản ánh trạng thái mới.
+      setEvent((prev) =>
+        prev
+          ? {
+              ...prev,
+              myParticipation: prev.myParticipation
+                ? { ...prev.myParticipation, status: 'CheckedIn' }
+                : prev.myParticipation,
+            }
+          : prev,
+      );
       await load();
     } catch (err) {
       if (coords && isCheckInTooFarError(err)) {
@@ -171,6 +182,16 @@ export default function CommunityDetailScreen() {
         );
         setPendingCheckIn(null);
         showToast('Check-in thành công!', 'success');
+        setEvent((prev) =>
+          prev
+            ? {
+                ...prev,
+                myParticipation: prev.myParticipation
+                  ? { ...prev.myParticipation, status: 'CheckedIn' }
+                  : prev.myParticipation,
+              }
+            : prev,
+        );
         await load();
       } catch (err) {
         showToast(getApiErrorMessage(err, 'Không thể check-in. Vui lòng thử lại.'), 'error');

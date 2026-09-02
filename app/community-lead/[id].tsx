@@ -38,7 +38,12 @@ import { compressImage, UPLOAD_COMPRESS_PRESET } from '@/utils/compress-image';
 import { getApiErrorMessage } from '@/utils/api-error-message';
 import { isCheckInTooFarError } from '@/utils/community-checkin-error';
 import { getProgressTooFarDistanceMeters, isProgressTooFarError } from '@/utils/progress-too-far-error';
-import { parseLocationFromPickerAsset, type ExifGpsCoords } from '@/utils/exif-location';
+import {
+  ensureMediaLocationPermission,
+  parseLocationFromPickerAsset,
+  readGpsFromFileExif,
+  type ExifGpsCoords,
+} from '@/utils/exif-location';
 import { firstRouteParam } from '@/utils/field-worker-task';
 import type {
   CommunityCleanupEventDetail,
@@ -88,25 +93,38 @@ async function pickAndCompress(
     if (!permission.granted) throw new Error('CAMERA_PERMISSION_DENIED');
     // Camera hệ thống chỉ ghi GPS vào EXIF nếu app đã có quyền vị trí — xin trước khi mở camera.
     await Location.requestForegroundPermissionsAsync();
+    // Android 10+ strip GPS khỏi EXIF khi thiếu quyền ACCESS_MEDIA_LOCATION.
+    await ensureMediaLocationPermission();
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1, exif: true });
     if (result.canceled) return [];
     const asset = result.assets[0];
     // Đọc GPS từ EXIF trước khi compress — nén JPEG sẽ strip metadata.
-    const exifCoords = parseLocationFromPickerAsset(asset);
+    let exifCoords = parseLocationFromPickerAsset(asset);
+    if (!exifCoords) {
+      exifCoords = await readGpsFromFileExif(asset.uri);
+    }
     const compressed = await compressImage(asset.uri, {
       ...UPLOAD_COMPRESS_PRESET, baseName, sourceWidth: asset.width, sourceHeight: asset.height,
     });
     return [{ ...compressed, exifCoords }];
   }
 
+  // Android 10+ strip GPS khỏi EXIF khi thiếu quyền ACCESS_MEDIA_LOCATION.
+  await ensureMediaLocationPermission();
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'], allowsMultipleSelection: true,
     selectionLimit: Math.max(1, maxCount - currentCount), quality: 1, exif: true,
+    // Android Photo Picker (mặc định) không bao giờ trả EXIF/GPS dù exif:true.
+    // Ép dùng picker cũ để đọc được GPS EXIF khi chọn ảnh từ thư viện.
+    legacy: true,
   });
   if (result.canceled) return [];
   return Promise.all(
     result.assets.slice(0, maxCount - currentCount).map(async (a) => {
-      const exifCoords = parseLocationFromPickerAsset(a);
+      let exifCoords = parseLocationFromPickerAsset(a);
+      if (!exifCoords) {
+        exifCoords = await readGpsFromFileExif(a.uri);
+      }
       const compressed = await compressImage(a.uri, { ...UPLOAD_COMPRESS_PRESET, baseName, sourceWidth: a.width, sourceHeight: a.height });
       return { ...compressed, exifCoords };
     }),
@@ -426,7 +444,7 @@ export default function CommunityLeadWorkspaceScreen() {
         </View>
       ) : event ? (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={insets.top}
           className="flex-1"
         >

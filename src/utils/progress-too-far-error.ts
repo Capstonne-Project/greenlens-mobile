@@ -2,11 +2,16 @@ import { isAxiosError } from 'axios';
 
 export const PROGRESS_TOO_FAR_CODE = 'PROGRESS_TOO_FAR';
 
-/** BE trả message dạng "...cách vị trí yêu cầu {N}m, quá xa..." — tách số mét để hiển thị dialog. */
+/**
+ * BE format khoảng cách theo GeoDistanceFormatting.Format: "{N}m" nếu < 1000m,
+ * "{X.X} km" nếu >= 1000m (VD: "...khoảng 350m..." hoặc "...khoảng 1.5 km...").
+ */
 function parseDistanceMeters(message: string | undefined): number | null {
   if (!message) return null;
-  const match = message.match(/(\d+)\s*m\b/);
-  return match ? parseInt(match[1], 10) : null;
+  const kmMatch = message.match(/(\d+(?:\.\d+)?)\s*km\b/);
+  if (kmMatch) return Math.round(parseFloat(kmMatch[1]) * 1000);
+  const mMatch = message.match(/(\d+)\s*m\b/);
+  return mMatch ? parseInt(mMatch[1], 10) : null;
 }
 
 export function getProgressTooFarDistanceMeters(error: unknown): number | null {

@@ -61,7 +61,11 @@ export default function LedByMeScreen() {
     setError(null);
     try {
       const res = await communityCleanupService.getLedByMe({ page: 1, pageSize: 30 });
-      setItems(res.data.data.items);
+      // Chương trình mới nhất lên đầu — BE chưa trả createdAt nên dùng startsAt làm proxy.
+      const sorted = [...res.data.data.items].sort(
+        (a, b) => new Date(b.startsAt).getTime() - new Date(a.startsAt).getTime(),
+      );
+      setItems(sorted);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Không thể tải danh sách chương trình bạn dẫn dắt.'));
     } finally {

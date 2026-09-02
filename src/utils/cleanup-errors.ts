@@ -14,6 +14,8 @@ const CLEANUP_ERROR_MESSAGES: Record<string, string> = {
   INVALID_STORAGE_URL: 'Đường dẫn tệp không hợp lệ. Vui lòng chụp/tải lại ảnh.',
   NOT_TEAM_LEADER: 'Chỉ trưởng nhóm được thực hiện thao tác này.',
   ASSIGNMENT_NOT_FOUND: 'Không tìm thấy nhiệm vụ.',
+  PROGRESS_LOCATION_REQUIRED:
+    'Không xác định được vị trí ảnh tiến độ. Vui lòng bật GPS khi chụp hoặc dùng ảnh có thông tin vị trí.',
 };
 
 const FALLBACK = 'Không thể gửi cập nhật. Vui lòng thử lại.';
