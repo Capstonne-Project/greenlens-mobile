@@ -34,9 +34,22 @@ export function RouteMiniMap({
   routeColor,
   height = 160,
 }: RouteMiniMapProps) {
-  const latitude = (origin.latitude + destination.latitude) / 2;
-  const longitude = (origin.longitude + destination.longitude) / 2;
-  const latitudeDelta = Math.max(Math.abs(origin.latitude - destination.latitude) * 2.2, 0.006);
+  const points = routePath && routePath.length > 0 ? routePath : [origin, destination];
+  const lats = points.map((p) => p.latitude);
+  const lngs = points.map((p) => p.longitude);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+
+  const latitude = (minLat + maxLat) / 2;
+  const longitude = (minLng + maxLng) / 2;
+
+  // Bao trọn cả route (không chỉ 2 điểm đầu/cuối) theo cả 2 trục, cộng đệm 30% để không cắt sát viền.
+  const latSpan = (maxLat - minLat) * 1.3;
+  // Quy đổi chênh lệch longitude về "độ vĩ tương đương" theo cos(latitude) để không bị lệch gần cực.
+  const lngSpanAsLat = ((maxLng - minLng) * Math.cos((latitude * Math.PI) / 180)) * 1.3;
+  const latitudeDelta = Math.max(latSpan, lngSpanAsLat, 0.006);
 
   const lineCoords = (routePath ?? [origin, destination]).map((p) => [p.longitude, p.latitude]);
 

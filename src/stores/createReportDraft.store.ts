@@ -20,7 +20,6 @@ interface CreateReportDraftState {
   description: string;
   tags: string[];
   wasteTagIds: string[];
-  isAnonymous: boolean;
   submittedReportCode: string | null;
   slaVerifyDueAt: string | null;
   // AI analysis
@@ -48,7 +47,6 @@ interface CreateReportDraftState {
   addTag: (tag: string) => void;
   removeTag: (tag: string) => void;
   toggleWasteTag: (tagId: string) => void;
-  setIsAnonymous: (isAnonymous: boolean) => void;
   setSubmissionResult: (code: string, slaVerifyDueAt: string | null) => void;
   setUseAi: (useAi: boolean) => void;
   setAiResult: (
@@ -72,8 +70,6 @@ const initialState = {
   description: '',
   tags: [] as string[],
   wasteTagIds: [] as string[],
-  // Mặc định TẮT ẩn danh — người dùng chủ động bật nếu muốn giấu danh tính.
-  isAnonymous: false,
   submittedReportCode: null as string | null,
   slaVerifyDueAt: null as string | null,
   useAi: true,
@@ -149,8 +145,6 @@ export const useCreateReportDraftStore = create<CreateReportDraftState>((set) =>
       }
       return { wasteTagIds: [...state.wasteTagIds, tagId] };
     }),
-
-  setIsAnonymous: (isAnonymous) => set({ isAnonymous }),
 
   setSubmissionResult: (code, slaVerifyDueAt) =>
     set({ submittedReportCode: code, slaVerifyDueAt }),

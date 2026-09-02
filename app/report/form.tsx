@@ -9,7 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { usePollutionCategories } from '@/hooks/usePollutionCategories';
 import { useSubmitPollutionReport } from '@/hooks/useSubmitPollutionReport';
-import { useAuthStore } from '@/stores/auth.store';
 import { useCreateReportDraftStore } from '@/stores/createReportDraft.store';
 import {
   REPORT_DESCRIPTION_MAX_LENGTH,
@@ -18,7 +17,7 @@ import {
 } from '@/utils/report-validation';
 import { router, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, Switch, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ReportFormScreen() {
@@ -29,12 +28,9 @@ export default function ReportFormScreen() {
   const categoryId = useCreateReportDraftStore((state) => state.categoryId);
   const severity = useCreateReportDraftStore((state) => state.severity);
   const description = useCreateReportDraftStore((state) => state.description);
-  const isAnonymous = useCreateReportDraftStore((state) => state.isAnonymous);
   const setCategoryId = useCreateReportDraftStore((state) => state.setCategoryId);
   const setSeverity = useCreateReportDraftStore((state) => state.setSeverity);
   const setDescription = useCreateReportDraftStore((state) => state.setDescription);
-  const setIsAnonymous = useCreateReportDraftStore((state) => state.setIsAnonymous);
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const {
     isUploading,
     isSubmitting,
@@ -71,12 +67,6 @@ export default function ReportFormScreen() {
       router.replace('/(tabs)/create' as Href);
     }
   }, [location]);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      setIsAnonymous(false);
-    }
-  }, [isAuthenticated, setIsAnonymous]);
 
   const handleSubmit = useCallback(async () => {
     if (!categoryId || !severity) {
@@ -243,23 +233,6 @@ export default function ReportFormScreen() {
             </Text>
           </View>
         </ReportSectionCard>
-
-        <View className="flex-row items-center justify-between rounded-3xl border border-border bg-white px-4 py-4">
-          <View className="flex-1 pr-4">
-            <Text className="text-base font-semibold text-textPrimary">Gửi ẩn danh</Text>
-            <Text className="mt-1 text-sm text-textSecondary">
-              {isAuthenticated
-                ? 'Tắt để gắn tài khoản của bạn với báo cáo.'
-                : 'Bật để gửi báo cáo mà không đăng nhập.'}
-            </Text>
-          </View>
-          <Switch
-            value={isAnonymous}
-            onValueChange={setIsAnonymous}
-            trackColor={{ false: '#D1D5DB', true: '#6EE7B7' }}
-            thumbColor={isAnonymous ? '#10B981' : '#FFFFFF'}
-          />
-        </View>
 
         {hasUploadAttempt && images.some((image) => image.uploadStatus === 'error') ? (
           <View className="rounded-2xl border border-error/20 bg-error/10 px-4 py-3">

@@ -124,7 +124,6 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
   const description = useCreateReportDraftStore((state) => state.description);
   const wasteTagIds = useCreateReportDraftStore((state) => state.wasteTagIds);
   const tempImageId = useCreateReportDraftStore((state) => state.tempImageId);
-  const isAnonymous = useCreateReportDraftStore((state) => state.isAnonymous);
   const updateImage = useCreateReportDraftStore((state) => state.updateImage);
   const setSubmissionResult = useCreateReportDraftStore((state) => state.setSubmissionResult);
   const clearFieldError = useCallback((field: keyof FieldErrors) => {
@@ -272,7 +271,7 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
       address: location.address?.trim() || undefined,
       provinceCode: location.provinceCode,
       wardCode: location.wardCode,
-      hideReporterName: isAnonymous,
+      hideReporterName: false,
       images: uploadedImages.map((image) => ({
         url: image.url as string,
         key: image.key,
@@ -355,7 +354,6 @@ export function useSubmitPollutionReport(): UseSubmitPollutionReportResult {
     categoryId,
     severity,
     description,
-    isAnonymous,
     setSubmissionResult,
     tempImageId,
     wasteTagIds,

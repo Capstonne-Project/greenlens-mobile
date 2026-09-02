@@ -21,8 +21,7 @@ export type ReportFormSectionId =
   | 'category'
   | 'location'
   | 'description'
-  | 'waste'
-  | 'privacy';
+  | 'waste';
 
 interface ReportFormSectionProps {
   icon: keyof typeof Ionicons.glyphMap;

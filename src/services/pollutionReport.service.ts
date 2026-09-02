@@ -2,8 +2,6 @@ import { api } from '@/services/api';
 import type { ApiEnvelope } from '@/types/api.types';
 import type {
   AiAnalyzeResponse,
-  CheckExifLocationData,
-  CheckExifLocationRequest,
   MediaUploadPurpose,
   PresignMediaUploadResult,
   SubmitPollutionReportPayload,
@@ -299,11 +297,5 @@ export const pollutionReportService = {
   submit: (payload: SubmitPollutionReportPayload) =>
     api.post<ApiEnvelope<SubmitPollutionReportResult>>('/reports', payload, {
       timeout: 45_000,
-    }),
-
-  /** Cảnh báo trước submit khi pin map lệch xa GPS EXIF của ảnh — không chặn ở BE, FE tự quyết định UX. */
-  checkExifLocation: (payload: CheckExifLocationRequest) =>
-    api.post<ApiEnvelope<CheckExifLocationData>>('/reports/check-exif-location', payload, {
-      timeout: 30_000,
     }),
 };

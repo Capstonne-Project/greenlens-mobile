@@ -29,14 +29,9 @@ import { useSubmitPollutionReport } from "@/hooks/useSubmitPollutionReport";
 import { useWasteTags } from "@/hooks/useWasteTags";
 import { useReportLocationMapCamera } from "@/hooks/useReportLocationMapCamera";
 import { useUserMapLocation } from "@/hooks/useUserMapLocation";
-import { pollutionReportService } from "@/services/pollutionReport.service";
 import { useCreateReportDraftStore } from "@/stores/createReportDraft.store";
 import { colors } from "@/theme/colors";
-import type {
-  CheckExifLocationRequest,
-  PollutionSeverity,
-  ReportLocationDraft,
-} from "@/types/pollution-report.types";
+import type { PollutionSeverity, ReportLocationDraft } from "@/types/pollution-report.types";
 import { MAX_WASTE_TAG_SELECTION } from "@/types/waste-tag.types";
 import { buildLocationDraftFromCoords } from "@/utils/capture-location";
 import {
@@ -72,7 +67,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Switch,
   TextInput,
   TouchableOpacity,
   View,
@@ -95,68 +89,16 @@ function isFarFromExif(
   return haversineKm(exif.latitude, exif.longitude, point.latitude, point.longitude) > LOCATION_OVERRIDE_THRESHOLD_KM;
 }
 
-/** Ảnh đại diện dùng để verify lệch vị trí — ưu tiên ảnh đã AI-analyze (tempImageId),
- * fallback ảnh đầu tiên đã upload xong lên R2 (có url/key). */
-function buildCheckExifLocationRequest(
-  point: { latitude: number; longitude: number },
-): CheckExifLocationRequest | null {
-  const state = useCreateReportDraftStore.getState();
-  const { latitude, longitude } = point;
+type LocationOverrideEvaluation = { kind: "ok" } | { kind: "warn" };
 
-  if (state.tempImageId) {
-    return { latitude, longitude, tempImageId: state.tempImageId };
-  }
-
-  const uploaded = state.images.find(
-    (image) => image.uploadStatus === "done" && image.url && image.key,
-  );
-  if (uploaded?.url && uploaded.key) {
-    return {
-      latitude,
-      longitude,
-      publicUrl: uploaded.url,
-      key: uploaded.key,
-      fileName: uploaded.fileName ?? uploaded.key.split("/").pop() ?? "report.jpg",
-      contentType: uploaded.mimeType ?? "image/jpeg",
-      sizeBytes: uploaded.sizeBytes ?? 0,
-    };
-  }
-
-  return null;
-}
-
-type LocationOverrideEvaluation =
-  | { kind: "ok" }
-  | { kind: "warn"; blocked: boolean; distanceMeters: number | null };
-
-/** Gọi BE `check-exif-location` khi đã có ảnh sẵn sàng; nếu chưa có ảnh nào upload xong
- * (chưa gọi được BE), fallback so khoảng cách client-side như cũ (chế độ hỏi, không chặn cứng). */
-async function evaluateLocationChange(
+/** So sánh khoảng cách hoàn toàn client-side với GPS EXIF đọc từ ảnh gốc (trước khi nén/upload) —
+ * ảnh nén gửi lên R2 luôn bị xoá EXIF nên không thể verify khoảng cách này ở BE. Chỉ cảnh báo,
+ * không chặn submit — quyết định luôn thuộc về user. */
+function evaluateLocationChange(
   exif: { latitude: number; longitude: number } | null,
   point: { latitude: number; longitude: number },
-): Promise<LocationOverrideEvaluation> {
-  if (!exif) return { kind: "ok" };
-
-  const request = buildCheckExifLocationRequest(point);
-  if (!request) {
-    return isFarFromExif(exif, point)
-      ? { kind: "warn", blocked: false, distanceMeters: null }
-      : { kind: "ok" };
-  }
-
-  try {
-    const response = await pollutionReportService.checkExifLocation(request);
-    const data = response.data.data;
-    if (!data || !data.hasExifGps) return { kind: "ok" };
-    if (!data.shouldWarn) return { kind: "ok" };
-    return { kind: "warn", blocked: true, distanceMeters: data.distanceMeters };
-  } catch (error) {
-    if (__DEV__) console.log("[evaluateLocationChange] check-exif-location failed", error);
-    // BE không khả dụng — fallback về so sánh client-side, không chặn cứng.
-    return isFarFromExif(exif, point)
-      ? { kind: "warn", blocked: false, distanceMeters: null }
-      : { kind: "ok" };
-  }
+): LocationOverrideEvaluation {
+  return isFarFromExif(exif, point) ? { kind: "warn" } : { kind: "ok" };
 }
 
 function delay(ms: number): Promise<void> {
@@ -196,8 +138,6 @@ export default function ReportCreateWizardScreen() {
   const [pendingLocationOverride, setPendingLocationOverride] = useState<{
     newLocation: { latitude: number; longitude: number };
     apply: () => void;
-    blocked: boolean;
-    distanceMeters: number | null;
   } | null>(null);
   const mapRef = useRef<GoongMapViewRef>(null);
   const mapRegion: Region = {
@@ -215,7 +155,6 @@ export default function ReportCreateWizardScreen() {
   const description = useCreateReportDraftStore((s) => s.description);
   const tags = useCreateReportDraftStore((s) => s.tags);
   const wasteTagIds = useCreateReportDraftStore((s) => s.wasteTagIds);
-  const isAnonymous = useCreateReportDraftStore((s) => s.isAnonymous);
 
   const setSource = useCreateReportDraftStore((s) => s.setSource);
   const setImages = useCreateReportDraftStore((s) => s.setImages);
@@ -226,7 +165,6 @@ export default function ReportCreateWizardScreen() {
   const setCategoryId = useCreateReportDraftStore((s) => s.setCategoryId);
   const setSeverity = useCreateReportDraftStore((s) => s.setSeverity);
   const setDescription = useCreateReportDraftStore((s) => s.setDescription);
-  const setIsAnonymous = useCreateReportDraftStore((s) => s.setIsAnonymous);
   const addTag = useCreateReportDraftStore((s) => s.addTag);
   const removeTag = useCreateReportDraftStore((s) => s.removeTag);
   const toggleWasteTag = useCreateReportDraftStore((s) => s.toggleWasteTag);
@@ -400,9 +338,6 @@ export default function ReportCreateWizardScreen() {
     wasteTagIds.length > 0 || tags.length > 0
       ? `${wasteTagIds.length} loại rác${tags.length > 0 ? ` · ${tags.length} tag` : ""}`
       : "Chọn loại rác (tuỳ chọn)";
-  const privacySubtitle = isAnonymous
-    ? "Gửi ẩn danh — không gắn tài khoản"
-    : "Gắn tài khoản với báo cáo";
 
   const openIncompleteSection = useCallback(() => {
     if (!imagesComplete) {
@@ -539,7 +474,7 @@ export default function ReportCreateWizardScreen() {
     ];
   }, [images.length, submitPhase, uploadDone]);
 
-  const handlePickCamera = useCallback(async () => {
+  const handlePickCamera = useCallback(async (runAi: boolean = useAi) => {
     setIsPicking(true);
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -598,7 +533,7 @@ export default function ReportCreateWizardScreen() {
       // Step 1: upload Mobile → R2 (presign + PUT). AI classify only if toggle on.
       setAnalyzingImageUri(compressed.uri);
       const outcome = await prepareImage(compressed.uri, mimeType, compressed.fileName, {
-        runAi: useAi,
+        runAi,
       });
       setAnalyzingImageUri(null);
       if (outcome === "error") {
@@ -705,14 +640,12 @@ export default function ReportCreateWizardScreen() {
       };
 
       const exif = useCreateReportDraftStore.getState().exifLocation;
-      const evaluation = await evaluateLocationChange(exif, coordinate);
+      const evaluation = evaluateLocationChange(exif, coordinate);
       if (__DEV__) console.log('[handleMapPress] exif:', exif, 'newPoint:', coordinate, 'evaluation:', evaluation);
       if (evaluation.kind === "warn") {
         setPendingLocationOverride({
           newLocation: coordinate,
           apply: () => void commit(),
-          blocked: evaluation.blocked,
-          distanceMeters: evaluation.distanceMeters,
         });
         return;
       }
@@ -780,13 +713,11 @@ export default function ReportCreateWizardScreen() {
   const applyGpsLocation = useCallback(
     async (coords: { latitude: number; longitude: number }) => {
       const exif = useCreateReportDraftStore.getState().exifLocation;
-      const evaluation = await evaluateLocationChange(exif, coords);
+      const evaluation = evaluateLocationChange(exif, coords);
       if (evaluation.kind === "warn") {
         setPendingLocationOverride({
           newLocation: coords,
           apply: () => void commitGpsLocation(coords),
-          blocked: evaluation.blocked,
-          distanceMeters: evaluation.distanceMeters,
         });
         return;
       }
@@ -824,7 +755,7 @@ export default function ReportCreateWizardScreen() {
     }
   }, [applyGpsLocation, ensurePermission, refreshLocation]);
 
-  const handlePickLibrary = useCallback(async () => {
+  const handlePickLibrary = useCallback(async (runAi: boolean = useAi) => {
     if (isPicking || isAnalyzing || pendingAiPick !== null) return;
     setIsPicking(true);
     try {
@@ -840,6 +771,9 @@ export default function ReportCreateWizardScreen() {
         selectionLimit: 5,
         quality: 1,
         exif: true,
+        // Android Photo Picker (mặc định) không bao giờ trả EXIF/GPS dù exif:true.
+        // Ép dùng picker cũ để đọc được GPS EXIF khi chọn ảnh từ thư viện.
+        legacy: true,
       });
       if (result.canceled || !result.assets.length) return;
 
@@ -889,7 +823,7 @@ export default function ReportCreateWizardScreen() {
       setImages(drafted);
 
       // Nhiều ảnh + AI bật → không tự đoán ảnh nào, để user chọn ảnh detect.
-      if (useAi && drafted.length > 1) {
+      if (runAi && drafted.length > 1) {
         const uploadResults = await Promise.all(
           drafted.map((img) => uploadDraftImage(img.localUri, img.mimeType, img.fileName)),
         );
@@ -911,7 +845,7 @@ export default function ReportCreateWizardScreen() {
       );
       if (first) setAnalyzingImageUri(first.localUri);
       const firstOutcome = first
-        ? await prepareImage(first.localUri, first.mimeType, first.fileName, { runAi: useAi })
+        ? await prepareImage(first.localUri, first.mimeType, first.fileName, { runAi })
         : null;
       setAnalyzingImageUri(null);
       const restResults = await restPromise;
@@ -1172,8 +1106,14 @@ export default function ReportCreateWizardScreen() {
 
             <ReportGalleryShelf
               items={galleryItems}
-              onOpenCamera={() => void handlePickCamera()}
-              onOpenLibrary={() => void handlePickLibrary()}
+              onOpenCamera={() => {
+                setUseAi(false);
+                void handlePickCamera(false);
+              }}
+              onOpenLibrary={() => {
+                setUseAi(false);
+                void handlePickLibrary(false);
+              }}
               onRemoveItem={(uri) => {
                 removeImage(uri);
                 clearAiResult();
@@ -1341,27 +1281,6 @@ export default function ReportCreateWizardScreen() {
           </View>
         </ReportFormSection>
 
-        <ReportFormSection
-          icon="person-outline"
-          title="Chế độ gửi"
-          subtitle={privacySubtitle}
-          expanded={expandedSection === "privacy"}
-          completed
-          onToggle={() => toggleSection("privacy")}
-        >
-          <View className="flex-row items-center justify-between rounded-2xl bg-surface px-3 py-3">
-            <View className="flex-1 pr-4">
-              <Text className="text-[15px] font-semibold text-textPrimary">Gửi ẩn danh</Text>
-              <Text className="mt-0.5 text-sm text-textSecondary">Tắt để gắn tài khoản với báo cáo.</Text>
-            </View>
-            <Switch
-              value={isAnonymous}
-              onValueChange={setIsAnonymous}
-              trackColor={{ false: colors.border, true: colors.primaryLight }}
-              thumbColor={isAnonymous ? colors.primary : colors.white}
-            />
-          </View>
-        </ReportFormSection>
       </ScrollView>
 
       <ReportFormSubmitBar
@@ -1389,11 +1308,11 @@ export default function ReportCreateWizardScreen() {
         visible={showSourceSheet}
         onCamera={() => {
           setShowSourceSheet(false);
-          void handlePickCamera();
+          void handlePickCamera(true);
         }}
         onLibrary={() => {
           setShowSourceSheet(false);
-          void handlePickLibrary();
+          void handlePickLibrary(true);
         }}
         onClose={() => setShowSourceSheet(false)}
       />
@@ -1619,8 +1538,6 @@ export default function ReportCreateWizardScreen() {
         visible={pendingLocationOverride !== null}
         exifLocation={exifLocation}
         newLocation={pendingLocationOverride?.newLocation ?? null}
-        blocked={pendingLocationOverride?.blocked ?? false}
-        distanceMeters={pendingLocationOverride?.distanceMeters ?? null}
         onKeepNew={handleKeepNewLocation}
         onRestoreExif={() => void handleRestoreExifLocation()}
       />
