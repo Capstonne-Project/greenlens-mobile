@@ -1,3 +1,6 @@
+import * as FileSystem from 'expo-file-system/legacy';
+import { gps as exifrGps } from 'exifr';
+
 export interface ExifGpsCoords {
   latitude: number;
   longitude: number;
@@ -100,6 +103,48 @@ export function parseLocationFromPickerAsset(asset: ImageAssetGpsSource): ExifGp
   }
 
   return parseExifGps(asset.exif ?? null);
+}
+
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const clean = base64.replace(/[^A-Za-z0-9+/]/g, '');
+  const byteLength = Math.floor((clean.length * 6) / 8);
+  const bytes = new Uint8Array(byteLength);
+  let byteIndex = 0;
+  let buffer = 0;
+  let bufferBits = 0;
+
+  for (let i = 0; i < clean.length; i++) {
+    const value = BASE64_CHARS.indexOf(clean[i]);
+    if (value === -1) continue;
+    buffer = (buffer << 6) | value;
+    bufferBits += 6;
+    if (bufferBits >= 8) {
+      bufferBits -= 8;
+      bytes[byteIndex++] = (buffer >> bufferBits) & 0xff;
+    }
+  }
+  return bytes;
+}
+
+/**
+ * Đọc GPS trực tiếp từ file ảnh gốc (không qua field `exif` của ImagePicker) bằng exifr.
+ * `expo-image-picker` trên Android nhiều khi trả `exif: null`/thiếu GPS dù ảnh gốc có metadata
+ * (OEM/Android version khác nhau) — đọc thẳng bytes ảnh đáng tin cậy hơn nhiều.
+ */
+export async function readGpsFromFileExif(fileUri: string): Promise<ExifGpsCoords | null> {
+  try {
+    const base64 = await FileSystem.readAsStringAsync(fileUri, { encoding: 'base64' });
+    const bytes = base64ToUint8Array(base64);
+    const result = await exifrGps(bytes);
+    if (!result) return null;
+    const { latitude, longitude } = result;
+    if (!isValidCoords(latitude, longitude)) return null;
+    return { latitude, longitude };
+  } catch {
+    return null;
+  }
 }
 
 /** Lấy GPS từ ảnh đầu tiên trong selection có metadata vị trí. */

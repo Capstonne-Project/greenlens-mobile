@@ -38,6 +38,7 @@ import {
   parseAllLocationsFromPickerAssets,
   parseLocationFromPickerAsset,
   parseLocationFromPickerAssets,
+  readGpsFromFileExif,
 } from "@/utils/exif-location";
 import { enrichLocationWithGoong, enrichLocationWithGoongFallback } from "@/utils/goong-admin-match";
 import { haversineKm } from "@/utils/geo";
@@ -495,25 +496,31 @@ export default function ReportCreateWizardScreen() {
 
       // Đọc GPS từ EXIF trước khi compress (nén JPEG sẽ strip metadata).
       // Chỉ dùng vị trí của ảnh — không fallback sang GPS hiện tại của thiết bị.
-      const exifCoords = parseLocationFromPickerAsset(asset);
+      // ImagePicker.exif trên Android nhiều máy trả null/thiếu GPS dù ảnh gốc có metadata,
+      // nên đọc thẳng bytes file bằng exifr làm phương án chính khi field exif rỗng.
+      let exifCoords = parseLocationFromPickerAsset(asset);
+      if (!exifCoords) {
+        exifCoords = await readGpsFromFileExif(asset.uri);
+      }
       if (__DEV__) console.log('[handlePickCamera] exifCoords:', exifCoords);
 
-      if (!exifCoords) {
-        Alert.alert(
-          "Thiếu vị trí",
-          "Ảnh không có GPS trong EXIF. Vui lòng bật định vị camera hoặc chọn ảnh khác có vị trí.",
-        );
-        return;
-      }
-
-      const captured = await buildLocationDraftFromCoords(exifCoords);
-      const resolved =
-        provinces.length > 0 ? await enrichLocationWithGoong(captured, provinces) : captured;
-
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await Haptics.notificationAsync(
+        exifCoords ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
+      );
       setSource("camera");
-      setLocation(resolved);
       setExifLocation(exifCoords);
+
+      if (exifCoords) {
+        const captured = await buildLocationDraftFromCoords(exifCoords);
+        const resolved =
+          provinces.length > 0 ? await enrichLocationWithGoong(captured, provinces) : captured;
+        setLocation(resolved);
+      } else {
+        Alert.alert(
+          "Không đọc được vị trí ảnh",
+          "Ảnh không có GPS trong EXIF. Vui lòng chọn vị trí thủ công trên bản đồ bên dưới.",
+        );
+      }
       let compressed;
       try {
         // compressImage encode JPEG mới → EXIF bị xóa trước khi upload R2.
@@ -782,7 +789,15 @@ export default function ReportCreateWizardScreen() {
       // Parse GPS từ ảnh gốc trước khi compress strip EXIF — lấy TẤT CẢ ảnh có GPS,
       // không chỉ ảnh đầu, để có thể fallback sang ảnh khác nếu reverse-geocode ảnh đầu
       // không ra được tỉnh/phường (vùng Goong không phủ, lỗi mạng tạm thời, …).
-      const allExifCoords = parseAllLocationsFromPickerAssets(result.assets);
+      let allExifCoords = parseAllLocationsFromPickerAssets(result.assets);
+      // ImagePicker.exif trên Android nhiều máy trả null/thiếu GPS dù ảnh gốc có metadata
+      // (kể cả với legacy picker) — đọc thẳng bytes file bằng exifr làm phương án chính.
+      if (allExifCoords.length === 0) {
+        const fileExifResults = await Promise.all(
+          result.assets.map((asset) => readGpsFromFileExif(asset.uri)),
+        );
+        allExifCoords = fileExifResults.filter((c): c is NonNullable<typeof c> => c !== null);
+      }
       const exifCoords = allExifCoords[0] ?? null;
       if (__DEV__) console.log('[handlePickLibrary] allExifCoords:', allExifCoords, 'chosen:', exifCoords);
       setExifLocation(exifCoords);
@@ -795,6 +810,11 @@ export default function ReportCreateWizardScreen() {
             ? await enrichLocationWithGoongFallback(candidates, provinces)
             : candidates[0];
         setLocation(resolved);
+      } else {
+        Alert.alert(
+          "Không đọc được vị trí ảnh",
+          "Ảnh không có GPS trong EXIF. Vui lòng chọn vị trí thủ công trên bản đồ bên dưới.",
+        );
       }
 
       let drafted;
