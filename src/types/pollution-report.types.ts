@@ -118,6 +118,33 @@ export interface UploadReportImageResult {
   sizeBytes: number;
 }
 
+export type CheckExifLocationRequest =
+  | {
+      latitude: number;
+      longitude: number;
+      tempImageId: string;
+    }
+  | {
+      latitude: number;
+      longitude: number;
+      publicUrl: string;
+      key: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+    };
+
+export interface CheckExifLocationData {
+  hasExifGps: boolean;
+  exifLatitude: number | null;
+  exifLongitude: number | null;
+  selectedLatitude: number;
+  selectedLongitude: number;
+  distanceMeters: number | null;
+  thresholdMeters: number;
+  shouldWarn: boolean;
+}
+
 export type MediaUploadPurpose =
   | 'ReportImage'
   | 'Before'

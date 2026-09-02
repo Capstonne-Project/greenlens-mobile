@@ -29,9 +29,14 @@ import { useSubmitPollutionReport } from "@/hooks/useSubmitPollutionReport";
 import { useWasteTags } from "@/hooks/useWasteTags";
 import { useReportLocationMapCamera } from "@/hooks/useReportLocationMapCamera";
 import { useUserMapLocation } from "@/hooks/useUserMapLocation";
+import { pollutionReportService } from "@/services/pollutionReport.service";
 import { useCreateReportDraftStore } from "@/stores/createReportDraft.store";
 import { colors } from "@/theme/colors";
-import type { PollutionSeverity, ReportLocationDraft } from "@/types/pollution-report.types";
+import type {
+  CheckExifLocationRequest,
+  PollutionSeverity,
+  ReportLocationDraft,
+} from "@/types/pollution-report.types";
 import { MAX_WASTE_TAG_SELECTION } from "@/types/waste-tag.types";
 import { buildLocationDraftFromCoords } from "@/utils/capture-location";
 import {
@@ -90,6 +95,70 @@ function isFarFromExif(
   return haversineKm(exif.latitude, exif.longitude, point.latitude, point.longitude) > LOCATION_OVERRIDE_THRESHOLD_KM;
 }
 
+/** Ảnh đại diện dùng để verify lệch vị trí — ưu tiên ảnh đã AI-analyze (tempImageId),
+ * fallback ảnh đầu tiên đã upload xong lên R2 (có url/key). */
+function buildCheckExifLocationRequest(
+  point: { latitude: number; longitude: number },
+): CheckExifLocationRequest | null {
+  const state = useCreateReportDraftStore.getState();
+  const { latitude, longitude } = point;
+
+  if (state.tempImageId) {
+    return { latitude, longitude, tempImageId: state.tempImageId };
+  }
+
+  const uploaded = state.images.find(
+    (image) => image.uploadStatus === "done" && image.url && image.key,
+  );
+  if (uploaded?.url && uploaded.key) {
+    return {
+      latitude,
+      longitude,
+      publicUrl: uploaded.url,
+      key: uploaded.key,
+      fileName: uploaded.fileName ?? uploaded.key.split("/").pop() ?? "report.jpg",
+      contentType: uploaded.mimeType ?? "image/jpeg",
+      sizeBytes: uploaded.sizeBytes ?? 0,
+    };
+  }
+
+  return null;
+}
+
+type LocationOverrideEvaluation =
+  | { kind: "ok" }
+  | { kind: "warn"; blocked: boolean; distanceMeters: number | null };
+
+/** Gọi BE `check-exif-location` khi đã có ảnh sẵn sàng; nếu chưa có ảnh nào upload xong
+ * (chưa gọi được BE), fallback so khoảng cách client-side như cũ (chế độ hỏi, không chặn cứng). */
+async function evaluateLocationChange(
+  exif: { latitude: number; longitude: number } | null,
+  point: { latitude: number; longitude: number },
+): Promise<LocationOverrideEvaluation> {
+  if (!exif) return { kind: "ok" };
+
+  const request = buildCheckExifLocationRequest(point);
+  if (!request) {
+    return isFarFromExif(exif, point)
+      ? { kind: "warn", blocked: false, distanceMeters: null }
+      : { kind: "ok" };
+  }
+
+  try {
+    const response = await pollutionReportService.checkExifLocation(request);
+    const data = response.data.data;
+    if (!data || !data.hasExifGps) return { kind: "ok" };
+    if (!data.shouldWarn) return { kind: "ok" };
+    return { kind: "warn", blocked: true, distanceMeters: data.distanceMeters };
+  } catch (error) {
+    if (__DEV__) console.log("[evaluateLocationChange] check-exif-location failed", error);
+    // BE không khả dụng — fallback về so sánh client-side, không chặn cứng.
+    return isFarFromExif(exif, point)
+      ? { kind: "warn", blocked: false, distanceMeters: null }
+      : { kind: "ok" };
+  }
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -127,6 +196,8 @@ export default function ReportCreateWizardScreen() {
   const [pendingLocationOverride, setPendingLocationOverride] = useState<{
     newLocation: { latitude: number; longitude: number };
     apply: () => void;
+    blocked: boolean;
+    distanceMeters: number | null;
   } | null>(null);
   const mapRef = useRef<GoongMapViewRef>(null);
   const mapRegion: Region = {
@@ -634,10 +705,15 @@ export default function ReportCreateWizardScreen() {
       };
 
       const exif = useCreateReportDraftStore.getState().exifLocation;
-      const far = isFarFromExif(exif, coordinate);
-      if (__DEV__) console.log('[handleMapPress] exif:', exif, 'newPoint:', coordinate, 'far:', far);
-      if (far) {
-        setPendingLocationOverride({ newLocation: coordinate, apply: () => void commit() });
+      const evaluation = await evaluateLocationChange(exif, coordinate);
+      if (__DEV__) console.log('[handleMapPress] exif:', exif, 'newPoint:', coordinate, 'evaluation:', evaluation);
+      if (evaluation.kind === "warn") {
+        setPendingLocationOverride({
+          newLocation: coordinate,
+          apply: () => void commit(),
+          blocked: evaluation.blocked,
+          distanceMeters: evaluation.distanceMeters,
+        });
         return;
       }
 
@@ -704,8 +780,14 @@ export default function ReportCreateWizardScreen() {
   const applyGpsLocation = useCallback(
     async (coords: { latitude: number; longitude: number }) => {
       const exif = useCreateReportDraftStore.getState().exifLocation;
-      if (isFarFromExif(exif, coords)) {
-        setPendingLocationOverride({ newLocation: coords, apply: () => void commitGpsLocation(coords) });
+      const evaluation = await evaluateLocationChange(exif, coords);
+      if (evaluation.kind === "warn") {
+        setPendingLocationOverride({
+          newLocation: coords,
+          apply: () => void commitGpsLocation(coords),
+          blocked: evaluation.blocked,
+          distanceMeters: evaluation.distanceMeters,
+        });
         return;
       }
       await commitGpsLocation(coords);
@@ -1537,6 +1619,8 @@ export default function ReportCreateWizardScreen() {
         visible={pendingLocationOverride !== null}
         exifLocation={exifLocation}
         newLocation={pendingLocationOverride?.newLocation ?? null}
+        blocked={pendingLocationOverride?.blocked ?? false}
+        distanceMeters={pendingLocationOverride?.distanceMeters ?? null}
         onKeepNew={handleKeepNewLocation}
         onRestoreExif={() => void handleRestoreExifLocation()}
       />
