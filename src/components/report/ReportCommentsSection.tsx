@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -246,7 +246,26 @@ function ComposerSheet({
   const sheetY = useSharedValue(480);
   const backdrop = useSharedValue(0);
   const [rendered, setRendered] = useState(visible);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const canSend = value.trim().length > 0 && !loading;
+
+  // KeyboardAvoidingView không nhận đúng sự kiện bàn phím khi đặt trong Modal trên Android
+  // (statusBarTranslucent khiến Modal tạo window riêng) — lắng nghe Keyboard trực tiếp để
+  // đẩy sheet lên đúng chiều cao bàn phím thật thay vì phụ thuộc behavior "height"/"padding".
+  useEffect(() => {
+    const showEvent = Platform.OS === 'android' ? 'keyboardDidShow' : 'keyboardWillShow';
+    const hideEvent = Platform.OS === 'android' ? 'keyboardDidHide' : 'keyboardWillHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const sendAnimStyle = useAnimatedStyle(() => ({ transform: [{ scale: sendScale.value }] }));
   const sheetAnimStyle = useAnimatedStyle(() => ({
@@ -300,38 +319,34 @@ function ComposerSheet({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
-      >
-        <View className="flex-1 justify-end">
-          <Animated.View
-            pointerEvents="box-none"
-            style={[{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, backdropAnimStyle]}
-          >
-            <Pressable
-              className="flex-1"
-              style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
-              onPress={onClose}
-            />
-          </Animated.View>
+      <View className="flex-1 justify-end">
+        <Animated.View
+          pointerEvents="box-none"
+          style={[{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, backdropAnimStyle]}
+        >
+          <Pressable
+            className="flex-1"
+            style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+            onPress={onClose}
+          />
+        </Animated.View>
 
-          <Animated.View
-            className="rounded-t-3xl bg-white"
-            style={[
-              sheetAnimStyle,
-              {
-                paddingBottom: Math.max(insets.bottom, 12),
-                maxHeight: '72%',
-                shadowColor: '#000',
-                shadowOpacity: 0.12,
-                shadowRadius: 16,
-                shadowOffset: { width: 0, height: -4 },
-                elevation: 12,
-              },
-            ]}
-          >
+        <Animated.View
+          className="rounded-t-3xl bg-white"
+          style={[
+            sheetAnimStyle,
+            {
+              marginBottom: keyboardHeight,
+              paddingBottom: keyboardHeight > 0 ? 12 : Math.max(insets.bottom, 12),
+              maxHeight: '72%',
+              shadowColor: '#000',
+              shadowOpacity: 0.12,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: -4 },
+              elevation: 12,
+            },
+          ]}
+        >
             <View className="items-center pt-2.5 pb-1">
               <View className="h-1 w-10 rounded-full bg-border" />
             </View>
@@ -413,8 +428,7 @@ function ComposerSheet({
               </Animated.View>
             </View>
           </Animated.View>
-        </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

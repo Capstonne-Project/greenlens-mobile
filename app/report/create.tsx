@@ -1091,7 +1091,7 @@ export default function ReportCreateWizardScreen() {
       />
       <ReportFormHeader title="Tạo báo cáo" onBack={handleClose} />
 
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}

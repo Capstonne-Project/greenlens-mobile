@@ -13,7 +13,7 @@ import { Image } from 'expo-image';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -94,6 +94,7 @@ export function ReopenRequestModal({
   const insets = useSafeAreaInsets();
   const [reason, setReason] = useState('');
   const [reasonTouched, setReasonTouched] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const { images, isUploading, evidenceError, pickImages, removeImage, reset } =
     useReopenEvidence(reportId);
 
@@ -104,6 +105,24 @@ export function ReopenRequestModal({
       reset();
     }
   }, [visible, reset]);
+
+  // KeyboardAvoidingView không nhận đúng sự kiện bàn phím khi đặt trong Modal trên Android
+  // (statusBarTranslucent khiến Modal tạo window riêng) — lắng nghe Keyboard trực tiếp để
+  // đẩy sheet lên đúng chiều cao bàn phím thật.
+  useEffect(() => {
+    const showEvent = Platform.OS === 'android' ? 'keyboardDidShow' : 'keyboardWillShow';
+    const hideEvent = Platform.OS === 'android' ? 'keyboardDidHide' : 'keyboardWillHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const trimmedReason = reason.trim();
   const reasonTooShort = trimmedReason.length < REOPEN_REASON_MIN_LENGTH;
@@ -131,26 +150,26 @@ export function ReopenRequestModal({
       statusBarTranslucent
       onRequestClose={onDismiss}
     >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View className="flex-1 justify-end">
-          <Animated.View
-            entering={FadeIn.duration(200)}
-            exiting={FadeOut.duration(200)}
-            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]}
-          >
-            <Pressable className="flex-1" onPress={onDismiss} />
-          </Animated.View>
+      <View className="flex-1 justify-end">
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(200)}
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.45)' }]}
+        >
+          <Pressable className="flex-1" onPress={onDismiss} />
+        </Animated.View>
 
-          <Animated.View
-            // Timing thay vì springify: sheet trượt thẳng lên rồi dừng, không nảy lại.
-            entering={SlideInDown.duration(280).easing(Easing.out(Easing.cubic))}
-            exiting={SlideOutDown.duration(220).easing(Easing.in(Easing.cubic))}
-            className="rounded-t-2xl bg-white"
-            style={{ paddingBottom: insets.bottom + 16, maxHeight: '88%' }}
-          >
+        <Animated.View
+          // Timing thay vì springify: sheet trượt thẳng lên rồi dừng, không nảy lại.
+          entering={SlideInDown.duration(280).easing(Easing.out(Easing.cubic))}
+          exiting={SlideOutDown.duration(220).easing(Easing.in(Easing.cubic))}
+          className="rounded-t-2xl bg-white"
+          style={{
+            marginBottom: keyboardHeight,
+            paddingBottom: keyboardHeight > 0 ? 16 : insets.bottom + 16,
+            maxHeight: '88%',
+          }}
+        >
             <View className="items-center pt-3">
               <View className="h-1 w-10 rounded-full bg-border" />
             </View>
@@ -303,9 +322,8 @@ export function ReopenRequestModal({
                 </PressableScale>
               </View>
             </View>
-          </Animated.View>
-        </View>
-      </KeyboardAvoidingView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
