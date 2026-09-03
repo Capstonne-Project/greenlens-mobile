@@ -2,7 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  TextInput,
+  View,
+  type TextInputProps,
+} from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -165,6 +175,33 @@ export default function DeclineScreen() {
   const [apiError, setApiError]     = useState<string | null>(null);
   const { toastState, show: showToast, hide: hideToast } = useToast();
 
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  // Khoảng đệm dành riêng cho bàn phím — chỉ bật khi có ô đang gõ, để luôn có đủ chỗ
+  // trống bên dưới nội dung mà cuộn lên tới, thay vì tự đo/đoán chiều cao bàn phím.
+  const [keyboardPadding, setKeyboardPadding] = useState(0);
+  const KEYBOARD_SPACE = 320;
+  // Cuộn ScrollView để ô đang gõ luôn nổi trên bàn phím — KeyboardAvoidingView chỉ co
+  // container lại chứ không tự biết cuộn tới đâu. Dùng measureInWindow trên chính input
+  // (ổn định trên cả Paper lẫn Fabric/New Architecture).
+  const scrollToInput: NonNullable<TextInputProps['onFocus']> = useCallback((event) => {
+    const target = event.currentTarget;
+    setKeyboardPadding(KEYBOARD_SPACE);
+    setTimeout(() => {
+      target.measureInWindow((_x, y, _w, height) => {
+        const KEYBOARD_ESTIMATE = 300;
+        const screenHeight = Dimensions.get('window').height;
+        const visibleBottom = screenHeight - KEYBOARD_ESTIMATE;
+        const inputBottom = y + height;
+        if (inputBottom > visibleBottom) {
+          const delta = inputBottom - visibleBottom + 24;
+          scrollRef.current?.scrollTo({ y: scrollOffsetRef.current + delta, animated: true });
+        }
+      });
+    }, 200);
+  }, []);
+  const handleFieldBlur = useCallback(() => setKeyboardPadding(0), []);
+
   const isOther      = selectedReason === 'Lý do khác';
   const noteValid    = !isOther || note.trim().length >= 20;
   const canSubmit =
@@ -210,11 +247,16 @@ export default function DeclineScreen() {
         </Pressable>
       </View>
 
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: insets.bottom + 110 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 110 + keyboardPadding }}
+        onScroll={(e) => {
+          scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         {/* ── Countdown block ── */}
         <View className="items-center px-6 pb-6 pt-2">
@@ -291,6 +333,8 @@ export default function DeclineScreen() {
           <TextInput
             value={note}
             onChangeText={setNote}
+            onFocus={scrollToInput}
+            onBlur={handleFieldBlur}
             placeholder="Điểm này thuộc khu vực Q3, đề nghị chuyển cho đội Cleanup Q3-002."
             placeholderTextColor={colors.textDisabled}
             multiline

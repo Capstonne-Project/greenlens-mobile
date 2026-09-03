@@ -3,15 +3,17 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   TextInput,
   View,
+  type TextInputProps,
 } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -209,6 +211,38 @@ export default function ProgressUpdateScreen() {
 
   const showWarning = hoursAgo !== null && hoursAgo >= 24;
 
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  // Khoảng đệm dành riêng cho bàn phím — chỉ bật khi có ô đang gõ, để luôn có đủ chỗ
+  // trống bên dưới nội dung mà cuộn lên tới, thay vì tự đo/đoán chiều cao bàn phím.
+  const [keyboardPadding, setKeyboardPadding] = useState(0);
+  const KEYBOARD_SPACE = 320;
+
+  // Cuộn ScrollView để ô đang gõ luôn nổi trên bàn phím — KeyboardAvoidingView chỉ co
+  // container lại chứ không tự biết cuộn tới đâu. Dùng measureInWindow trên chính input
+  // (ổn định trên cả Paper lẫn Fabric/New Architecture, không phụ thuộc API nội bộ cũ
+  // như scrollResponderScrollNativeHandleToKeyboard vốn không đáng tin trên Fabric).
+  const scrollToInput: NonNullable<TextInputProps['onFocus']> = useCallback((event) => {
+    const target = event.currentTarget;
+    setKeyboardPadding(KEYBOARD_SPACE);
+    // Đợi padding + bàn phím hiện xong rồi mới đo — đo ngay khi vừa focus có thể lấy vị
+    // trí trước khi layout co lại, dẫn tới tính sai khoảng cần cuộn.
+    setTimeout(() => {
+      target.measureInWindow((_x, y, _w, height) => {
+        const KEYBOARD_ESTIMATE = 300;
+        const screenHeight = Dimensions.get('window').height;
+        const visibleBottom = screenHeight - KEYBOARD_ESTIMATE;
+        const inputBottom = y + height;
+        if (inputBottom > visibleBottom) {
+          const delta = inputBottom - visibleBottom + 24;
+          scrollRef.current?.scrollTo({ y: scrollOffsetRef.current + delta, animated: true });
+        }
+      });
+    }, 200);
+  }, []);
+
+  const handleFieldBlur = useCallback(() => setKeyboardPadding(0), []);
+
   // Sync input text → percent value. Không cho nhập bằng hoặc thấp hơn tiến độ đã lưu
   // (initPercent) — bắt buộc phải tăng lên so với lần cập nhật trước.
   const handleInputChange = useCallback((text: string) => {
@@ -312,6 +346,7 @@ export default function ProgressUpdateScreen() {
       setPercent(initPercent);
       setInputText(String(initPercent));
     }
+    setKeyboardPadding(0);
   }, [percent, initPercent]);
 
   const handleSubmit = useCallback(async () => {
@@ -369,9 +404,14 @@ export default function ProgressUpdateScreen() {
       <AssignmentScreenHeader title="Cập nhật tiến độ" subtitle="Bước tùy chọn · 2/3" />
 
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 + keyboardPadding }}
+        onScroll={(e) => {
+          scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         {!isAccessLoading && !isLeader ? (
           <View className="mx-4 mb-4 rounded-xl border border-border bg-surface p-4">
@@ -415,6 +455,7 @@ export default function ProgressUpdateScreen() {
               value={inputText}
               onChangeText={handleInputChange}
               onBlur={handleInputBlur}
+              onFocus={scrollToInput}
               keyboardType="number-pad"
               maxLength={3}
               style={{
@@ -472,6 +513,8 @@ export default function ProgressUpdateScreen() {
           <TextInput
             value={note}
             onChangeText={setNote}
+            onFocus={scrollToInput}
+            onBlur={handleFieldBlur}
             placeholder="Mô tả tiến độ hiện tại..."
             placeholderTextColor={colors.textDisabled}
             multiline

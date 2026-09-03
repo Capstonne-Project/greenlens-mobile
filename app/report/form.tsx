@@ -16,8 +16,16 @@ import {
   validateReportDescription,
 } from '@/utils/report-validation';
 import { router, type Href } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  View,
+  type TextInputProps,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ReportFormScreen() {
@@ -39,6 +47,32 @@ export default function ReportFormScreen() {
     fieldErrors,
     clearFieldError,
   } = useSubmitPollutionReport();
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  // Khoảng đệm dành riêng cho bàn phím — chỉ bật khi có ô đang gõ, để luôn có đủ chỗ
+  // trống bên dưới nội dung mà cuộn lên tới, thay vì tự đo/đoán chiều cao bàn phím.
+  const [keyboardPadding, setKeyboardPadding] = useState(0);
+  const KEYBOARD_SPACE = 320;
+  // Cuộn ScrollView để ô đang gõ luôn nổi trên bàn phím — KeyboardAvoidingView chỉ co
+  // container lại chứ không tự biết cuộn tới đâu. Dùng measureInWindow trên chính input
+  // (ổn định trên cả Paper lẫn Fabric/New Architecture).
+  const scrollToInput: NonNullable<TextInputProps['onFocus']> = useCallback((event) => {
+    const target = event.currentTarget;
+    setKeyboardPadding(KEYBOARD_SPACE);
+    setTimeout(() => {
+      target.measureInWindow((_x, y, _w, height) => {
+        const KEYBOARD_ESTIMATE = 300;
+        const screenHeight = Dimensions.get('window').height;
+        const visibleBottom = screenHeight - KEYBOARD_ESTIMATE;
+        const inputBottom = y + height;
+        if (inputBottom > visibleBottom) {
+          const delta = inputBottom - visibleBottom + 24;
+          scrollRef.current?.scrollTo({ y: scrollOffsetRef.current + delta, animated: true });
+        }
+      });
+    }, 200);
+  }, []);
+  const handleFieldBlur = useCallback(() => setKeyboardPadding(0), []);
   const {
     categories: pollutionCategories,
     isLoading: isLoadingCategories,
@@ -153,17 +187,22 @@ export default function ReportFormScreen() {
         onBack={() => router.back()}
       />
 
-      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView
+        ref={scrollRef}
         className="flex-1"
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 16,
-          paddingBottom: Math.max(insets.bottom, 20) + 112,
+          paddingBottom: Math.max(insets.bottom, 20) + 112 + keyboardPadding,
           gap: 16,
         }}
+        onScroll={(e) => {
+          scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
         <ReportSectionCard title="Vị trí ghi nhận">
           <Text className="text-sm text-textSecondary">
@@ -207,6 +246,8 @@ export default function ReportFormScreen() {
               clearFieldError('description');
               setDescription(value);
             }}
+            onFocus={scrollToInput}
+            onBlur={handleFieldBlur}
             placeholder="Mô tả ngắn gọn hiện trường, tác động hoặc mức độ cấp bách"
             multiline
             numberOfLines={4}

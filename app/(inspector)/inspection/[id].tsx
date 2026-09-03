@@ -1,14 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   TextInput,
   View,
+  type TextInputProps,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -25,6 +27,7 @@ import {
   type StageDef,
   ViolationReportDocument,
 } from '@/components/inspection';
+import { TapScale } from '@/components/layout/TapScale';
 import { Text } from '@/components/ui/text';
 import { useArrivalDistance } from '@/hooks/useArrivalDistance';
 import { useEvidenceAudioRecorder } from '@/hooks/useEvidenceAudioRecorder';
@@ -61,11 +64,20 @@ const VIOLATION_LEVELS: readonly ViolationLevel[] = [
   'Critical',
 ] as const;
 
-const VIOLATION_LEVEL_LABELS: Record<ViolationLevel, string> = {
+/** Nhãn 4 bậc mức độ vi phạm — lưới 2×2 nên đủ chỗ cho nhãn đầy đủ. */
+const VIOLATION_LEVEL_SHORT: Record<ViolationLevel, string> = {
   Minor: 'Nhẹ',
   Moderate: 'Trung bình',
   Severe: 'Nghiêm trọng',
   Critical: 'Đặc biệt nghiêm trọng',
+};
+
+/** Vạch màu theo bậc — dùng chung thang severity của theme để đồng nhất toàn app. */
+const VIOLATION_LEVEL_ACCENTS: Record<ViolationLevel, string> = {
+  Minor: colors.severityLow,
+  Moderate: colors.severityMedium,
+  Severe: colors.severityHigh,
+  Critical: colors.severityCritical,
 };
 
 const MIN_CLOSE_REASON_LENGTH = 50;
@@ -172,6 +184,38 @@ export default function InspectionDetailScreen() {
   const [heroIndex, setHeroIndex] = useState(0);
   /** Bằng chứng video/ghi âm đang mở trong trình phát. */
   const [previewItem, setPreviewItem] = useState<InspectionEvidenceItem | null>(null);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  // Khoảng đệm dành riêng cho bàn phím — chỉ bật khi có ô đang gõ, để luôn có đủ chỗ
+  // trống bên dưới nội dung mà cuộn lên tới, thay vì tự đo/đoán chiều cao bàn phím.
+  const [keyboardPadding, setKeyboardPadding] = useState(0);
+  const KEYBOARD_SPACE = 320;
+
+  // Cuộn ScrollView để ô đang gõ luôn nổi trên bàn phím — KeyboardAvoidingView chỉ co
+  // container lại chứ không tự biết cuộn tới đâu. Dùng measureInWindow trên chính input
+  // (ổn định trên cả Paper lẫn Fabric/New Architecture, không phụ thuộc API nội bộ cũ
+  // như scrollResponderScrollNativeHandleToKeyboard vốn không đáng tin trên Fabric).
+  const scrollToInput: NonNullable<TextInputProps['onFocus']> = useCallback((event) => {
+    const target = event.currentTarget;
+    setKeyboardPadding(KEYBOARD_SPACE);
+    // Đợi padding + bàn phím hiện xong rồi mới đo — đo ngay khi vừa focus có thể lấy vị
+    // trí trước khi layout co lại, dẫn tới tính sai khoảng cần cuộn.
+    setTimeout(() => {
+      target.measureInWindow((_x, y, _w, height) => {
+        const KEYBOARD_ESTIMATE = 300;
+        const screenHeight = Dimensions.get('window').height;
+        const visibleBottom = screenHeight - KEYBOARD_ESTIMATE;
+        const inputBottom = y + height;
+        if (inputBottom > visibleBottom) {
+          const delta = inputBottom - visibleBottom + 24;
+          scrollRef.current?.scrollTo({ y: scrollOffsetRef.current + delta, animated: true });
+        }
+      });
+    }, 200);
+  }, []);
+
+  const handleFieldBlur = useCallback(() => setKeyboardPadding(0), []);
 
   // Form state
   const [arrivalNote, setArrivalNote] = useState('');
@@ -447,8 +491,13 @@ export default function InspectionDetailScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          ref={scrollRef}
+          contentContainerStyle={{ padding: 16, paddingBottom: 24 + keyboardPadding }}
           keyboardShouldPersistTaps="handled"
+          onScroll={(e) => {
+            scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
         >
           <InspectionFeedbackBanner
             errorMessage={actionError}
@@ -540,6 +589,7 @@ export default function InspectionDetailScreen() {
                   locationError={arrival.locationError}
                   note={arrivalNote}
                   onChangeNote={setArrivalNote}
+                  onFocusNote={scrollToInput}
                   onRetryLocation={() => void arrival.retryLocation()}
                   submitting={submitting}
                   onConfirm={() => {
@@ -610,6 +660,8 @@ export default function InspectionDetailScreen() {
                     <TextInput
                       value={violatorName}
                       onChangeText={setViolatorName}
+                      onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
                       placeholder="Họ tên / Tên cơ sở"
                       placeholderTextColor={colors.textDisabled}
                       className={PAPER_INPUT_CLASS}
@@ -618,6 +670,8 @@ export default function InspectionDetailScreen() {
                     <TextInput
                       value={violatorAddress}
                       onChangeText={setViolatorAddress}
+                      onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
                       placeholder="Địa chỉ"
                       placeholderTextColor={colors.textDisabled}
                       className={PAPER_INPUT_CLASS}
@@ -626,6 +680,8 @@ export default function InspectionDetailScreen() {
                     <TextInput
                       value={violatorIdentity}
                       onChangeText={setViolatorIdentity}
+                      onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
                       placeholder="CCCD / Mã số thuế"
                       placeholderTextColor={colors.textDisabled}
                       className={PAPER_INPUT_CLASS}
@@ -652,6 +708,8 @@ export default function InspectionDetailScreen() {
                                 onChangeText={(text) =>
                                   setViolationReport((current) => ({ ...current, [section.key]: text }))
                                 }
+                                onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
                                 multiline
                                 placeholder={section.placeholder}
                                 placeholderTextColor={colors.textDisabled}
@@ -741,85 +799,129 @@ export default function InspectionDetailScreen() {
               ) : null}
 
               {detail.canIssuePenalty && decisionMode === 'penalty' ? (
-                <View className="mb-4 rounded-2xl bg-surface p-3.5">
-                  <Text className="mb-2.5 text-sm font-bold text-textPrimary">
-                    Ban hành quyết định xử phạt
-                  </Text>
-
+                <View className="mb-4">
+                  {/* Mức độ vi phạm — lưới 2×2, mỗi bậc mang vạch màu theo thang severity;
+                      chọn bằng viền primary + nền nhạt (đồng nhất SeverityPillGroup). */}
                   <Text className="mb-2 text-xs font-semibold text-textSecondary">
                     Mức độ vi phạm
                   </Text>
-                  <View className="mb-3.5 flex-row flex-wrap gap-2">
+                  <View className="mb-5 flex-row flex-wrap gap-2">
                     {VIOLATION_LEVELS.map((level) => {
                       const isActive = violationLevel === level;
                       return (
-                        <Pressable
+                        <TapScale
                           key={level}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: isActive }}
+                          className="w-[48%]"
                           onPress={() => setViolationLevel(level)}
-                          className="rounded-full px-3.5 py-2"
-                          style={{
-                            backgroundColor: isActive ? colors.primary : colors.white,
-                            borderWidth: 1,
-                            borderColor: isActive ? colors.primary : colors.border,
-                          }}
                         >
-                          <Text
-                            className={`text-xs font-semibold ${
-                              isActive ? 'text-white' : 'text-textSecondary'
-                            }`}
+                          <View
+                            className="flex-row items-center gap-2.5 rounded-xl px-3"
+                            style={{
+                              height: 52,
+                              borderWidth: 1,
+                              borderColor: isActive ? colors.primary : colors.border,
+                              backgroundColor: isActive ? colors.primaryLight : colors.surface,
+                            }}
                           >
-                            {VIOLATION_LEVEL_LABELS[level]}
-                          </Text>
-                        </Pressable>
+                            <View
+                              className="h-6 w-1.5 rounded-full"
+                              style={{ backgroundColor: VIOLATION_LEVEL_ACCENTS[level] }}
+                            />
+                            <Text
+                              className={`flex-1 text-[12px] leading-[15px] ${
+                                isActive ? 'font-bold text-textPrimary' : 'font-semibold text-textSecondary'
+                              }`}
+                            >
+                              {VIOLATION_LEVEL_SHORT[level]}
+                            </Text>
+                          </View>
+                        </TapScale>
                       );
                     })}
                   </View>
 
-                  <TextInput
-                    value={penaltyAmount}
-                    onChangeText={(text) => setPenaltyAmount(formatVndDigits(text))}
-                    keyboardType="number-pad"
-                    placeholder="Số tiền phạt (VND)"
-                    placeholderTextColor={colors.textSecondary}
-                    className="mb-1 h-12 rounded-2xl bg-white px-4 text-sm text-textPrimary"
+                  {/* Mức phạt + hạn nộp là một điều khoản trong quyết định — đóng chung
+                      một khối viền mảnh, chữ số lớn, đọc thành chữ ngay dưới như biên bản giấy. */}
+                  <View
+                    className="mb-4 overflow-hidden rounded-2xl bg-white"
                     style={{ borderWidth: 1, borderColor: colors.border }}
-                    textAlignVertical="center"
-                  />
-                  {parseVndDigits(penaltyAmount) > 0 ? (
-                    <Text className="mb-3 ml-1 text-xs italic text-textSecondary">
-                      {vndToWords(parseVndDigits(penaltyAmount))}
-                    </Text>
-                  ) : (
-                    <View className="mb-3" />
-                  )}
+                  >
+                    <View className="px-4 pt-3.5">
+                      <Text className="text-xs font-semibold text-textSecondary">
+                        Mức phạt
+                      </Text>
+                      <View className="flex-row items-baseline gap-1.5">
+                        <TextInput
+                          value={penaltyAmount}
+                          onChangeText={(text) => setPenaltyAmount(formatVndDigits(text))}
+                          onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
+                          keyboardType="number-pad"
+                          placeholder="0"
+                          placeholderTextColor={colors.textDisabled}
+                          className="flex-1 text-[28px] font-extrabold text-textPrimary"
+                          style={{ paddingVertical: 4, includeFontPadding: false }}
+                        />
+                        <Text className="pb-1 text-lg font-bold text-textSecondary">₫</Text>
+                      </View>
+                      <Text className="pb-3.5 text-xs italic leading-[17px] text-textSecondary">
+                        {parseVndDigits(penaltyAmount) > 0
+                          ? `Bằng chữ: ${vndToWords(parseVndDigits(penaltyAmount))}`
+                          : 'Nhập mức phạt để hiện phần đọc bằng chữ'}
+                      </Text>
+                    </View>
+
+                    <View
+                      className="flex-row items-center justify-between px-4 py-3"
+                      style={{ borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface }}
+                    >
+                      <Text className="text-xs text-textSecondary">Thời hạn nộp phạt</Text>
+                      <View className="flex-row items-baseline gap-1.5">
+                        <TextInput
+                          value={paymentDueDays}
+                          onChangeText={setPaymentDueDays}
+                          onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
+                          keyboardType="number-pad"
+                          maxLength={3}
+                          placeholder="10"
+                          placeholderTextColor={colors.textDisabled}
+                          className="min-w-[40px] text-right text-base font-bold text-textPrimary"
+                          style={{ paddingVertical: 2, includeFontPadding: false }}
+                        />
+                        <Text className="text-xs font-semibold text-textSecondary">ngày</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Số quyết định là mã định danh văn bản — đặt cùng font mono với mã hồ sơ. */}
+                  <Text className="mb-1.5 text-xs font-semibold text-textSecondary">
+                    Số quyết định
+                  </Text>
                   <TextInput
                     value={decisionNumber}
                     onChangeText={setDecisionNumber}
-                    placeholder="Số quyết định (VD: QĐ-XP-2026-001)"
-                    placeholderTextColor={colors.textSecondary}
-                    className="mb-3 h-12 rounded-2xl bg-white px-4 text-sm text-textPrimary"
+                    onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
+                    placeholder="QĐ-XP-2026-001"
+                    placeholderTextColor={colors.textDisabled}
+                    className="mb-4 h-12 rounded-2xl bg-white px-4 font-mono text-sm tracking-wide text-textPrimary"
                     style={{ borderWidth: 1, borderColor: colors.border }}
                     textAlignVertical="center"
                   />
-                  <TextInput
-                    value={paymentDueDays}
-                    onChangeText={setPaymentDueDays}
-                    keyboardType="number-pad"
-                    placeholder="Số ngày được nộp phạt"
-                    placeholderTextColor={colors.textSecondary}
-                    className="mb-3 h-12 rounded-2xl bg-white px-4 text-sm text-textPrimary"
-                    style={{ borderWidth: 1, borderColor: colors.border }}
-                    textAlignVertical="center"
-                  />
+
+                  <Text className="mb-1.5 text-xs font-semibold text-textSecondary">
+                    Biện pháp bổ sung
+                  </Text>
                   <TextInput
                     value={additionalMeasures}
                     onChangeText={setAdditionalMeasures}
+                    onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
                     multiline
-                    placeholder="Biện pháp bổ sung (tùy chọn)"
-                    placeholderTextColor={colors.textSecondary}
-                    className="min-h-[84px] rounded-2xl bg-white px-4 py-3 text-sm text-textPrimary"
+                    placeholder="Buộc khôi phục hiện trạng, thu gom toàn bộ chất thải… (nếu có)"
+                    placeholderTextColor={colors.textDisabled}
+                    className="min-h-[76px] rounded-2xl bg-white px-4 py-3 text-sm leading-5 text-textPrimary"
                     style={{ borderWidth: 1, borderColor: colors.border }}
                     textAlignVertical="top"
                   />
@@ -828,11 +930,15 @@ export default function InspectionDetailScreen() {
                     <Pressable
                       accessibilityRole="button"
                       onPress={() => setDecisionMode('reject')}
-                      className="mt-3 self-start"
-                      hitSlop={6}
+                      className="mt-4 flex-row items-center gap-1.5 self-start"
+                      style={{ paddingVertical: 4 }}
+                      hitSlop={8}
                     >
-                      <Text className="text-xs font-semibold" style={{ color: colors.error }}>
-                        Không đủ căn cứ — chuyển sang đóng hồ sơ
+                      <Text className="text-xs text-textSecondary">
+                        Hồ sơ không đủ căn cứ xử phạt?
+                      </Text>
+                      <Text className="text-xs font-bold" style={{ color: colors.error }}>
+                        Đóng hồ sơ
                       </Text>
                     </Pressable>
                   ) : null}
@@ -860,6 +966,8 @@ export default function InspectionDetailScreen() {
                   <TextInput
                     value={closeNoViolationReason}
                     onChangeText={setCloseNoViolationReason}
+                    onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
                     multiline
                     placeholder={`Lý do (tối thiểu ${MIN_CLOSE_REASON_LENGTH} ký tự)`}
                     placeholderTextColor={colors.textSecondary}
@@ -900,6 +1008,8 @@ export default function InspectionDetailScreen() {
                   <TextInput
                     value={closeReason}
                     onChangeText={setCloseReason}
+                    onFocus={scrollToInput}
+                      onBlur={handleFieldBlur}
                     multiline
                     placeholder="Lý do đóng hồ sơ (tùy chọn)"
                     placeholderTextColor={colors.textSecondary}

@@ -1,13 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   TextInput,
   View,
+  type TextInputProps,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -48,6 +51,24 @@ export function CheckInOverrideDialog({
   const insets = useSafeAreaInsets();
   const [reason, setReason] = useState('');
   const [routePath, setRoutePath] = useState<GeoPoint[] | null>(null);
+
+  const scrollRef = useRef<ScrollView>(null);
+  // Cuộn ScrollView bên trong sheet để ô lý do luôn nổi trên bàn phím — sheet không có
+  // nhiều chỗ trống dự phòng như màn hình toàn trang nên cần chủ động cuộn khi focus.
+  const scrollToInput: NonNullable<TextInputProps['onFocus']> = (event) => {
+    const target = event.currentTarget;
+    setTimeout(() => {
+      target.measureInWindow((_x, y, _w, height) => {
+        const KEYBOARD_ESTIMATE = 300;
+        const screenHeight = Dimensions.get('window').height;
+        const visibleBottom = screenHeight - KEYBOARD_ESTIMATE;
+        const inputBottom = y + height;
+        if (inputBottom > visibleBottom) {
+          scrollRef.current?.scrollTo({ y: inputBottom - visibleBottom + 24, animated: true });
+        }
+      });
+    }, 200);
+  };
 
   const reasonValid = reason.trim().length >= MIN_REASON;
 
@@ -99,12 +120,13 @@ export function CheckInOverrideDialog({
         <Pressable className="absolute inset-0 bg-black/40" onPress={handleClose} />
         <View
           className="rounded-t-2xl bg-white px-4 pt-2"
-          style={{ paddingBottom: insets.bottom + 16 }}
+          style={{ paddingBottom: insets.bottom + 16, maxHeight: '90%' }}
         >
           <View className="mb-3 items-center">
             <View className="h-1 w-10 rounded-full bg-border" />
           </View>
 
+          <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View className="mb-3 flex-row items-start gap-3">
             <Ionicons name="warning-outline" size={24} color="#B45309" />
             <View className="flex-1">
@@ -138,6 +160,7 @@ export function CheckInOverrideDialog({
           <TextInput
             value={reason}
             onChangeText={setReason}
+            onFocus={scrollToInput}
             placeholder="Lý do check-in ngoài phạm vi (tối thiểu 20 ký tự)"
             placeholderTextColor={colors.textDisabled}
             multiline
@@ -150,6 +173,7 @@ export function CheckInOverrideDialog({
               Tối thiểu {MIN_REASON} ký tự ({reason.trim().length}/{MIN_REASON})
             </Text>
           ) : null}
+          </ScrollView>
 
           <View className="mb-1 mt-4 flex-row gap-3">
             <Pressable

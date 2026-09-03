@@ -8,12 +8,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   TextInput,
   View,
+  type TextInputProps,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -156,6 +158,32 @@ export default function CommunityLeadWorkspaceScreen() {
   const [afterImages, setAfterImages] = useState<PickedImage[]>([]);
   const [percentInput, setPercentInput] = useState('0');
   const [progressNote, setProgressNote] = useState('');
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffsetRef = useRef(0);
+  // Khoảng đệm dành riêng cho bàn phím — chỉ bật khi có ô đang gõ, để luôn có đủ chỗ
+  // trống bên dưới nội dung mà cuộn lên tới, thay vì tự đo/đoán chiều cao bàn phím.
+  const [keyboardPadding, setKeyboardPadding] = useState(0);
+  const KEYBOARD_SPACE = 320;
+  // Cuộn ScrollView để ô đang gõ luôn nổi trên bàn phím — KeyboardAvoidingView chỉ co
+  // container lại chứ không tự biết cuộn tới đâu. Dùng measureInWindow trên chính input
+  // (ổn định trên cả Paper lẫn Fabric/New Architecture).
+  const scrollToInput: NonNullable<TextInputProps['onFocus']> = useCallback((event) => {
+    const target = event.currentTarget;
+    setKeyboardPadding(KEYBOARD_SPACE);
+    setTimeout(() => {
+      target.measureInWindow((_x, y, _w, height) => {
+        const KEYBOARD_ESTIMATE = 300;
+        const screenHeight = Dimensions.get('window').height;
+        const visibleBottom = screenHeight - KEYBOARD_ESTIMATE;
+        const inputBottom = y + height;
+        if (inputBottom > visibleBottom) {
+          const delta = inputBottom - visibleBottom + 24;
+          scrollRef.current?.scrollTo({ y: scrollOffsetRef.current + delta, animated: true });
+        }
+      });
+    }, 200);
+  }, []);
+  const handleFieldBlur = useCallback(() => setKeyboardPadding(0), []);
   const [processingPhotos, setProcessingPhotos] = useState(false);
   const [participantsModalVisible, setParticipantsModalVisible] = useState(false);
   const [pendingCheckIn, setPendingCheckIn] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -444,14 +472,19 @@ export default function CommunityLeadWorkspaceScreen() {
         </View>
       ) : event ? (
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={insets.top}
           className="flex-1"
         >
         <ScrollView
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 + keyboardPadding }}
+          onScroll={(e) => {
+            scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
         >
           <Text className="text-xs text-textSecondary">{event.reportCode}</Text>
           <Text className="mb-2 text-xl font-bold text-textPrimary">{event.title}</Text>
@@ -626,6 +659,8 @@ export default function CommunityLeadWorkspaceScreen() {
                         <TextInput
                           value={progressNote}
                           onChangeText={setProgressNote}
+                          onFocus={scrollToInput}
+                          onBlur={handleFieldBlur}
                           placeholder="Ghi chú tiến độ..."
                           placeholderTextColor={colors.textDisabled}
                           multiline

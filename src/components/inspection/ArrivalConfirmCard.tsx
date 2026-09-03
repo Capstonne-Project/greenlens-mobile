@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { colors } from '@/theme/colors';
@@ -14,6 +14,8 @@ interface ArrivalConfirmCardProps {
   locationError: string | null;
   note: string;
   onChangeNote: (value: string) => void;
+  /** Cuộn màn hình cha để ô ghi chú không bị bàn phím che — tùy chọn. */
+  onFocusNote?: TextInputProps['onFocus'];
   onRetryLocation: () => void;
   onConfirm: () => void;
   submitting: boolean;
@@ -30,6 +32,7 @@ export function ArrivalConfirmCard({
   locationError,
   note,
   onChangeNote,
+  onFocusNote,
   onRetryLocation,
   onConfirm,
   submitting,
@@ -88,6 +91,7 @@ export function ArrivalConfirmCard({
       <TextInput
         value={note}
         onChangeText={onChangeNote}
+        onFocus={onFocusNote}
         multiline
         placeholder={noteRequired ? 'Lý do giải trình (bắt buộc)' : 'Ghi chú (tùy chọn)'}
         placeholderTextColor={colors.textSecondary}
