@@ -362,7 +362,8 @@ export default function ProgressUpdateScreen() {
     <View style={{ flex: 1 }}>
     <KeyboardAvoidingView
       className="flex-1 bg-white"
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top}
       style={{ paddingTop: insets.top }}
     >
       <AssignmentScreenHeader title="Cập nhật tiến độ" subtitle="Bước tùy chọn · 2/3" />

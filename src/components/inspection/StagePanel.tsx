@@ -10,10 +10,13 @@ interface StagePanelProps {
   children: ReactNode;
 }
 
-/** Section nội dung cho stage đang active trong StageTracker — không card/shadow. */
+/** Section nội dung cho stage đang active — card phẳng, viền mảnh, tách khỏi nền surface. */
 export function StagePanel({ title, description, children }: StagePanelProps) {
   return (
-    <View className="border-t border-border pt-4" style={{ borderTopColor: colors.border }}>
+    <View
+      className="rounded-3xl bg-white px-4 pb-5 pt-4"
+      style={{ borderWidth: 1, borderColor: colors.border }}
+    >
       <Text className="text-base font-bold text-textPrimary">{title}</Text>
       {description ? (
         <Text className="mt-1 text-xs leading-[18px] text-textSecondary">{description}</Text>

@@ -20,7 +20,7 @@ interface StageTrackerProps<K extends string> {
   onSelect: (key: K) => void;
 }
 
-const NODE_SIZE = 30;
+const NODE_SIZE = 34;
 
 function StageNode<K extends string>({
   stage,
@@ -44,7 +44,7 @@ function StageNode<K extends string>({
       disabled={isLocked}
       onPress={onPress}
       className="items-center"
-      style={{ width: 56 }}
+      style={{ width: 60 }}
     >
       <View
         style={{
@@ -59,13 +59,13 @@ function StageNode<K extends string>({
         }}
       >
         {stage.status === 'done' ? (
-          <Ionicons name="checkmark" size={14} color={colors.white} />
+          <Ionicons name="checkmark" size={16} color={colors.white} />
         ) : (
-          <Ionicons name={stage.icon} size={13} color={fg} />
+          <Ionicons name={stage.icon} size={14} color={fg} />
         )}
       </View>
       <Text
-        className="mt-1 text-center text-[9px] font-semibold leading-3"
+        className="mt-1.5 text-center text-[10px] font-semibold leading-3"
         numberOfLines={1}
         style={{ color: isActive ? colors.textPrimary : colors.textSecondary }}
       >
